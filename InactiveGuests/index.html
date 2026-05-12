@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>InactiveGuests - find and clean up dormant guest accounts in Entra</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>👤</text></svg>">
+  <link rel="stylesheet" href="style.css" />
+  <script src="https://cdn.jsdelivr.net/npm/@azure/msal-browser@3.27.0/lib/msal-browser.min.js"
+          onerror="window.__msalLoadFailed=true"></script>
+    <!-- Google Analytics (GDPR Compliant) -->
+    <script async src="https://www.googletagmanager.com/gtag/js?id=G-20PYJ8S2G7"></script>
+    <script>
+      window.dataLayer = window.dataLayer || [];
+      function gtag(){dataLayer.push(arguments);}
+      gtag('js', new Date());
+      gtag('config', 'G-20PYJ8S2G7', {
+        'anonymize_ip': true,
+        'storage': 'none',
+        'client_storage': 'none'
+      });
+      gtag('consent', 'default', {
+        'ad_storage': 'denied',
+        'ad_user_data': 'denied',
+        'ad_personalization': 'denied',
+        'analytics_storage': 'denied'
+      });
+    </script>             
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <div class="logo">IG</div>
+      <div>
+        <h1>InactiveGuests</h1>
+        <p class="subtitle">Find and clean up dormant guest accounts in Entra</p>
+      </div>
+    </div>
+    <div class="topbar-actions">
+      <a href="../index.html" class="ghost-btn toolkit-link" title="Back to LCToolkit">&larr; Toolkit</a>
+      <button id="darkToggle" class="icon-btn" title="Toggle dark mode">&#127769;</button>
+      <div id="userBox" class="user-box hidden">
+        <span id="userName"></span>
+        <button id="signOutBtn" class="ghost-btn">Sign out</button>
+      </div>
+    </div>
+  </header>
+
+  <nav class="tabs">
+    <button class="tab active" data-tab="browse">1. Browse guests</button>
+    <button class="tab" data-tab="recycle">2. Recycle bin</button>
+    <button class="tab" data-tab="debug">Debug</button>
+    <button class="tab" data-tab="about">About</button>
+  </nav>
+
+  <main>
+    <!-- BROWSE TAB -->
+    <section class="tab-panel active" id="tab-browse">
+      <div class="card" id="connectCard">
+        <h2>Connect to your tenant</h2>
+        <p>InactiveGuests runs entirely in your browser. It signs you in with Microsoft (PKCE) and queries Microsoft Graph as you. No backend, no telemetry, no data leaves your browser.</p>
+        <p>Required delegated permissions:</p>
+        <ul>
+          <li><code>User.Read.All</code> - list guest users</li>
+          <li><code>AuditLog.Read.All</code> - read sign-in activity for each guest</li>
+          <li><code>Directory.Read.All</code> - list deleted users (recycle bin)</li>
+          <li><code>User.Read</code> - sign-in identity</li>
+          <li><code>User.ReadWrite.All</code> + <code>Directory.AccessAsUser.All</code> <span class="muted">(only when you actually disable, delete or restore)</span></li>
+        </ul>
+        <p>To act on guests you also need an Entra role that can manage users: <strong>User Administrator</strong> or <strong>Global Administrator</strong>. Without one of those, Graph returns 403 on the action.</p>
+        <button id="signInBtn" class="primary-btn">Sign in with Microsoft</button>
+      </div>
+
+      <div class="card hidden" id="browseCard">
+        <h2>Guest users</h2>
+        <div class="row">
+          <button id="loadGuestsBtn" class="primary-btn">Load all guests</button>
+          <span id="loadStatus" class="muted"></span>
+        </div>
+
+        <div id="progressBox" class="progress-box hidden">
+          <div class="progress-header">
+            <span id="progressLabel">Loading...</span>
+            <span id="progressEta"></span>
+          </div>
+          <div class="progress-bar"><div id="progressFill"></div></div>
+          <div class="progress-footer">
+            <span id="progressCount">0/0</span>
+            <button id="cancelBtn" class="ghost-btn">Cancel</button>
+          </div>
+        </div>
+
+        <div id="filterRow" class="row hidden">
+          <input type="search" id="search" placeholder="Filter name, UPN, mail or company..." />
+          <label>Inactive >
+            <input type="number" id="minInactive" min="0" step="30" value="90" style="width:80px"/> days
+          </label>
+          <label>Min age
+            <input type="number" id="minAge" min="0" step="30" value="0" style="width:80px"/> days
+          </label>
+          <select id="redemption">
+            <option value="any">Any redemption state</option>
+            <option value="PendingAcceptance">Pending acceptance</option>
+            <option value="Accepted">Accepted</option>
+          </select>
+          <select id="enabled">
+            <option value="any">Enabled or disabled</option>
+            <option value="enabled">Only enabled</option>
+            <option value="disabled">Only disabled</option>
+          </select>
+          <select id="neverSignedIn">
+            <option value="any">Signed in or not</option>
+            <option value="never">Never signed in</option>
+            <option value="signed">Has signed in</option>
+          </select>
+        </div>
+
+        <p id="ownerNotice" class="notice notice-info hidden">
+          Sign-in activity is only available if Entra ID P1 or P2 is licensed in this tenant. If the "Last sign-in" column is mostly empty, this is why - the tool falls back to using account creation date for inactivity calculations.
+        </p>
+
+        <div id="tableWrap" class="table-wrap hidden">
+          <table class="data-table sortable" id="guestsTable">
+            <thead>
+              <tr>
+                <th><input type="checkbox" id="selectAll" /></th>
+                <th data-sort="displayName">Display name</th>
+                <th data-sort="userPrincipalName">UPN</th>
+                <th data-sort="redemptionState">Redemption</th>
+                <th data-sort="accountEnabled">Enabled</th>
+                <th data-sort="createdDateTime">Created</th>
+                <th data-sort="lastSignIn">Last sign-in</th>
+                <th data-sort="inactiveDays">Inactive</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+        <p id="tableHint" class="table-hint hidden"></p>
+
+        <div class="action-bar hidden" id="actionBar">
+          <span class="grow"><strong id="selCount">0</strong> guest(s) selected</span>
+          <button id="exportXlsxBtn" class="ghost-btn">Export XLSX</button>
+          <button id="exportCsvBtn" class="ghost-btn">Export CSV</button>
+          <button id="disableBtn" class="ghost-btn">Disable</button>
+          <button id="enableBtn" class="ghost-btn">Enable</button>
+          <button id="deleteBtn" class="danger-btn">Delete</button>
+        </div>
+        <ul id="actionResults" class="action-result-list hidden"></ul>
+      </div>
+    </section>
+
+    <!-- RECYCLE BIN TAB -->
+    <section class="tab-panel" id="tab-recycle">
+      <div class="card">
+        <h2>Recently deleted guests</h2>
+        <p class="table-hint">Entra keeps deleted users in the recycle bin for 30 days. After that, they are gone for good.</p>
+        <div class="row">
+          <button id="loadDeletedBtn" class="primary-btn">Load deleted guests</button>
+          <span id="loadDelStatus" class="muted"></span>
+        </div>
+        <div id="delTableWrap" class="table-wrap hidden">
+          <table class="data-table" id="deletedTable">
+            <thead>
+              <tr>
+                <th>Display name</th>
+                <th>UPN</th>
+                <th>Deleted</th>
+                <th>Will be purged in</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+        <p id="delHint" class="table-hint hidden"></p>
+      </div>
+    </section>
+
+    <!-- DEBUG TAB -->
+    <section class="tab-panel" id="tab-debug">
+      <div class="card">
+        <div class="row between">
+          <h2>Debug log</h2>
+          <div>
+            <label class="checkbox"><input type="checkbox" id="verboseLog"/> Verbose</label>
+            <button id="clearLogBtn" class="ghost-btn">Clear</button>
+          </div>
+        </div>
+        <pre id="logPanel" class="log-panel"></pre>
+      </div>
+    </section>
+
+    <!-- ABOUT TAB -->
+    <section class="tab-panel" id="tab-about">
+      <div class="card">
+        <h2>About InactiveGuests</h2>
+        <p>InactiveGuests is part of the <a href="../index.html">LCToolkit</a> by Lieben Consultancy. It surfaces dormant guest accounts in your Entra ID tenant so you can disable, delete or restore them in bulk.</p>
+
+        <h3>What it can do</h3>
+        <ul>
+          <li>List every guest user in the tenant with creation date, redemption state, enabled status and last sign-in (interactive + non-interactive).</li>
+          <li>Filter on inactivity threshold, account age, redemption state, enabled state and "never signed in" - then sort and select what you want to act on.</li>
+          <li>Bulk disable, re-enable or delete the selected guests with an explicit confirmation dialog.</li>
+          <li>Export the filtered or selected set to XLSX or CSV.</li>
+          <li>Browse the recycle bin (deleted users from the last 30 days) and restore any guest you didn't mean to delete.</li>
+        </ul>
+
+        <h3>How it works</h3>
+        <ul>
+          <li><strong>Listing guests</strong>: <code>GET /beta/users?$filter=userType eq 'Guest'&amp;$select=...,signInActivity&amp;$top=999</code> with <code>ConsistencyLevel: eventual</code>.</li>
+          <li><strong>Inactivity</strong>: takes the most recent of <code>lastSignInDateTime</code> and <code>lastNonInteractiveSignInDateTime</code>; if neither exists, falls back to <code>createdDateTime</code> so brand-new guests don't look "inactive forever".</li>
+          <li><strong>Disable / enable</strong>: <code>PATCH /v1.0/users/{id}</code> with <code>{accountEnabled: false|true}</code>.</li>
+          <li><strong>Delete</strong>: <code>DELETE /v1.0/users/{id}</code>. The user lands in <code>/directory/deletedItems</code> for 30 days.</li>
+          <li><strong>Restore</strong>: <code>POST /v1.0/directory/deletedItems/{id}/restore</code>.</li>
+        </ul>
+
+        <h3>Required permissions</h3>
+        <p>Read-only browsing only needs <code>User.Read.All</code>, <code>AuditLog.Read.All</code> and <code>Directory.Read.All</code>. The first time you save a change, InactiveGuests asks for <code>User.ReadWrite.All</code> and <code>Directory.AccessAsUser.All</code>. To actually disable / delete / restore you need to hold a privileged Entra role: <strong>User Administrator</strong> or <strong>Global Administrator</strong>.</p>
+
+        <h3>Sign-in activity caveat</h3>
+        <p><code>signInActivity</code> requires an Entra ID P1 or P2 license to be assigned somewhere in the tenant. If you don't have it, the field is empty and InactiveGuests falls back to account age for the inactivity filter. Filtering on "Never signed in" won't be very useful in that case (everyone looks the same).</p>
+      </div>
+    </section>
+  </main>
+
+  <div id="toast" class="toast hidden"></div>
+
+  <!-- Confirmation modal -->
+  <div id="confirmModal" class="modal hidden" role="dialog">
+    <div class="modal-backdrop"></div>
+    <div class="modal-panel">
+      <div class="modal-header">
+        <h3 id="confirmTitle">Confirm</h3>
+        <button id="confirmCloseBtn" class="icon-btn">&times;</button>
+      </div>
+      <div class="modal-body" id="confirmBody"></div>
+      <div class="modal-header" style="border-top:1px solid var(--border); border-bottom:none">
+        <span></span>
+        <div>
+          <button id="confirmCancelBtn" class="ghost-btn">Cancel</button>
+          <button id="confirmOkBtn" class="danger-btn">Confirm</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="src/log.js"></script>
+  <script src="src/concurrency.js"></script>
+  <script src="src/auth.js"></script>
+  <script src="src/graph.js"></script>
+  <script src="src/guests.js"></script>
+  <script src="src/export.js"></script>
+  <script src="src/app.js"></script>
+</body>
+</html>

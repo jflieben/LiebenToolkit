@@ -1,2 +1,2 @@
 # LiebenToolkit
-LCToolkit, source of https://lieben.nu/tools
+LCToolkit, containing the source code of of https://lieben.nu/tools

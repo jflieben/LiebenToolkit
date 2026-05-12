@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>ConditionalAccess - Import, export and diff CA policies</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🛡️</text></svg>">
+  <link rel="stylesheet" href="style.css" />
+  <script src="https://cdn.jsdelivr.net/npm/@azure/msal-browser@3.27.0/lib/msal-browser.min.js"
+          onerror="window.__msalLoadFailed=true"></script>
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <div class="logo">CA</div>
+      <div>
+        <h1>ConditionalAccess</h1>
+        <p class="subtitle">Import, export, compare and bootstrap Conditional Access policies</p>
+      </div>
+    </div>
+    <div class="topbar-actions">
+      <a href="../index.html" class="ghost-btn toolkit-link" title="Back to LCToolkit">&larr; Toolkit</a>
+      <button id="darkToggle" class="icon-btn" title="Toggle dark mode">&#127769;</button>
+      <div id="userBox" class="user-box hidden">
+        <span id="userName"></span>
+        <button id="signOutBtn" class="ghost-btn">Sign out</button>
+      </div>
+    </div>
+  </header>
+
+  <nav class="tabs">
+    <button class="tab active" data-tab="connect">1. Connect</button>
+    <button class="tab" data-tab="export">2. Export</button>
+    <button class="tab" data-tab="import">3. Import / Starter</button>
+    <button class="tab" data-tab="diff">4. Diff</button>
+    <button class="tab" data-tab="debug">Debug</button>
+    <button class="tab" data-tab="about">About</button>
+  </nav>
+
+  <main>
+    <section class="tab-panel active" id="tab-connect">
+      <div class="card" id="connectCard">
+        <h2>Connect to your tenant</h2>
+        <p>This tool runs fully in your browser. It signs in with Microsoft (PKCE) and calls Microsoft Graph as you. Nothing is sent to a backend from this app.</p>
+        <p>Required delegated permissions:</p>
+        <ul>
+          <li><code>Policy.Read.All</code> - export and read existing Conditional Access policies</li>
+          <li><code>Policy.ReadWrite.ConditionalAccess</code> - create/update Conditional Access policies</li>
+          <li><code>Directory.Read.All</code> - resolve users/groups during import</li>
+          <li><code>User.Read</code> - sign-in profile</li>
+        </ul>
+        <button id="signInBtn" class="primary-btn">Sign in with Microsoft</button>
+      </div>
+
+      <div class="card hidden" id="connectedCard">
+        <h2>Connected</h2>
+        <p>You are connected. Use the next tabs to export policies, import a file with prefix/suffix logic, apply the starter pack, or diff two exports.</p>
+      </div>
+    </section>
+
+    <section class="tab-panel" id="tab-export">
+      <div class="card">
+        <div class="row between">
+          <h2>Export Conditional Access policies</h2>
+          <button id="refreshPoliciesBtn" class="ghost-btn" disabled>Refresh list</button>
+        </div>
+        <p>Export creates a JSON package with all policies and metadata, ready for backup, migration, or diffing later.</p>
+        <div class="row">
+          <button id="exportAllBtn" class="primary-btn" disabled>Export all policies</button>
+          <button id="copyExportSummaryBtn" class="ghost-btn" disabled>Copy summary</button>
+        </div>
+        <div id="exportSummary" class="summary-bar hidden"></div>
+        <div id="exportTableWrap" class="table-wrap hidden"></div>
+      </div>
+    </section>
+
+    <section class="tab-panel" id="tab-import">
+      <div class="card">
+        <h2>Import policies from JSON</h2>
+        <div class="row">
+          <input type="file" id="importFile" accept=".json,application/json" />
+          <button id="loadImportBtn" class="ghost-btn" disabled>Load file</button>
+        </div>
+
+        <div class="row">
+          <label>Prefix: <input type="text" id="namePrefix" placeholder="Optional prefix" /></label>
+          <label>Suffix: <input type="text" id="nameSuffix" placeholder="Optional suffix" /></label>
+          <label class="checkbox"><input type="checkbox" id="overwriteExisting" /> Overwrite existing policy when names match</label>
+        </div>
+        <p class="muted">Per policy you can choose the target state: disabled, report-only, or active.</p>
+
+        <div id="importPreviewWrap" class="hidden"></div>
+      </div>
+
+      <div class="card">
+        <div class="row between">
+          <h2>Starter policy set</h2>
+          <button id="loadStarterBtn" class="ghost-btn" disabled>Load starter set</button>
+        </div>
+        <p>A small, very basic set for new tenants. Always review these before applying.</p>
+        <div id="starterPreviewWrap" class="hidden"></div>
+      </div>
+
+      <div class="card hidden" id="resolverCard">
+        <h2>Resolve unknown users/groups before import</h2>
+        <p>Some user/group IDs in this import are not present in the current tenant. Add replacement object IDs below so policies can be written safely.</p>
+        <div id="resolverWrap"></div>
+      </div>
+
+      <div class="card hidden" id="applyCard">
+        <div class="row between">
+          <h2>Apply import</h2>
+          <button id="applyImportBtn" class="danger-btn" disabled>Apply selected policies</button>
+        </div>
+        <p id="applyHint" class="muted"></p>
+        <div id="applyResults"></div>
+      </div>
+    </section>
+
+    <section class="tab-panel" id="tab-diff">
+      <div class="card">
+        <h2>Diff two policy exports</h2>
+        <p>Upload two export JSON files (old and new) and compare by policy name.</p>
+        <div class="row">
+          <label>Old export: <input type="file" id="diffFileOld" accept=".json,application/json" /></label>
+          <label>New export: <input type="file" id="diffFileNew" accept=".json,application/json" /></label>
+          <button id="runDiffBtn" class="primary-btn" disabled>Run diff</button>
+        </div>
+        <div id="diffSummary" class="summary-bar hidden"></div>
+        <div id="diffWrap"></div>
+      </div>
+    </section>
+
+    <section class="tab-panel" id="tab-debug">
+      <div class="card">
+        <div class="row between">
+          <h2>Debug log</h2>
+          <div>
+            <label class="checkbox"><input type="checkbox" id="verboseLog" /> Verbose</label>
+            <button id="clearLogBtn" class="ghost-btn">Clear</button>
+          </div>
+        </div>
+        <pre id="logPanel" class="log-panel"></pre>
+      </div>
+    </section>
+
+    <section class="tab-panel" id="tab-about">
+      <div class="card">
+        <h2>About ConditionalAccess</h2>
+        <p>ConditionalAccess is part of <a href="../index.html">LCToolkit</a> by Lieben Consultancy. It runs client-side and talks directly to Microsoft Graph from your browser.</p>
+        <h3>What this tool can do</h3>
+        <ul>
+          <li>Export all Conditional Access policies as JSON</li>
+          <li>Import policies with optional name prefix/suffix</li>
+          <li>Overwrite existing policies when names match exactly (optional)</li>
+          <li>Set imported policy state per policy (disabled/report-only/enabled)</li>
+          <li>Resolve missing user/group IDs before writing policies</li>
+          <li>Compare two exports and show added/removed/changed policies</li>
+        </ul>
+        <h3>Important</h3>
+        <ul>
+          <li>Always test in a lab tenant first</li>
+          <li>Review each policy state before applying</li>
+          <li>The app does not auto-apply anything without your explicit click</li>
+        </ul>
+      </div>
+    </section>
+  </main>
+
+  <script src="src/log.js"></script>
+  <script src="src/auth.js"></script>
+  <script src="src/graph.js"></script>
+  <script src="src/policies.js"></script>
+  <script src="src/app.js"></script>
+</body>
+</html>

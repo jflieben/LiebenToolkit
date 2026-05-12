@@ -1,0 +1,1183 @@
+[
+  {
+    "checkId": "AF01",
+    "title": "Checks if Authentication Method - FIDO2 security key - State is set to 'enabled'",
+    "description": "Whether the FIDO2 security keys is enabled in the tenant.",
+    "detailMd": "Whether the FIDO2 security keys is enabled in the tenant.\n\nenabled",
+    "severity": "High",
+    "relativeUri": "policies/authenticationMethodsPolicy/authenticationMethodConfigurations('Fido2')",
+    "apiVersion": "beta",
+    "propertyPath": "state",
+    "operator": "eq",
+    "recommended": "enabled",
+    "skipIf": null,
+    "links": [
+      {
+        "url": "https://developer.microsoft.com/en-us/graph/graph-explorer?request=policies/authenticationMethodsPolicy/authenticationMethodConfigurations('Fido2'",
+        "text": "Open in Graph Explorer"
+      },
+      {
+        "url": "https://learn.microsoft.com/en-us/graph/api/resources/fido2authenticationmethodconfiguration",
+        "text": "fido2AuthenticationMethodConfiguration resource type - Microsoft Graph v1.0 | Microsoft Learn"
+      }
+    ],
+    "docUrl": "https://maester.dev/docs/tests/EIDSCA.AF01"
+  },
+  {
+    "checkId": "AF02",
+    "title": "Checks if Authentication Method - FIDO2 security key - Allow self-service set up is set to 'true'",
+    "description": "Allows users to register a FIDO key through the MySecurityInfo portal, even if enabled by Authentication Methods policy.",
+    "detailMd": "Allows users to register a FIDO key through the MySecurityInfo portal, even if enabled by Authentication Methods policy.",
+    "severity": "High",
+    "relativeUri": "policies/authenticationMethodsPolicy/authenticationMethodConfigurations('Fido2')",
+    "apiVersion": "beta",
+    "propertyPath": "isSelfServiceRegistrationAllowed",
+    "operator": "eq",
+    "recommended": "true",
+    "skipIf": null,
+    "links": [
+      {
+        "url": "https://developer.microsoft.com/en-us/graph/graph-explorer?request=policies/authenticationMethodsPolicy/authenticationMethodConfigurations('Fido2'",
+        "text": "Open in Graph Explorer"
+      },
+      {
+        "url": "https://learn.microsoft.com/en-us/graph/api/resources/fido2authenticationmethodconfiguration",
+        "text": "fido2AuthenticationMethodConfiguration resource type - Microsoft Graph v1.0 | Microsoft Learn"
+      }
+    ],
+    "docUrl": "https://maester.dev/docs/tests/EIDSCA.AF02"
+  },
+  {
+    "checkId": "AF03",
+    "title": "Checks if Authentication Method - FIDO2 security key - Enforce attestation is set to 'true'",
+    "description": "Requires the FIDO security key metadata to be published and verified with the FIDO Alliance Metadata Service, and also pass Microsoft's additional set of validation testing.",
+    "detailMd": "Requires the FIDO security key metadata to be published and verified with the FIDO Alliance Metadata Service, and also pass Microsoft's additional set of validation testing.",
+    "severity": "High",
+    "relativeUri": "policies/authenticationMethodsPolicy/authenticationMethodConfigurations('Fido2')",
+    "apiVersion": "beta",
+    "propertyPath": "isAttestationEnforced",
+    "operator": "eq",
+    "recommended": "true",
+    "skipIf": null,
+    "links": [
+      {
+        "url": "https://developer.microsoft.com/en-us/graph/graph-explorer?request=policies/authenticationMethodsPolicy/authenticationMethodConfigurations('Fido2'",
+        "text": "Open in Graph Explorer"
+      },
+      {
+        "url": "https://learn.microsoft.com/en-us/graph/api/resources/fido2authenticationmethodconfiguration",
+        "text": "fido2AuthenticationMethodConfiguration resource type - Microsoft Graph v1.0 | Microsoft Learn"
+      }
+    ],
+    "docUrl": "https://maester.dev/docs/tests/EIDSCA.AF03"
+  },
+  {
+    "checkId": "AF04",
+    "title": "Checks if Authentication Method - FIDO2 security key - Enforce key restrictions is set to 'true'",
+    "description": "Manages if registration of FIDO2 keys should be restricted.",
+    "detailMd": "Manages if registration of FIDO2 keys should be restricted.\n\nRestrict usage of FIDO2 from unauthorized vendors or platforms",
+    "severity": "Low",
+    "relativeUri": "policies/authenticationMethodsPolicy/authenticationMethodConfigurations('Fido2')",
+    "apiVersion": "beta",
+    "propertyPath": "keyRestrictions.isEnforced",
+    "operator": "eq",
+    "recommended": "true",
+    "skipIf": null,
+    "links": [
+      {
+        "url": "https://developer.microsoft.com/en-us/graph/graph-explorer?request=policies/authenticationMethodsPolicy/authenticationMethodConfigurations('Fido2'",
+        "text": "Open in Graph Explorer"
+      },
+      {
+        "url": "https://learn.microsoft.com/en-us/graph/api/resources/fido2authenticationmethodconfiguration",
+        "text": "fido2AuthenticationMethodConfiguration resource type - Microsoft Graph v1.0 | Microsoft Learn"
+      }
+    ],
+    "docUrl": "https://maester.dev/docs/tests/EIDSCA.AF04"
+  },
+  {
+    "checkId": "AF05",
+    "title": "Checks if Authentication Method - FIDO2 security key - Restricted is set to 'true'",
+    "description": "You can work with your Security key provider to determine the AAGuids of their devices for allowing or blocking usage.",
+    "detailMd": "You can work with your Security key provider to determine the AAGuids of their devices for allowing or blocking usage.",
+    "severity": "Low",
+    "relativeUri": "policies/authenticationMethodsPolicy/authenticationMethodConfigurations('Fido2')",
+    "apiVersion": "beta",
+    "propertyPath": "keyRestrictions.aaGuids",
+    "operator": "eq",
+    "recommended": "true",
+    "skipIf": null,
+    "links": [
+      {
+        "url": "https://developer.microsoft.com/en-us/graph/graph-explorer?request=policies/authenticationMethodsPolicy/authenticationMethodConfigurations('Fido2'",
+        "text": "Open in Graph Explorer"
+      },
+      {
+        "url": "https://learn.microsoft.com/en-us/graph/api/resources/fido2authenticationmethodconfiguration",
+        "text": "fido2AuthenticationMethodConfiguration resource type - Microsoft Graph v1.0 | Microsoft Learn"
+      }
+    ],
+    "docUrl": "https://maester.dev/docs/tests/EIDSCA.AF05"
+  },
+  {
+    "checkId": "AF06",
+    "title": "Checks if Authentication Method - FIDO2 security key - Restrict specific keys is set to 'true'",
+    "description": "Defines if list of AADGUID will be used to allow or block registration.",
+    "detailMd": "Defines if list of AADGUID will be used to allow or block registration.\n\nYou should use Block or Allow as value to allow- or blocklisting of AAGuids.",
+    "severity": "High",
+    "relativeUri": "policies/authenticationMethodsPolicy/authenticationMethodConfigurations('Fido2')",
+    "apiVersion": "beta",
+    "propertyPath": "keyRestrictions.aaGuids",
+    "operator": "eq",
+    "recommended": "true",
+    "skipIf": null,
+    "links": [
+      {
+        "url": "https://developer.microsoft.com/en-us/graph/graph-explorer?request=policies/authenticationMethodsPolicy/authenticationMethodConfigurations('Fido2'",
+        "text": "Open in Graph Explorer"
+      },
+      {
+        "url": "https://learn.microsoft.com/en-us/graph/api/resources/fido2authenticationmethodconfiguration",
+        "text": "fido2AuthenticationMethodConfiguration resource type - Microsoft Graph v1.0 | Microsoft Learn"
+      }
+    ],
+    "docUrl": "https://maester.dev/docs/tests/EIDSCA.AF06"
+  },
+  {
+    "checkId": "AG01",
+    "title": "Checks if Authentication Method - General Settings - Manage migration is set to @('migrationComplete', '')",
+    "description": "The state of migration of the authentication methods policy from the legacy multifactor authentication and self-service password reset (SSPR) policies. In January 2024, the legacy multifactor authentication and self-service password reset policies will be deprecated and you'll manage all authentication methods here in the authentication methods policy. Use this control to manage your migration from the legacy policies to the new unified policy.",
+    "detailMd": "The state of migration of the authentication methods policy from the legacy multifactor authentication and self-service password reset (SSPR) policies. In January 2024, the legacy multifactor authentication and self-service password reset policies will be deprecated and you'll manage all authentication methods here in the authentication methods policy. Use this control to manage your migration from the legacy policies to the new unified policy.\n\nOn September 30th, 2025, the legacy multifactor authentication and self-service password reset policies will be deprecated and you'll manage all authentication methods here in the authentication methods policy. Use this control to manage your migration from the legacy policies to the new unified policy.",
+    "severity": "Info",
+    "relativeUri": "policies/authenticationMethodsPolicy",
+    "apiVersion": "beta",
+    "propertyPath": "policyMigrationState",
+    "operator": "in",
+    "recommended": [
+      "migrationComplete",
+      ""
+    ],
+    "skipIf": null,
+    "links": [
+      {
+        "url": "https://developer.microsoft.com/en-us/graph/graph-explorer?request=policies/authenticationMethodsPolicy&method=GET&version=beta&GraphUrl=https://graph.microsoft.com",
+        "text": "Open in Graph Explorer"
+      },
+      {
+        "url": "https://learn.microsoft.com/en-us/graph/api/authenticationmethodspolicy-get",
+        "text": "Get authenticationMethodsPolicy - Microsoft Graph v1.0 | Microsoft Learn"
+      },
+      {
+        "url": "https://entra.microsoft.com/#view/Microsoft_AAD_IAM/AuthenticationMethodsMenuBlade/~/AdminAuthMethods",
+        "text": "View in Microsoft Entra admin center"
+      }
+    ],
+    "docUrl": "https://maester.dev/docs/tests/EIDSCA.AG01"
+  },
+  {
+    "checkId": "AG02",
+    "title": "Checks if Authentication Method - General Settings - Report suspicious activity - State is set to 'enabled'",
+    "description": "Allows users to report suspicious activities if they receive an authentication request that they did not initiate. This control is available when using the Microsoft Authenticator app and voice calls. Reporting suspicious activity will set the user's risk to high. If the user is subject to risk-based Conditional Access policies, they may be blocked.",
+    "detailMd": "Allows users to report suspicious activities if they receive an authentication request that they did not initiate. This control is available when using the Microsoft Authenticator app and voice calls. Reporting suspicious activity will set the user's risk to high. If the user is subject to risk-based Conditional Access policies, they may be blocked.\n\nAllows to integrate report of fraud attempt by users to identity protection: Users who report an MFA prompt as suspicious are set to High User Risk. Administrators can use risk-based policies to limit access for these users, or enable self-service password reset (SSPR) for users to remediate problems on their own.",
+    "severity": "Medium",
+    "relativeUri": "policies/authenticationMethodsPolicy",
+    "apiVersion": "beta",
+    "propertyPath": "reportSuspiciousActivitySettings.state",
+    "operator": "eq",
+    "recommended": "enabled",
+    "skipIf": null,
+    "links": [
+      {
+        "url": "https://developer.microsoft.com/en-us/graph/graph-explorer?request=policies/authenticationMethodsPolicy&method=GET&version=beta&GraphUrl=https://graph.microsoft.com",
+        "text": "Open in Graph Explorer"
+      },
+      {
+        "url": "https://learn.microsoft.com/en-us/graph/api/authenticationmethodspolicy-get",
+        "text": "Get authenticationMethodsPolicy - Microsoft Graph v1.0 | Microsoft Learn"
+      },
+      {
+        "url": "https://entra.microsoft.com/#view/Microsoft_AAD_IAM/AuthenticationMethodsMenuBlade/~/AuthMethodsSettings",
+        "text": "View in Microsoft Entra admin center"
+      }
+    ],
+    "docUrl": "https://maester.dev/docs/tests/EIDSCA.AG02"
+  },
+  {
+    "checkId": "AG03",
+    "title": "Checks if Authentication Method - General Settings - Report suspicious activity - Included users/groups is set to 'all_users'",
+    "description": "Object Id or scope of users which will be included to report suspicious activities if they receive an authentication request that they did not initiate.",
+    "detailMd": "Object Id or scope of users which will be included to report suspicious activities if they receive an authentication request that they did not initiate.\n\nApply this feature to all users.",
+    "severity": "High",
+    "relativeUri": "policies/authenticationMethodsPolicy",
+    "apiVersion": "beta",
+    "propertyPath": "reportSuspiciousActivitySettings.includeTarget.id",
+    "operator": "eq",
+    "recommended": "all_users",
+    "skipIf": null,
+    "links": [
+      {
+        "url": "https://developer.microsoft.com/en-us/graph/graph-explorer?request=policies/authenticationMethodsPolicy&method=GET&version=beta&GraphUrl=https://graph.microsoft.com",
+        "text": "Open in Graph Explorer"
+      },
+      {
+        "url": "https://learn.microsoft.com/en-us/graph/api/authenticationmethodspolicy-get",
+        "text": "Get authenticationMethodsPolicy - Microsoft Graph v1.0 | Microsoft Learn"
+      },
+      {
+        "url": "https://entra.microsoft.com/#view/Microsoft_AAD_IAM/AuthenticationMethodsMenuBlade/~/AuthMethodsSettings",
+        "text": "View in Microsoft Entra admin center"
+      }
+    ],
+    "docUrl": "https://maester.dev/docs/tests/EIDSCA.AG03"
+  },
+  {
+    "checkId": "AM01",
+    "title": "Checks if Authentication Method - Microsoft Authenticator - State is set to 'enabled'",
+    "description": "Whether the Authenticator App is enabled in the tenant.",
+    "detailMd": "Whether the Authenticator App is enabled in the tenant.\n\nenabled",
+    "severity": "High",
+    "relativeUri": "policies/authenticationMethodsPolicy/authenticationMethodConfigurations('MicrosoftAuthenticator')",
+    "apiVersion": "beta",
+    "propertyPath": "state",
+    "operator": "eq",
+    "recommended": "enabled",
+    "skipIf": null,
+    "links": [
+      {
+        "url": "https://developer.microsoft.com/en-us/graph/graph-explorer?request=policies/authenticationMethodsPolicy/authenticationMethodConfigurations('MicrosoftAuthenticator'",
+        "text": "Open in Graph Explorer"
+      },
+      {
+        "url": "https://learn.microsoft.com/en-us/graph/api/resources/microsoftauthenticatorauthenticationmethodconfiguration",
+        "text": "microsoftAuthenticatorAuthenticationMethodConfiguration resource type - Microsoft Graph v1.0 | Microsoft Learn"
+      },
+      {
+        "url": "https://entra.microsoft.com/#view/Microsoft_AAD_IAM/AuthenticationMethodsMenuBlade/~/AdminAuthMethods",
+        "text": "View in Microsoft Entra admin center"
+      }
+    ],
+    "docUrl": "https://maester.dev/docs/tests/EIDSCA.AM01"
+  },
+  {
+    "checkId": "AM02",
+    "title": "Checks if Authentication Method - Microsoft Authenticator - Allow use of Microsoft Authenticator OTP is set to 'false'",
+    "description": "Defines if users can use the OTP code generated by the Authenticator App.",
+    "detailMd": "Defines if users can use the OTP code generated by the Authenticator App.\n\nCISA MS.AAD.3.3v2 recommends disabling Microsoft Authenticator OTP. We recommend using this method only if no stronger MFA option is available, or if it is needed for specific restore scenarios. Make sure you have configured authentication strength to require stronger and phishing-resistant authentication methods, in order to enforce stronger authentication than OTP in all other scenarios.",
+    "severity": "High",
+    "relativeUri": "policies/authenticationMethodsPolicy/authenticationMethodConfigurations('MicrosoftAuthenticator')",
+    "apiVersion": "beta",
+    "propertyPath": "isSoftwareOathEnabled",
+    "operator": "eq",
+    "recommended": "false",
+    "skipIf": null,
+    "links": [
+      {
+        "url": "https://developer.microsoft.com/en-us/graph/graph-explorer?request=policies/authenticationMethodsPolicy/authenticationMethodConfigurations('MicrosoftAuthenticator'",
+        "text": "Open in Graph Explorer"
+      },
+      {
+        "url": "https://learn.microsoft.com/en-us/graph/api/resources/microsoftauthenticatorauthenticationmethodconfiguration",
+        "text": "microsoftAuthenticatorAuthenticationMethodConfiguration resource type - Microsoft Graph v1.0 | Microsoft Learn"
+      },
+      {
+        "url": "https://entra.microsoft.com/#view/Microsoft_AAD_IAM/AuthenticationMethodsMenuBlade/~/AdminAuthMethods",
+        "text": "View in Microsoft Entra admin center"
+      }
+    ],
+    "docUrl": "https://maester.dev/docs/tests/EIDSCA.AM02"
+  },
+  {
+    "checkId": "AM03",
+    "title": "Checks if Authentication Method - Microsoft Authenticator - Require number matching for push notifications is set to 'enabled'",
+    "description": "Defines if number matching is required for MFA notifications.",
+    "detailMd": "Defines if number matching is required for MFA notifications.",
+    "severity": "High",
+    "relativeUri": "policies/authenticationMethodsPolicy/authenticationMethodConfigurations('MicrosoftAuthenticator')",
+    "apiVersion": "beta",
+    "propertyPath": "featureSettings.numberMatchingRequiredState.state",
+    "operator": "eq",
+    "recommended": "enabled",
+    "skipIf": null,
+    "links": [
+      {
+        "url": "https://developer.microsoft.com/en-us/graph/graph-explorer?request=policies/authenticationMethodsPolicy/authenticationMethodConfigurations('MicrosoftAuthenticator'",
+        "text": "Open in Graph Explorer"
+      },
+      {
+        "url": "https://learn.microsoft.com/en-us/graph/api/resources/microsoftauthenticatorauthenticationmethodconfiguration",
+        "text": "microsoftAuthenticatorAuthenticationMethodConfiguration resource type - Microsoft Graph v1.0 | Microsoft Learn"
+      }
+    ],
+    "docUrl": "https://maester.dev/docs/tests/EIDSCA.AM03"
+  },
+  {
+    "checkId": "AM04",
+    "title": "Checks if Authentication Method - Microsoft Authenticator - Included users/groups of number matching for push notifications is set to 'all_users'",
+    "description": "Object Id or scope of users which will be showing number matching in the Authenticator App.",
+    "detailMd": "Object Id or scope of users which will be showing number matching in the Authenticator App.",
+    "severity": "High",
+    "relativeUri": "policies/authenticationMethodsPolicy/authenticationMethodConfigurations('MicrosoftAuthenticator')",
+    "apiVersion": "beta",
+    "propertyPath": "featureSettings.numberMatchingRequiredState.includeTarget.id",
+    "operator": "eq",
+    "recommended": "all_users",
+    "skipIf": null,
+    "links": [
+      {
+        "url": "https://developer.microsoft.com/en-us/graph/graph-explorer?request=policies/authenticationMethodsPolicy/authenticationMethodConfigurations('MicrosoftAuthenticator'",
+        "text": "Open in Graph Explorer"
+      },
+      {
+        "url": "https://learn.microsoft.com/en-us/graph/api/resources/microsoftauthenticatorauthenticationmethodconfiguration",
+        "text": "microsoftAuthenticatorAuthenticationMethodConfiguration resource type - Microsoft Graph v1.0 | Microsoft Learn"
+      }
+    ],
+    "docUrl": "https://maester.dev/docs/tests/EIDSCA.AM04"
+  },
+  {
+    "checkId": "AM06",
+    "title": "Checks if Authentication Method - Microsoft Authenticator - Show application name in push and passwordless notifications is set to 'enabled'",
+    "description": "Determines whether the user's Authenticator app will show them the client app they are signing into.",
+    "detailMd": "Determines whether the user's Authenticator app will show them the client app they are signing into.",
+    "severity": "High",
+    "relativeUri": "policies/authenticationMethodsPolicy/authenticationMethodConfigurations('MicrosoftAuthenticator')",
+    "apiVersion": "beta",
+    "propertyPath": "featureSettings.displayAppInformationRequiredState.state",
+    "operator": "eq",
+    "recommended": "enabled",
+    "skipIf": null,
+    "links": [
+      {
+        "url": "https://developer.microsoft.com/en-us/graph/graph-explorer?request=policies/authenticationMethodsPolicy/authenticationMethodConfigurations('MicrosoftAuthenticator'",
+        "text": "Open in Graph Explorer"
+      },
+      {
+        "url": "https://learn.microsoft.com/en-us/graph/api/resources/microsoftauthenticatorauthenticationmethodconfiguration",
+        "text": "microsoftAuthenticatorAuthenticationMethodConfiguration resource type - Microsoft Graph v1.0 | Microsoft Learn"
+      }
+    ],
+    "docUrl": "https://maester.dev/docs/tests/EIDSCA.AM06"
+  },
+  {
+    "checkId": "AM07",
+    "title": "Checks if Authentication Method - Microsoft Authenticator - Included users/groups to show application name in push and passwordless notifications is set to 'all_users'",
+    "description": "Object Id or scope of users which will be showing app information in the Authenticator App.",
+    "detailMd": "Object Id or scope of users which will be showing app information in the Authenticator App.",
+    "severity": "High",
+    "relativeUri": "policies/authenticationMethodsPolicy/authenticationMethodConfigurations('MicrosoftAuthenticator')",
+    "apiVersion": "beta",
+    "propertyPath": "featureSettings.displayAppInformationRequiredState.includeTarget.id",
+    "operator": "eq",
+    "recommended": "all_users",
+    "skipIf": null,
+    "links": [
+      {
+        "url": "https://developer.microsoft.com/en-us/graph/graph-explorer?request=policies/authenticationMethodsPolicy/authenticationMethodConfigurations('MicrosoftAuthenticator'",
+        "text": "Open in Graph Explorer"
+      },
+      {
+        "url": "https://learn.microsoft.com/en-us/graph/api/resources/microsoftauthenticatorauthenticationmethodconfiguration",
+        "text": "microsoftAuthenticatorAuthenticationMethodConfiguration resource type - Microsoft Graph v1.0 | Microsoft Learn"
+      }
+    ],
+    "docUrl": "https://maester.dev/docs/tests/EIDSCA.AM07"
+  },
+  {
+    "checkId": "AM09",
+    "title": "Checks if Authentication Method - Microsoft Authenticator - Show geographic location in push and passwordless notifications is set to 'enabled'",
+    "description": "Determines whether the user's Authenticator app will show them the geographic location of where the authentication request originated from.",
+    "detailMd": "Determines whether the user's Authenticator app will show them the geographic location of where the authentication request originated from.",
+    "severity": "High",
+    "relativeUri": "policies/authenticationMethodsPolicy/authenticationMethodConfigurations('MicrosoftAuthenticator')",
+    "apiVersion": "beta",
+    "propertyPath": "featureSettings.displayLocationInformationRequiredState.state",
+    "operator": "eq",
+    "recommended": "enabled",
+    "skipIf": null,
+    "links": [
+      {
+        "url": "https://developer.microsoft.com/en-us/graph/graph-explorer?request=policies/authenticationMethodsPolicy/authenticationMethodConfigurations('MicrosoftAuthenticator'",
+        "text": "Open in Graph Explorer"
+      },
+      {
+        "url": "https://learn.microsoft.com/en-us/graph/api/resources/microsoftauthenticatorauthenticationmethodconfiguration",
+        "text": "microsoftAuthenticatorAuthenticationMethodConfiguration resource type - Microsoft Graph v1.0 | Microsoft Learn"
+      }
+    ],
+    "docUrl": "https://maester.dev/docs/tests/EIDSCA.AM09"
+  },
+  {
+    "checkId": "AM10",
+    "title": "Checks if Authentication Method - Microsoft Authenticator - Included users/groups to show geographic location in push and passwordless notifications is set to 'all_users'",
+    "description": "Object Id or scope of users which will be showing geographic location in the Authenticator App.",
+    "detailMd": "Object Id or scope of users which will be showing geographic location in the Authenticator App.",
+    "severity": "Medium",
+    "relativeUri": "policies/authenticationMethodsPolicy/authenticationMethodConfigurations('MicrosoftAuthenticator')",
+    "apiVersion": "beta",
+    "propertyPath": "featureSettings.displayLocationInformationRequiredState.includeTarget.id",
+    "operator": "eq",
+    "recommended": "all_users",
+    "skipIf": null,
+    "links": [
+      {
+        "url": "https://developer.microsoft.com/en-us/graph/graph-explorer?request=policies/authenticationMethodsPolicy/authenticationMethodConfigurations('MicrosoftAuthenticator'",
+        "text": "Open in Graph Explorer"
+      },
+      {
+        "url": "https://learn.microsoft.com/en-us/graph/api/resources/microsoftauthenticatorauthenticationmethodconfiguration",
+        "text": "microsoftAuthenticatorAuthenticationMethodConfiguration resource type - Microsoft Graph v1.0 | Microsoft Learn"
+      }
+    ],
+    "docUrl": "https://maester.dev/docs/tests/EIDSCA.AM10"
+  },
+  {
+    "checkId": "AP01",
+    "title": "Checks if Default Authorization Settings - Enabled Self service password reset for administrators is set to 'false'",
+    "description": "Indicates whether administrators of the tenant can use the Self-Service Password Reset (SSPR). The policy applies to some critical critical roles in Microsoft Entra ID.",
+    "detailMd": "Indicates whether administrators of the tenant can use the Self-Service Password Reset (SSPR). The policy applies to some critical critical roles in Microsoft Entra ID.\n\nAdministrators with sensitive roles should use phishing-resistant authentication methods only and therefore not able to reset their password using SSPR.",
+    "severity": "Info",
+    "relativeUri": "policies/authorizationPolicy",
+    "apiVersion": "beta",
+    "propertyPath": "allowedToUseSSPR",
+    "operator": "eq",
+    "recommended": "false",
+    "skipIf": {
+      "reason": "Settings value is not available. This may be due to the change that this API is no longer available for recent created tenants or tenants that are not licensed for Entra ID P1.",
+      "requireMatch": "allowedToUseSSPR"
+    },
+    "links": [
+      {
+        "url": "https://developer.microsoft.com/en-us/graph/graph-explorer?request=policies/authorizationPolicy&method=GET&version=beta&GraphUrl=https://graph.microsoft.com",
+        "text": "Open in Graph Explorer"
+      },
+      {
+        "url": "https://learn.microsoft.com/en-us/graph/api/resources/authorizationpolicy",
+        "text": "authorizationPolicy resource type - Microsoft Graph v1.0 | Microsoft Learn"
+      },
+      {
+        "url": "https://entra.microsoft.com/#view/Microsoft_AAD_IAM/PasswordResetMenuBlade/~/AdminPasswordResetPolicy",
+        "text": "View in Microsoft Entra admin center"
+      }
+    ],
+    "docUrl": "https://maester.dev/docs/tests/EIDSCA.AP01"
+  },
+  {
+    "checkId": "AP04",
+    "title": "Checks if Default Authorization Settings - Guest invite restrictions is set to @('adminsAndGuestInviters','none')",
+    "description": "Manages controls who can invite guests to your directory to collaborate on resources secured by your Entra ID (Azure AD), such as SharePoint sites or Azure resources.",
+    "detailMd": "Manages controls who can invite guests to your directory to collaborate on resources secured by your Entra ID (Azure AD), such as SharePoint sites or Azure resources.\n\nCISA SCuBA 2.18: Only users with the Guest Inviter role SHOULD be able to invite guest users",
+    "severity": "Medium",
+    "relativeUri": "policies/authorizationPolicy",
+    "apiVersion": "beta",
+    "propertyPath": "allowInvitesFrom",
+    "operator": "in",
+    "recommended": [
+      "adminsAndGuestInviters",
+      "none"
+    ],
+    "skipIf": null,
+    "links": [
+      {
+        "url": "https://developer.microsoft.com/en-us/graph/graph-explorer?request=policies/authorizationPolicy&method=GET&version=beta&GraphUrl=https://graph.microsoft.com",
+        "text": "Open in Graph Explorer"
+      },
+      {
+        "url": "https://learn.microsoft.com/en-us/graph/api/resources/authorizationpolicy",
+        "text": "authorizationPolicy resource type - Microsoft Graph v1.0 | Microsoft Learn"
+      },
+      {
+        "url": "https://entra.microsoft.com/#view/Microsoft_AAD_IAM/AllowlistPolicyBlade",
+        "text": "View in Microsoft Entra admin center"
+      }
+    ],
+    "docUrl": "https://maester.dev/docs/tests/EIDSCA.AP04"
+  },
+  {
+    "checkId": "AP05",
+    "title": "Checks if Default Authorization Settings - Sign-up for email based subscription is set to 'false'",
+    "description": "Indicates whether users can sign up for email based subscriptions.",
+    "detailMd": "Indicates whether users can sign up for email based subscriptions.",
+    "severity": "Medium",
+    "relativeUri": "policies/authorizationPolicy",
+    "apiVersion": "beta",
+    "propertyPath": "allowedToSignUpEmailBasedSubscriptions",
+    "operator": "eq",
+    "recommended": "false",
+    "skipIf": null,
+    "links": [
+      {
+        "url": "https://developer.microsoft.com/en-us/graph/graph-explorer?request=policies/authorizationPolicy&method=GET&version=beta&GraphUrl=https://graph.microsoft.com",
+        "text": "Open in Graph Explorer"
+      },
+      {
+        "url": "https://learn.microsoft.com/en-us/graph/api/resources/authorizationpolicy",
+        "text": "authorizationPolicy resource type - Microsoft Graph v1.0 | Microsoft Learn"
+      }
+    ],
+    "docUrl": "https://maester.dev/docs/tests/EIDSCA.AP05"
+  },
+  {
+    "checkId": "AP06",
+    "title": "Checks if Default Authorization Settings - User can join the tenant by email validation is set to 'false'",
+    "description": "Controls whether users can join the tenant by email validation. To join, the user must have an email address in a domain which matches one of the verified domains in the tenant.",
+    "detailMd": "Controls whether users can join the tenant by email validation. To join, the user must have an email address in a domain which matches one of the verified domains in the tenant.\n\n[Self-service sign up for email-verified users - Microsoft Entra ID - Microsoft Learn](https://learn.microsoft.com/en-us/azure/active-directory/enterprise-users/directory-self-service-signup)",
+    "severity": "Medium",
+    "relativeUri": "policies/authorizationPolicy",
+    "apiVersion": "beta",
+    "propertyPath": "allowEmailVerifiedUsersToJoinOrganization",
+    "operator": "eq",
+    "recommended": "false",
+    "skipIf": null,
+    "links": [
+      {
+        "url": "https://learn.microsoft.com/en-us/azure/active-directory/enterprise-users/directory-self-service-signup",
+        "text": "Self-service sign up for email-verified users - Microsoft Entra ID - Microsoft Learn"
+      },
+      {
+        "url": "https://developer.microsoft.com/en-us/graph/graph-explorer?request=policies/authorizationPolicy&method=GET&version=beta&GraphUrl=https://graph.microsoft.com",
+        "text": "Open in Graph Explorer"
+      },
+      {
+        "url": "https://learn.microsoft.com/en-us/graph/api/resources/authorizationpolicy",
+        "text": "authorizationPolicy resource type - Microsoft Graph v1.0 | Microsoft Learn"
+      }
+    ],
+    "docUrl": "https://maester.dev/docs/tests/EIDSCA.AP06"
+  },
+  {
+    "checkId": "AP07",
+    "title": "Checks if Default Authorization Settings - Guest user access is set to '2af84b1e-32c8-42b7-82bc-daa82404023b'",
+    "description": "Represents role templateId for the role that should be granted to guest user.",
+    "detailMd": "Represents role templateId for the role that should be granted to guest user.\n\nCISA SCuBA 2.18: Guest users SHOULD have limited access to Entra ID (Azure AD) directory objects.",
+    "severity": "Info",
+    "relativeUri": "policies/authorizationPolicy",
+    "apiVersion": "beta",
+    "propertyPath": "guestUserRoleId",
+    "operator": "eq",
+    "recommended": "2af84b1e-32c8-42b7-82bc-daa82404023b",
+    "skipIf": null,
+    "links": [
+      {
+        "url": "https://developer.microsoft.com/en-us/graph/graph-explorer?request=policies/authorizationPolicy&method=GET&version=beta&GraphUrl=https://graph.microsoft.com",
+        "text": "Open in Graph Explorer"
+      },
+      {
+        "url": "https://learn.microsoft.com/en-us/graph/api/resources/authorizationpolicy",
+        "text": "authorizationPolicy resource type - Microsoft Graph v1.0 | Microsoft Learn"
+      },
+      {
+        "url": "https://entra.microsoft.com/#view/Microsoft_AAD_IAM/AllowlistPolicyBlade",
+        "text": "View in Microsoft Entra admin center"
+      }
+    ],
+    "docUrl": "https://maester.dev/docs/tests/EIDSCA.AP07"
+  },
+  {
+    "checkId": "AP08",
+    "title": "Checks if Default Authorization Settings - User consent policy assigned for applications is set to 'ManagePermissionGrantsForSelf.microsoft-user-default-low'",
+    "description": "Defines if user consent to apps is allowed, and if it is, which app consent policy (permissionGrantPolicy) governs the permissions.",
+    "detailMd": "Defines if user consent to apps is allowed, and if it is, which app consent policy (permissionGrantPolicy) governs the permissions.\n\nMicrosoft recommends to allow to user consent for apps from verified publisher for selected permissions. CISA SCuBA 2.7 defines that all Non-Admin Users SHALL Be Prevented From Providing Consent To Third-Party Applications.",
+    "severity": "High",
+    "relativeUri": "policies/authorizationPolicy",
+    "apiVersion": "beta",
+    "propertyPath": "permissionGrantPolicyIdsAssignedToDefaultUserRole",
+    "operator": "eq",
+    "recommended": "ManagePermissionGrantsForSelf.microsoft-user-default-low",
+    "skipIf": null,
+    "links": [
+      {
+        "url": "https://developer.microsoft.com/en-us/graph/graph-explorer?request=policies/authorizationPolicy&method=GET&version=beta&GraphUrl=https://graph.microsoft.com",
+        "text": "Open in Graph Explorer"
+      },
+      {
+        "url": "https://learn.microsoft.com/en-us/graph/api/resources/authorizationpolicy",
+        "text": "authorizationPolicy resource type - Microsoft Graph v1.0 | Microsoft Learn"
+      },
+      {
+        "url": "https://entra.microsoft.com/#view/Microsoft_AAD_UsersAndTenants/UserManagementMenuBlade/~/UserSettings",
+        "text": "View in Microsoft Entra admin center"
+      }
+    ],
+    "docUrl": "https://maester.dev/docs/tests/EIDSCA.AP08"
+  },
+  {
+    "checkId": "AP09",
+    "title": "Checks if Default Authorization Settings - Allow user consent on risk-based apps is set to 'false'",
+    "description": "Indicates whether user consent for risky apps is allowed. For example, consent requests for newly registered multi-tenant apps that are not publisher verified and require non-basic permissions are considered risky.",
+    "detailMd": "Indicates whether user consent for risky apps is allowed. For example, consent requests for newly registered multi-tenant apps that are not publisher verified and require non-basic permissions are considered risky.\n\n[Configure risk-based step-up consent - Microsoft Entra ID - Microsoft Learn](https://learn.microsoft.com/en-us/azure/active-directory/manage-apps/configure-risk-based-step-up-consent)",
+    "severity": "High",
+    "relativeUri": "policies/authorizationPolicy",
+    "apiVersion": "beta",
+    "propertyPath": "allowUserConsentForRiskyApps",
+    "operator": "eq",
+    "recommended": "false",
+    "skipIf": null,
+    "links": [
+      {
+        "url": "https://learn.microsoft.com/en-us/azure/active-directory/manage-apps/configure-risk-based-step-up-consent",
+        "text": "Configure risk-based step-up consent - Microsoft Entra ID - Microsoft Learn"
+      },
+      {
+        "url": "https://developer.microsoft.com/en-us/graph/graph-explorer?request=policies/authorizationPolicy&method=GET&version=beta&GraphUrl=https://graph.microsoft.com",
+        "text": "Open in Graph Explorer"
+      },
+      {
+        "url": "https://learn.microsoft.com/en-us/graph/api/resources/authorizationpolicy",
+        "text": "authorizationPolicy resource type - Microsoft Graph v1.0 | Microsoft Learn"
+      },
+      {
+        "url": "https://entra.microsoft.com/#view/Microsoft_AAD_IAM/ConsentPoliciesMenuBlade/~/UserSettings",
+        "text": "View in Microsoft Entra admin center"
+      }
+    ],
+    "docUrl": "https://maester.dev/docs/tests/EIDSCA.AP09"
+  },
+  {
+    "checkId": "AP10",
+    "title": "Checks if Default Authorization Settings - Default User Role Permissions - Allowed to create Apps is set to 'false'",
+    "description": "Controls if non-admin users may register custom-developed applications for use within this directory.",
+    "detailMd": "Controls if non-admin users may register custom-developed applications for use within this directory.\n\nCISA SCuBA 2.6: Only Administrators SHALL Be Allowed To Register Third-Party Applications",
+    "severity": "High",
+    "relativeUri": "policies/authorizationPolicy",
+    "apiVersion": "beta",
+    "propertyPath": "defaultUserRolePermissions.allowedToCreateApps",
+    "operator": "eq",
+    "recommended": "false",
+    "skipIf": null,
+    "links": [
+      {
+        "url": "https://developer.microsoft.com/en-us/graph/graph-explorer?request=policies/authorizationPolicy&method=GET&version=beta&GraphUrl=https://graph.microsoft.com",
+        "text": "Open in Graph Explorer"
+      },
+      {
+        "url": "https://learn.microsoft.com/en-us/graph/api/resources/authorizationpolicy",
+        "text": "authorizationPolicy resource type - Microsoft Graph v1.0 | Microsoft Learn"
+      },
+      {
+        "url": "https://entra.microsoft.com/#view/Microsoft_AAD_UsersAndTenants/UserManagementMenuBlade/~/UserSettings",
+        "text": "View in Microsoft Entra admin center"
+      }
+    ],
+    "docUrl": "https://maester.dev/docs/tests/EIDSCA.AP10"
+  },
+  {
+    "checkId": "AP14",
+    "title": "Checks if Default Authorization Settings - Default User Role Permissions - Allowed to read other users is set to 'true'",
+    "description": "Prevents all non-admins from reading user information from the directory. This flag doesn't prevent reading user information in other Microsoft services like Exchange Online.",
+    "detailMd": "Prevents all non-admins from reading user information from the directory. This flag doesn't prevent reading user information in other Microsoft services like Exchange Online.\n\nRestrict this default permissions for members have huge impact on collaboration features and user lookup.",
+    "severity": "Info",
+    "relativeUri": "policies/authorizationPolicy",
+    "apiVersion": "beta",
+    "propertyPath": "defaultUserRolePermissions.allowedToReadOtherUsers",
+    "operator": "eq",
+    "recommended": "true",
+    "skipIf": null,
+    "links": [
+      {
+        "url": "https://developer.microsoft.com/en-us/graph/graph-explorer?request=policies/authorizationPolicy&method=GET&version=beta&GraphUrl=https://graph.microsoft.com",
+        "text": "Open in Graph Explorer"
+      },
+      {
+        "url": "https://learn.microsoft.com/en-us/graph/api/resources/authorizationpolicy",
+        "text": "authorizationPolicy resource type - Microsoft Graph v1.0 | Microsoft Learn"
+      }
+    ],
+    "docUrl": "https://maester.dev/docs/tests/EIDSCA.AP14"
+  },
+  {
+    "checkId": "AS04",
+    "title": "Checks if Authentication Method - SMS - Use for sign-in is set to 'false'",
+    "description": "Determines if users can use this authentication method to sign in to Microsoft Entra ID. true if users can use this method for primary authentication, otherwise false.",
+    "detailMd": "Determines if users can use this authentication method to sign in to Microsoft Entra ID. true if users can use this method for primary authentication, otherwise false.\n\nAvoid to use SMS as primary sign in factor (instead of a password) and consider to implement a MFA or passwordless option also for your special user groups, such as front-line workers.",
+    "severity": "High",
+    "relativeUri": "policies/authenticationMethodsPolicy/authenticationMethodConfigurations('Sms')",
+    "apiVersion": "beta",
+    "propertyPath": "includeTargets.isUsableForSignIn",
+    "operator": "eq",
+    "recommended": "false",
+    "skipIf": null,
+    "links": [
+      {
+        "url": "https://developer.microsoft.com/en-us/graph/graph-explorer?request=policies/authenticationMethodsPolicy/authenticationMethodConfigurations('Sms'",
+        "text": "Open in Graph Explorer"
+      },
+      {
+        "url": "https://learn.microsoft.com/en-us/graph/api/resources/phoneauthenticationmethod",
+        "text": "phoneAuthenticationMethod resource type - Microsoft Graph v1.0 | Microsoft Learn"
+      }
+    ],
+    "docUrl": "https://maester.dev/docs/tests/EIDSCA.AS04"
+  },
+  {
+    "checkId": "AT01",
+    "title": "Checks if Authentication Method - Temporary Access Pass - State is set to 'enabled'",
+    "description": "Whether the Temporary Access Pass is enabled in the tenant.",
+    "detailMd": "Whether the Temporary Access Pass is enabled in the tenant.\n\nUse Temporary Access Pass for secure onboarding users (initial password replacement) and enforce MFA for registering security information in Conditional Access Policy.",
+    "severity": "High",
+    "relativeUri": "policies/authenticationMethodsPolicy/authenticationMethodConfigurations('TemporaryAccessPass')",
+    "apiVersion": "beta",
+    "propertyPath": "state",
+    "operator": "eq",
+    "recommended": "enabled",
+    "skipIf": null,
+    "links": [
+      {
+        "url": "https://developer.microsoft.com/en-us/graph/graph-explorer?request=policies/authenticationMethodsPolicy/authenticationMethodConfigurations('TemporaryAccessPass'",
+        "text": "Open in Graph Explorer"
+      },
+      {
+        "url": "https://learn.microsoft.com/en-us/graph/api/resources/temporaryaccesspassauthenticationmethodconfiguration",
+        "text": "temporaryAccessPassAuthenticationMethodConfiguration resource type - Microsoft Graph v1.0 | Microsoft Learn"
+      }
+    ],
+    "docUrl": "https://maester.dev/docs/tests/EIDSCA.AT01"
+  },
+  {
+    "checkId": "AT02",
+    "title": "Checks if Authentication Method - Temporary Access Pass - One-time is set to 'true'",
+    "description": "Determines whether the pass is limited to a one-time use.",
+    "detailMd": "Determines whether the pass is limited to a one-time use.\n\nAvoid to allow reusable passes and restrict usage to one-time use (if applicable)",
+    "severity": "Medium",
+    "relativeUri": "policies/authenticationMethodsPolicy/authenticationMethodConfigurations('TemporaryAccessPass')",
+    "apiVersion": "beta",
+    "propertyPath": "isUsableOnce",
+    "operator": "eq",
+    "recommended": "true",
+    "skipIf": null,
+    "links": [
+      {
+        "url": "https://developer.microsoft.com/en-us/graph/graph-explorer?request=policies/authenticationMethodsPolicy/authenticationMethodConfigurations('TemporaryAccessPass'",
+        "text": "Open in Graph Explorer"
+      },
+      {
+        "url": "https://learn.microsoft.com/en-us/graph/api/resources/temporaryaccesspassauthenticationmethodconfiguration",
+        "text": "temporaryAccessPassAuthenticationMethodConfiguration resource type - Microsoft Graph v1.0 | Microsoft Learn"
+      }
+    ],
+    "docUrl": "https://maester.dev/docs/tests/EIDSCA.AT02"
+  },
+  {
+    "checkId": "AV01",
+    "title": "Checks if Authentication Method - Voice call - State is set to 'disabled'",
+    "description": "Whether the Voice call is enabled in the tenant.",
+    "detailMd": "Whether the Voice call is enabled in the tenant.\n\nChoose authentication methods with number matching (Authenticator)",
+    "severity": "High",
+    "relativeUri": "policies/authenticationMethodsPolicy/authenticationMethodConfigurations('Voice')",
+    "apiVersion": "beta",
+    "propertyPath": "state",
+    "operator": "eq",
+    "recommended": "disabled",
+    "skipIf": null,
+    "links": [
+      {
+        "url": "https://developer.microsoft.com/en-us/graph/graph-explorer?request=policies/authenticationMethodsPolicy/authenticationMethodConfigurations('Voice'",
+        "text": "Open in Graph Explorer"
+      }
+    ],
+    "docUrl": "https://maester.dev/docs/tests/EIDSCA.AV01"
+  },
+  {
+    "checkId": "CP01",
+    "title": "Checks if Default Settings - Consent Policy Settings - Group owner consent for apps accessing data is set to 'False'",
+    "description": "Group and team owners can authorize applications, such as applications published by third-party vendors, to access your organization's data associated with a group. For example, a team owner in Microsoft Teams can allow an app to read all Teams messages in the team, or list the basic profile of a group's members.",
+    "detailMd": "Group and team owners can authorize applications, such as applications published by third-party vendors, to access your organization's data associated with a group. For example, a team owner in Microsoft Teams can allow an app to read all Teams messages in the team, or list the basic profile of a group's members.\n\nCISA SCuBA 2.7: Non-Admin Users SHALL Be Prevented From Providing Consent To Third-Party Applications.",
+    "severity": "High",
+    "relativeUri": "settings",
+    "apiVersion": "beta",
+    "propertyPath": "values",
+    "operator": "eq",
+    "recommended": "False",
+    "skipIf": null,
+    "links": [
+      {
+        "url": "https://developer.microsoft.com/en-us/graph/graph-explorer?request=settings&method=GET&version=beta&GraphUrl=https://graph.microsoft.com",
+        "text": "Open in Graph Explorer"
+      },
+      {
+        "url": "https://learn.microsoft.com/en-us/graph/api/resources/directorysetting",
+        "text": "directorySetting resource type - Microsoft Graph beta | Microsoft Learn"
+      },
+      {
+        "url": "https://entra.microsoft.com/#view/Microsoft_AAD_IAM/ConsentPoliciesMenuBlade/~/UserSettings",
+        "text": "View in Microsoft Entra admin center"
+      }
+    ],
+    "docUrl": "https://maester.dev/docs/tests/EIDSCA.CP01"
+  },
+  {
+    "checkId": "CP03",
+    "title": "Checks if Default Settings - Consent Policy Settings - Block user consent for risky apps is set to 'true'",
+    "description": "Defines whether user consent will be blocked when a risky request is detected",
+    "detailMd": "Defines whether user consent will be blocked when a risky request is detected\n\n[Configure risk-based step-up consent - Microsoft Entra ID - Microsoft Learn](https://learn.microsoft.com/en-us/azure/active-directory/manage-apps/configure-risk-based-step-up-consent)",
+    "severity": "High",
+    "relativeUri": "settings",
+    "apiVersion": "beta",
+    "propertyPath": "values",
+    "operator": "eq",
+    "recommended": "true",
+    "skipIf": null,
+    "links": [
+      {
+        "url": "https://learn.microsoft.com/en-us/azure/active-directory/manage-apps/configure-risk-based-step-up-consent",
+        "text": "Configure risk-based step-up consent - Microsoft Entra ID - Microsoft Learn"
+      },
+      {
+        "url": "https://developer.microsoft.com/en-us/graph/graph-explorer?request=settings&method=GET&version=beta&GraphUrl=https://graph.microsoft.com",
+        "text": "Open in Graph Explorer"
+      },
+      {
+        "url": "https://learn.microsoft.com/en-us/graph/api/resources/directorysetting",
+        "text": "directorySetting resource type - Microsoft Graph beta | Microsoft Learn"
+      }
+    ],
+    "docUrl": "https://maester.dev/docs/tests/EIDSCA.CP03"
+  },
+  {
+    "checkId": "CP04",
+    "title": "Checks if Default Settings - Consent Policy Settings - Users can request admin consent to apps they are unable to consent to is set to 'true'",
+    "description": "If this option is set to enabled, then users request admin consent to any app that requires access to data they do not have the permission to grant. If this option is set to disabled, then users must contact their admin to request to consent in order to use the apps they need.",
+    "detailMd": "If this option is set to enabled, then users request admin consent to any app that requires access to data they do not have the permission to grant. If this option is set to disabled, then users must contact their admin to request to consent in order to use the apps they need.\n\nCISA SCuBA 2.7: Non-Admin Users SHALL Be Prevented From Providing Consent To Third-Party Applications.",
+    "severity": "High",
+    "relativeUri": "settings",
+    "apiVersion": "beta",
+    "propertyPath": "values",
+    "operator": "eq",
+    "recommended": "true",
+    "skipIf": null,
+    "links": [
+      {
+        "url": "https://developer.microsoft.com/en-us/graph/graph-explorer?request=settings&method=GET&version=beta&GraphUrl=https://graph.microsoft.com",
+        "text": "Open in Graph Explorer"
+      },
+      {
+        "url": "https://learn.microsoft.com/en-us/graph/api/resources/directorysetting",
+        "text": "directorySetting resource type - Microsoft Graph beta | Microsoft Learn"
+      },
+      {
+        "url": "https://entra.microsoft.com/#view/Microsoft_AAD_IAM/ConsentPoliciesMenuBlade/~/AdminConsentSettings",
+        "text": "View in Microsoft Entra admin center"
+      }
+    ],
+    "docUrl": "https://maester.dev/docs/tests/EIDSCA.CP04"
+  },
+  {
+    "checkId": "CR01",
+    "title": "Checks if Consent Framework - Admin Consent Request - Policy to enable or disable admin consent request feature is set to 'true'",
+    "description": "Defines if admin consent request feature is enabled or disabled",
+    "detailMd": "Defines if admin consent request feature is enabled or disabled",
+    "severity": "Info",
+    "relativeUri": "policies/adminConsentRequestPolicy",
+    "apiVersion": "beta",
+    "propertyPath": "isEnabled",
+    "operator": "eq",
+    "recommended": "true",
+    "skipIf": null,
+    "links": [
+      {
+        "url": "https://developer.microsoft.com/en-us/graph/graph-explorer?request=policies/adminConsentRequestPolicy&method=GET&version=beta&GraphUrl=https://graph.microsoft.com",
+        "text": "Open in Graph Explorer"
+      },
+      {
+        "url": "https://learn.microsoft.com/en-us/graph/api/resources/adminconsentrequestpolicy",
+        "text": "adminConsentRequestPolicy resource type - Microsoft Graph v1.0 | Microsoft Learn"
+      },
+      {
+        "url": "https://entra.microsoft.com/#view/Microsoft_AAD_IAM/ConsentPoliciesMenuBlade/~/AdminConsentSettings",
+        "text": "View in Microsoft Entra admin center"
+      }
+    ],
+    "docUrl": "https://maester.dev/docs/tests/EIDSCA.CR01"
+  },
+  {
+    "checkId": "CR02",
+    "title": "Checks if Consent Framework - Admin Consent Request - Reviewers will receive email notifications for requests is set to 'true'",
+    "description": "Specifies whether reviewers will receive notifications",
+    "detailMd": "Specifies whether reviewers will receive notifications",
+    "severity": "Info",
+    "relativeUri": "policies/adminConsentRequestPolicy",
+    "apiVersion": "beta",
+    "propertyPath": "notifyReviewers",
+    "operator": "eq",
+    "recommended": "true",
+    "skipIf": null,
+    "links": [
+      {
+        "url": "https://developer.microsoft.com/en-us/graph/graph-explorer?request=policies/adminConsentRequestPolicy&method=GET&version=beta&GraphUrl=https://graph.microsoft.com",
+        "text": "Open in Graph Explorer"
+      },
+      {
+        "url": "https://learn.microsoft.com/en-us/graph/api/resources/adminconsentrequestpolicy",
+        "text": "adminConsentRequestPolicy resource type - Microsoft Graph v1.0 | Microsoft Learn"
+      },
+      {
+        "url": "https://entra.microsoft.com/#view/Microsoft_AAD_IAM/ConsentPoliciesMenuBlade/~/AdminConsentSettings",
+        "text": "View in Microsoft Entra admin center"
+      }
+    ],
+    "docUrl": "https://maester.dev/docs/tests/EIDSCA.CR02"
+  },
+  {
+    "checkId": "CR03",
+    "title": "Checks if Consent Framework - Admin Consent Request - Reviewers will receive email notifications when admin consent requests are about to expire is set to 'true'",
+    "description": "Specifies whether reviewers will receive reminder emails",
+    "detailMd": "Specifies whether reviewers will receive reminder emails",
+    "severity": "Info",
+    "relativeUri": "policies/adminConsentRequestPolicy",
+    "apiVersion": "beta",
+    "propertyPath": "remindersEnabled",
+    "operator": "eq",
+    "recommended": "true",
+    "skipIf": null,
+    "links": [
+      {
+        "url": "https://developer.microsoft.com/en-us/graph/graph-explorer?request=policies/adminConsentRequestPolicy&method=GET&version=beta&GraphUrl=https://graph.microsoft.com",
+        "text": "Open in Graph Explorer"
+      },
+      {
+        "url": "https://learn.microsoft.com/en-us/graph/api/resources/adminconsentrequestpolicy",
+        "text": "adminConsentRequestPolicy resource type - Microsoft Graph v1.0 | Microsoft Learn"
+      },
+      {
+        "url": "https://entra.microsoft.com/#view/Microsoft_AAD_IAM/ConsentPoliciesMenuBlade/~/AdminConsentSettings",
+        "text": "View in Microsoft Entra admin center"
+      }
+    ],
+    "docUrl": "https://maester.dev/docs/tests/EIDSCA.CR03"
+  },
+  {
+    "checkId": "CR04",
+    "title": "Checks if Consent Framework - Admin Consent Request - Consent request duration (days) is set to 30",
+    "description": "Specifies the duration the request is active before it automatically expires if no decision is applied",
+    "detailMd": "Specifies the duration the request is active before it automatically expires if no decision is applied",
+    "severity": "Info",
+    "relativeUri": "policies/adminConsentRequestPolicy",
+    "apiVersion": "beta",
+    "propertyPath": "requestDurationInDays",
+    "operator": "le",
+    "recommended": 30.0,
+    "skipIf": null,
+    "links": [
+      {
+        "url": "https://developer.microsoft.com/en-us/graph/graph-explorer?request=policies/adminConsentRequestPolicy&method=GET&version=beta&GraphUrl=https://graph.microsoft.com",
+        "text": "Open in Graph Explorer"
+      },
+      {
+        "url": "https://learn.microsoft.com/en-us/graph/api/resources/adminconsentrequestpolicy",
+        "text": "adminConsentRequestPolicy resource type - Microsoft Graph v1.0 | Microsoft Learn"
+      },
+      {
+        "url": "https://entra.microsoft.com/#view/Microsoft_AAD_IAM/ConsentPoliciesMenuBlade/~/AdminConsentSettings",
+        "text": "View in Microsoft Entra admin center"
+      }
+    ],
+    "docUrl": "https://maester.dev/docs/tests/EIDSCA.CR04"
+  },
+  {
+    "checkId": "PR01",
+    "title": "Checks if Default Settings - Password Rule Settings - Password Protection - Mode is set to 'Enforce'",
+    "description": "If set to Enforce, users will be prevented from setting banned passwords and the attempt will be logged. If set to Audit, the attempt will only be logged.",
+    "detailMd": "If set to Enforce, users will be prevented from setting banned passwords and the attempt will be logged. If set to Audit, the attempt will only be logged.\n\n[Microsoft Entra Password Protection - Microsoft Entra ID - Microsoft Learn](https://learn.microsoft.com/en-us/azure/active-directory/authentication/concept-password-ban-bad-on-premises)",
+    "severity": "High",
+    "relativeUri": "settings",
+    "apiVersion": "beta",
+    "propertyPath": "values",
+    "operator": "eq",
+    "recommended": "Enforce",
+    "skipIf": null,
+    "links": [
+      {
+        "url": "https://learn.microsoft.com/en-us/azure/active-directory/authentication/concept-password-ban-bad-on-premises",
+        "text": "Microsoft Entra Password Protection - Microsoft Entra ID - Microsoft Learn"
+      },
+      {
+        "url": "https://developer.microsoft.com/en-us/graph/graph-explorer?request=settings&method=GET&version=beta&GraphUrl=https://graph.microsoft.com",
+        "text": "Open in Graph Explorer"
+      },
+      {
+        "url": "https://learn.microsoft.com/en-us/graph/api/resources/directorysetting",
+        "text": "directorySetting resource type - Microsoft Graph beta | Microsoft Learn"
+      },
+      {
+        "url": "https://entra.microsoft.com/#view/Microsoft_AAD_IAM/AuthenticationMethodsMenuBlade/~/PasswordProtection",
+        "text": "View in Microsoft Entra admin center"
+      }
+    ],
+    "docUrl": "https://maester.dev/docs/tests/EIDSCA.PR01"
+  },
+  {
+    "checkId": "PR02",
+    "title": "Checks if Default Settings - Password Rule Settings - Password Protection - Enable password protection on Windows Server Active Directory is set to 'True'",
+    "description": "If set to Yes, password protection is turned on for Active Directory domain controllers when the appropriate agent is installed.",
+    "detailMd": "If set to Yes, password protection is turned on for Active Directory domain controllers when the appropriate agent is installed.\n\n[Azure identity &amp; access security best practices - Microsoft Learn](https://learn.microsoft.com/en-us/azure/security/fundamentals/identity-management-best-practices#enable-password-management)",
+    "severity": "High",
+    "relativeUri": "settings",
+    "apiVersion": "beta",
+    "propertyPath": "values",
+    "operator": "eq",
+    "recommended": "True",
+    "skipIf": null,
+    "links": [
+      {
+        "url": "https://learn.microsoft.com/en-us/azure/security/fundamentals/identity-management-best-practices#enable-password-management",
+        "text": "Azure identity &amp; access security best practices - Microsoft Learn"
+      },
+      {
+        "url": "https://developer.microsoft.com/en-us/graph/graph-explorer?request=settings&method=GET&version=beta&GraphUrl=https://graph.microsoft.com",
+        "text": "Open in Graph Explorer"
+      },
+      {
+        "url": "https://learn.microsoft.com/en-us/graph/api/resources/directorysetting",
+        "text": "directorySetting resource type - Microsoft Graph beta | Microsoft Learn"
+      },
+      {
+        "url": "https://entra.microsoft.com/#view/Microsoft_AAD_IAM/AuthenticationMethodsMenuBlade/~/PasswordProtection",
+        "text": "View in Microsoft Entra admin center"
+      }
+    ],
+    "docUrl": "https://maester.dev/docs/tests/EIDSCA.PR02"
+  },
+  {
+    "checkId": "PR03",
+    "title": "Checks if Default Settings - Password Rule Settings - Enforce custom list is set to 'True'",
+    "description": "When enabled, the words in the list below are used in the banned password system to prevent easy-to-guess passwords.",
+    "detailMd": "When enabled, the words in the list below are used in the banned password system to prevent easy-to-guess passwords.\n\n[Password protection in Microsoft Entra ID - Microsoft Entra ID - Microsoft Learn](https://learn.microsoft.com/en-us/azure/active-directory/authentication/concept-password-ban-bad#global-banned-password-list)",
+    "severity": "High",
+    "relativeUri": "settings",
+    "apiVersion": "beta",
+    "propertyPath": "values",
+    "operator": "eq",
+    "recommended": "True",
+    "skipIf": null,
+    "links": [
+      {
+        "url": "https://learn.microsoft.com/en-us/azure/active-directory/authentication/concept-password-ban-bad#global-banned-password-list",
+        "text": "Password protection in Microsoft Entra ID - Microsoft Entra ID - Microsoft Learn"
+      },
+      {
+        "url": "https://developer.microsoft.com/en-us/graph/graph-explorer?request=settings&method=GET&version=beta&GraphUrl=https://graph.microsoft.com",
+        "text": "Open in Graph Explorer"
+      },
+      {
+        "url": "https://learn.microsoft.com/en-us/graph/api/resources/directorysetting",
+        "text": "directorySetting resource type - Microsoft Graph beta | Microsoft Learn"
+      },
+      {
+        "url": "https://entra.microsoft.com/#view/Microsoft_AAD_IAM/AuthenticationMethodsMenuBlade/~/PasswordProtection",
+        "text": "View in Microsoft Entra admin center"
+      }
+    ],
+    "docUrl": "https://maester.dev/docs/tests/EIDSCA.PR03"
+  },
+  {
+    "checkId": "PR05",
+    "title": "Checks if Default Settings - Password Rule Settings - Smart Lockout - Lockout duration in seconds is set to 60",
+    "description": "The minimum length in seconds of each lockout. If an account locks repeatedly, this duration increases.",
+    "detailMd": "The minimum length in seconds of each lockout. If an account locks repeatedly, this duration increases.\n\n[Prevent attacks using smart lockout - Microsoft Entra ID - Microsoft Learn](https://learn.microsoft.com/en-us/azure/active-directory/authentication/howto-password-smart-lockout)",
+    "severity": "High",
+    "relativeUri": "settings",
+    "apiVersion": "beta",
+    "propertyPath": "values",
+    "operator": "ge",
+    "recommended": 60.0,
+    "skipIf": null,
+    "links": [
+      {
+        "url": "https://learn.microsoft.com/en-us/azure/active-directory/authentication/howto-password-smart-lockout",
+        "text": "Prevent attacks using smart lockout - Microsoft Entra ID - Microsoft Learn"
+      },
+      {
+        "url": "https://developer.microsoft.com/en-us/graph/graph-explorer?request=settings&method=GET&version=beta&GraphUrl=https://graph.microsoft.com",
+        "text": "Open in Graph Explorer"
+      },
+      {
+        "url": "https://learn.microsoft.com/en-us/graph/api/resources/directorysetting",
+        "text": "directorySetting resource type - Microsoft Graph beta | Microsoft Learn"
+      },
+      {
+        "url": "https://entra.microsoft.com/#view/Microsoft_AAD_IAM/AuthenticationMethodsMenuBlade/~/PasswordProtection",
+        "text": "View in Microsoft Entra admin center"
+      }
+    ],
+    "docUrl": "https://maester.dev/docs/tests/EIDSCA.PR05"
+  },
+  {
+    "checkId": "PR06",
+    "title": "Checks if Default Settings - Password Rule Settings - Smart Lockout - Lockout threshold is set to 10",
+    "description": "How many failed sign-ins are allowed on an account before its first lockout. If the first sign-in after a lockout also fails, the account locks out again.",
+    "detailMd": "How many failed sign-ins are allowed on an account before its first lockout. If the first sign-in after a lockout also fails, the account locks out again.\n\n[Prevent attacks using smart lockout - Microsoft Entra ID - Microsoft Learn](https://learn.microsoft.com/en-us/azure/active-directory/authentication/howto-password-smart-lockout)",
+    "severity": "High",
+    "relativeUri": "settings",
+    "apiVersion": "beta",
+    "propertyPath": "values",
+    "operator": "le",
+    "recommended": 10.0,
+    "skipIf": null,
+    "links": [
+      {
+        "url": "https://learn.microsoft.com/en-us/azure/active-directory/authentication/howto-password-smart-lockout",
+        "text": "Prevent attacks using smart lockout - Microsoft Entra ID - Microsoft Learn"
+      },
+      {
+        "url": "https://developer.microsoft.com/en-us/graph/graph-explorer?request=settings&method=GET&version=beta&GraphUrl=https://graph.microsoft.com",
+        "text": "Open in Graph Explorer"
+      },
+      {
+        "url": "https://learn.microsoft.com/en-us/graph/api/resources/directorysetting",
+        "text": "directorySetting resource type - Microsoft Graph beta | Microsoft Learn"
+      },
+      {
+        "url": "https://entra.microsoft.com/#view/Microsoft_AAD_IAM/AuthenticationMethodsMenuBlade/~/PasswordProtection",
+        "text": "View in Microsoft Entra admin center"
+      }
+    ],
+    "docUrl": "https://maester.dev/docs/tests/EIDSCA.PR06"
+  },
+  {
+    "checkId": "ST08",
+    "title": "Checks if Default Settings - Classification and M365 Groups - M365 groups - Allow Guests to become Group Owner is set to 'false'",
+    "description": "Indicating whether or not a guest user can be an owner of groups, manage",
+    "detailMd": "Indicating whether or not a guest user can be an owner of groups, manage\n\nCISA SCuBA 2.18: Guest users SHOULD have limited access to Entra ID (Azure AD) directory objects",
+    "severity": "Medium",
+    "relativeUri": "settings",
+    "apiVersion": "beta",
+    "propertyPath": "values",
+    "operator": "eq",
+    "recommended": "false",
+    "skipIf": null,
+    "links": [
+      {
+        "url": "https://developer.microsoft.com/en-us/graph/graph-explorer?request=settings&method=GET&version=beta&GraphUrl=https://graph.microsoft.com",
+        "text": "Open in Graph Explorer"
+      },
+      {
+        "url": "https://learn.microsoft.com/en-us/graph/api/resources/directorysetting",
+        "text": "directorySetting resource type - Microsoft Graph beta | Microsoft Learn"
+      }
+    ],
+    "docUrl": "https://maester.dev/docs/tests/EIDSCA.ST08"
+  },
+  {
+    "checkId": "ST09",
+    "title": "Checks if Default Settings - Classification and M365 Groups - M365 groups - Allow Guests to have access to groups content is set to 'True'",
+    "description": "Indicating whether or not a guest user can have access to Microsoft 365 groups content. This setting does not require an Azure Active Directory Premium P1 license.",
+    "detailMd": "Indicating whether or not a guest user can have access to Microsoft 365 groups content. This setting does not require an Azure Active Directory Premium P1 license.\n\nManages if guest accounts can access resources through Microsoft 365 Group membership and could break collaboration if you disable it.",
+    "severity": "Medium",
+    "relativeUri": "settings",
+    "apiVersion": "beta",
+    "propertyPath": "values",
+    "operator": "eq",
+    "recommended": "True",
+    "skipIf": null,
+    "links": [
+      {
+        "url": "https://developer.microsoft.com/en-us/graph/graph-explorer?request=settings&method=GET&version=beta&GraphUrl=https://graph.microsoft.com",
+        "text": "Open in Graph Explorer"
+      },
+      {
+        "url": "https://learn.microsoft.com/en-us/graph/api/resources/directorysetting",
+        "text": "directorySetting resource type - Microsoft Graph beta | Microsoft Learn"
+      }
+    ],
+    "docUrl": "https://maester.dev/docs/tests/EIDSCA.ST09"
+  }
+]

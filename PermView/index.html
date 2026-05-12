@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>PermView - Quick permission viewer for Microsoft 365</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🔍</text></svg>">
+  <link rel="stylesheet" href="style.css" />
+  <script src="https://cdn.jsdelivr.net/npm/@azure/msal-browser@3.27.0/lib/msal-browser.min.js"
+          onerror="window.__msalLoadFailed=true"></script>
+    <!-- Google Analytics (GDPR Compliant) -->
+    <script async src="https://www.googletagmanager.com/gtag/js?id=G-20PYJ8S2G7"></script>
+    <script>
+      window.dataLayer = window.dataLayer || [];
+      function gtag(){dataLayer.push(arguments);}
+      gtag('js', new Date());
+      gtag('config', 'G-20PYJ8S2G7', {
+        'anonymize_ip': true,
+        'storage': 'none',
+        'client_storage': 'none'
+      });
+      gtag('consent', 'default', {
+        'ad_storage': 'denied',
+        'ad_user_data': 'denied',
+        'ad_personalization': 'denied',
+        'analytics_storage': 'denied'
+      });
+    </script>             
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <div class="logo">PV</div>
+      <div>
+        <h1>PermView</h1>
+        <p class="subtitle">Quick permission viewer across Microsoft 365 and Azure</p>
+      </div>
+    </div>
+    <div class="topbar-actions">
+      <a href="../index.html" class="ghost-btn toolkit-link" title="Back to LCToolkit">&larr; Toolkit</a>
+      <button id="darkToggle" class="icon-btn" title="Toggle dark mode">&#127769;</button>
+      <div id="userBox" class="user-box hidden">
+        <span id="userName"></span>
+        <button id="signOutBtn" class="ghost-btn">Sign out</button>
+      </div>
+    </div>
+  </header>
+
+  <nav class="tabs">
+    <button class="top-tab active" data-top="workloads">Workloads</button>
+    <button class="top-tab" data-top="debug">Debug</button>
+    <button class="top-tab" data-top="about">About</button>
+  </nav>
+
+  <main>
+    <!-- WORKLOADS TAB -->
+    <section class="top-panel active" id="top-workloads">
+
+      <div class="card" id="connectCard">
+        <h2>Connect to your tenant</h2>
+        <p>PermView runs entirely in your browser. It signs you in with Microsoft (PKCE) and queries Microsoft Graph, Azure Resource Manager, Power BI, Power Platform and Azure DevOps as you. No backend, no telemetry.</p>
+        <p>Sign-in initially asks only for the basic Graph read scopes. PermView asks for additional consent (per API) the first time you open a workload that needs it.</p>
+        <p>Required delegated permissions across all workloads:</p>
+        <ul>
+          <li><code>User.Read</code>, <code>Directory.Read.All</code> - identity and tenant lookup</li>
+          <li><code>RoleManagement.Read.Directory</code> - administrator role assignments</li>
+          <li><code>Application.Read.All</code> - app registrations, enterprise apps and API permission grants</li>
+          <li><code>Sites.Read.All</code>, <code>Files.Read.All</code> - SharePoint and OneDrive</li>
+          <li><code>Calendars.Read.Shared</code> - mailbox calendar permissions</li>
+          <li><code>https://management.azure.com/user_impersonation</code> - Azure RBAC</li>
+          <li><code>https://analysis.windows.net/powerbi/api/Tenant.Read.All</code> - Power BI workspaces</li>
+          <li><code>https://service.flow.microsoft.com/User</code> - Power Platform environments</li>
+          <li><code>499b84ac-1321-427f-aa17-267ca6975798/user_impersonation</code> - Azure DevOps</li>
+        </ul>
+        <p class="muted">PermView does not write anything. It is a read-only viewer.</p>
+        <button id="signInBtn" class="primary-btn">Sign in with Microsoft</button>
+      </div>
+
+      <div id="workspace" class="hidden">
+        <div class="plug-banner">
+          PermView is the <strong>quick</strong> version of a permission audit. It only shows top-level / first-pass data per workload. For deep audits across every workload, every scope and every point in time, see <a href="https://www.m365permissions.com" target="_blank" rel="noopener">m365permissions.com</a>.
+        </div>
+
+        <div class="provider-tabs" id="providerTabs"></div>
+        <div id="providerPanel"></div>
+      </div>
+    </section>
+
+    <!-- DEBUG TAB -->
+    <section class="top-panel" id="top-debug">
+      <div class="card">
+        <div class="row between">
+          <h2>Debug log</h2>
+          <div>
+            <label class="checkbox"><input type="checkbox" id="verboseLog"/> Verbose</label>
+            <button id="clearLogBtn" class="ghost-btn">Clear</button>
+          </div>
+        </div>
+        <pre id="logPanel" class="log-panel"></pre>
+      </div>
+    </section>
+
+    <!-- ABOUT TAB -->
+    <section class="top-panel" id="top-about">
+      <div class="card">
+        <h2>About PermView</h2>
+        <p>PermView is part of the <a href="../index.html">LCToolkit</a> by Lieben Consultancy. It gives you a fast, browser-only top-level view of who has permissions where across the most-used Microsoft cloud workloads. Pick a workload, point at an entity (a site, mailbox, subscription, workspace, environment, ...), and you get a flat table of principals, roles and scope.</p>
+
+        <h3>Workloads covered</h3>
+        <ul>
+          <li><strong>Administrators</strong> - directory administrator roles and members</li>
+          <li><strong>Entra App Access</strong> - app registrations and service principals with delegated/application API permissions and credential expiry signals</li>
+          <li><strong>SharePoint site</strong> - app permissions (via Graph) + M365 group owners/members for group-backed sites</li>
+          <li><strong>OneDrive</strong> - sharing on the drive root</li>
+          <li><strong>Mailbox</strong> - calendar sharing permissions</li>
+          <li><strong>Azure</strong> - subscription-scope role assignments</li>
+          <li><strong>Azure DevOps</strong> - org-level security groups and members</li>
+          <li><strong>Power BI</strong> - workspace role assignments</li>
+          <li><strong>Power Platform</strong> - environment role assignments</li>
+        </ul>
+
+        <h3>What it does NOT do</h3>
+        <p>PermView is intentionally shallow. It does not crawl subsites, libraries, items, mail folders, resource-group RBAC, project or deeper level Azure DevOps security, dataset RLS, app/flow sharing, PowerBI, PIM eligibility. It does not have integrations or alerting, automated reporting or anything else that would turn it into a real permissions audit tool. For that, use <a href="https://www.m365permissions.com" target="_blank" rel="noopener">m365permissions.com</a>.</p>
+
+        <h3>Privacy</h3>
+        <p>Tokens stay in your browser's local storage. PermView does not have a backend and does not phone home. The only outbound calls are to the Microsoft APIs needed to render the workload you picked.</p>
+      </div>
+    </section>
+  </main>
+
+  <div id="toast" class="toast hidden"></div>
+
+  <script src="src/log.js"></script>
+  <script src="src/concurrency.js"></script>
+  <script src="src/auth.js"></script>
+  <script src="src/api.js"></script>
+  <script src="src/providers.js"></script>
+  <script src="src/app.js"></script>
+</body>
+</html>

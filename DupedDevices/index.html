@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>DupedDevices - Entra duplicate device cleanup</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>💻</text></svg>">
+  <link rel="stylesheet" href="style.css" />
+  <script src="https://cdn.jsdelivr.net/npm/@azure/msal-browser@3.27.0/lib/msal-browser.min.js"
+          onerror="window.__msalLoadFailed=true"></script>
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+    <!-- Google Analytics (GDPR Compliant) -->
+    <script async src="https://www.googletagmanager.com/gtag/js?id=G-20PYJ8S2G7"></script>
+    <script>
+      window.dataLayer = window.dataLayer || [];
+      function gtag(){dataLayer.push(arguments);}
+      gtag('js', new Date());
+      gtag('config', 'G-20PYJ8S2G7', {
+        'anonymize_ip': true,
+        'storage': 'none',
+        'client_storage': 'none'
+      });
+      gtag('consent', 'default', {
+        'ad_storage': 'denied',
+        'ad_user_data': 'denied',
+        'ad_personalization': 'denied',
+        'analytics_storage': 'denied'
+      });
+    </script>    
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <div class="logo">DD</div>
+      <div>
+        <h1>DupedDevices</h1>
+        <p class="subtitle">Find and clean up duplicate devices in Entra ID</p>
+      </div>
+    </div>
+    <div class="topbar-actions">
+      <a href="../index.html" class="ghost-btn toolkit-link" title="Back to LCToolkit">&larr; Toolkit</a>
+      <button id="darkToggle" class="icon-btn" title="Toggle dark mode">&#127769;</button>
+      <div id="userBox" class="user-box hidden">
+        <span id="userName"></span>
+        <button id="signOutBtn" class="ghost-btn">Sign out</button>
+      </div>
+    </div>
+  </header>
+
+  <nav class="tabs">
+    <button class="tab active" data-tab="discover">1. Connect &amp; Scan</button>
+    <button class="tab" data-tab="results">2. Duplicates</button>
+    <button class="tab" data-tab="grace">3. Past grace period</button>
+    <button class="tab" data-tab="debug">Debug</button>
+    <button class="tab" data-tab="about">About</button>
+  </nav>
+
+  <main>
+    <!-- DISCOVER TAB -->
+    <section class="tab-panel active" id="tab-discover">
+      <div class="card" id="connectCard">
+        <h2>Connect to your tenant</h2>
+        <p>DupedDevices runs entirely in your browser. It signs you in with Microsoft (PKCE) using a multi-tenant app registration and queries Microsoft Graph as you. Your token and data never leave your browser.</p>
+        <p>Required delegated permissions:</p>
+        <ul>
+          <li><code>Device.Read.All</code> - list all devices in the tenant</li>
+          <li><code>Directory.Read.All</code> - resolve owners and extension attribute schema</li>
+          <li><code>DeviceManagementManagedDevices.Read.All</code> - optional Intune enrichment (primary user + Autopilot enrollment)</li>
+          <li><code>User.Read</code> - sign-in identity</li>
+          <li><code>Directory.AccessAsUser.All</code> <span class="muted">(only requested when you actually disable/delete)</span> - PATCH/DELETE on /devices including extensionAttributes</li>
+        </ul>
+        <p>You'll need either the <strong>Cloud Device Administrator</strong>, <strong>Intune Administrator</strong> or <strong>Global Administrator</strong> role to actually disable or delete devices.</p>
+        <button id="signInBtn" class="primary-btn">Sign in with Microsoft</button>
+      </div>
+
+      <div class="card hidden" id="discoveryCard">
+        <h2>Scan settings</h2>
+        <div class="row">
+          <label class="checkbox" title="Disabled devices that share a hardware ID with an enabled device do not get treated as duplicates by default. Check this if you want to see them anyway."><input type="checkbox" id="includeDisabled"/> Include already-disabled devices in duplicate detection</label>
+        </div>
+
+        <h3 style="margin-top:18px">Cleanup mode</h3>
+        <p class="muted" style="margin-top:0">First you will only get an overview of detected duplicates. No disable/delete action is executed until you explicitly confirm Apply to selected.</p>
+        <div class="row">
+          <label class="checkbox"><input type="radio" name="cleanupMode" value="disable" checked/> <span><strong>Disable</strong> stale duplicates (recommended, gives you a grace period)</span></label>
+        </div>
+        <div class="row">
+          <label class="checkbox"><input type="radio" name="cleanupMode" value="delete"/> <span><strong>Delete</strong> stale duplicates immediately (no undo)</span></label>
+        </div>
+
+        <h3 style="margin-top:18px">Disable timestamp (extension attribute)</h3>
+        <p class="muted" style="margin-top:0">When disabling, optionally write the timestamp into one of the device extension attributes. The "past grace period" tab uses this stamp to find devices that can safely be deleted later.</p>
+        <div class="row">
+          <label>Attribute:
+            <select id="extAttrSelect">
+              <option value="">(do not write a timestamp)</option>
+              <option value="extensionAttribute1">extensionAttribute1</option>
+              <option value="extensionAttribute2">extensionAttribute2</option>
+              <option value="extensionAttribute3">extensionAttribute3</option>
+              <option value="extensionAttribute4">extensionAttribute4</option>
+              <option value="extensionAttribute5">extensionAttribute5</option>
+              <option value="extensionAttribute6">extensionAttribute6</option>
+              <option value="extensionAttribute7">extensionAttribute7</option>
+              <option value="extensionAttribute8">extensionAttribute8</option>
+              <option value="extensionAttribute9">extensionAttribute9</option>
+              <option value="extensionAttribute10">extensionAttribute10</option>
+              <option value="extensionAttribute11">extensionAttribute11</option>
+              <option value="extensionAttribute12">extensionAttribute12</option>
+              <option value="extensionAttribute13">extensionAttribute13</option>
+              <option value="extensionAttribute14">extensionAttribute14</option>
+              <option value="extensionAttribute15">extensionAttribute15</option>
+            </select>
+          </label>
+          <label>Grace period (days): <input type="number" id="gracePeriod" value="30" min="0" max="3650" style="width:80px"/></label>
+        </div>
+
+        <h3 style="margin-top:18px">Performance</h3>
+        <div class="row">
+          <label>Concurrency for write actions: <input type="number" id="concurrency" value="6" min="1" max="20" style="width:60px"/></label>
+        </div>
+
+        <div class="row">
+          <button id="scanBtn" class="primary-btn">Scan for duplicates</button>
+        </div>
+
+        <div id="progressBox" class="progress-box hidden">
+          <div class="progress-header">
+            <span id="progressLabel">Scanning...</span>
+            <span id="progressEta"></span>
+          </div>
+          <div class="progress-bar"><div id="progressFill"></div></div>
+          <div class="progress-footer">
+            <span id="progressCount">0/0</span>
+            <button id="cancelBtn" class="ghost-btn">Cancel</button>
+          </div>
+        </div>
+        <p id="managedNotice" class="notice notice-info hidden"></p>
+      </div>
+    </section>
+
+    <!-- RESULTS TAB -->
+    <section class="tab-panel" id="tab-results">
+      <div class="card">
+        <div class="row between">
+          <h2>Duplicate device groups</h2>
+          <div>
+            <button id="exportXlsxBtn" class="primary-btn" disabled>Export to Excel</button>
+            <button id="exportCsvBtn" class="ghost-btn" disabled>Export to CSV</button>
+          </div>
+        </div>
+
+        <div id="summaryBar" class="summary-bar hidden"></div>
+
+        <div class="row">
+          <input type="search" id="resultFilter" placeholder="Filter by display name, OS or hardware id..." />
+          <label class="checkbox" title="Hide groups that contain both an Autopilot and non-Autopilot device.">
+            <input type="checkbox" id="hideMixedAutopilot" checked /> Hide mixed Autopilot groups
+          </label>
+          <button id="selectAllStaleBtn" class="ghost-btn" type="button" disabled>Select all stale candidates</button>
+          <button id="selectNoneBtn" class="ghost-btn" type="button" disabled>Select none</button>
+        </div>
+
+        <div id="groupsContainer"></div>
+        <p id="noResults" class="table-hint hidden">No duplicate groups detected. Either you have no duplicates (nice) or no devices were returned by Graph for your account.</p>
+
+        <div class="action-bar hidden" id="actionBar">
+          <span class="grow"><strong id="selCount">0</strong> device(s) selected. Action: <span id="actionLabel" class="kbd">disable</span></span>
+          <button id="executeBtn" class="danger-btn" disabled>Apply to selected</button>
+        </div>
+        <div id="actionResults"></div>
+      </div>
+    </section>
+
+    <!-- GRACE TAB -->
+    <section class="tab-panel" id="tab-grace">
+      <div class="card">
+        <h2>Devices past their grace period</h2>
+        <p>Lists devices that are currently <strong>disabled</strong> and have a DupedDevices timestamp in the configured extension attribute that is older than the grace period. These are safe to delete.</p>
+        <div class="row">
+          <button id="findExpiredBtn" class="primary-btn" disabled>Find expired disabled devices</button>
+          <button id="deleteExpiredBtn" class="danger-btn" disabled>Delete all listed</button>
+        </div>
+        <div id="expiredContainer"></div>
+      </div>
+    </section>
+
+    <!-- DEBUG TAB -->
+    <section class="tab-panel" id="tab-debug">
+      <div class="card">
+        <div class="row between">
+          <h2>Debug log</h2>
+          <div>
+            <label class="checkbox"><input type="checkbox" id="verboseLog"/> Verbose</label>
+            <button id="clearLogBtn" class="ghost-btn">Clear</button>
+          </div>
+        </div>
+        <pre id="logPanel" class="log-panel"></pre>
+      </div>
+    </section>
+
+    <!-- ABOUT TAB -->
+    <section class="tab-panel" id="tab-about">
+      <div class="card">
+        <h2>About DupedDevices</h2>
+        <p>DupedDevices is part of the <a href="../index.html">LCToolkit</a> by Lieben Consultancy. It's a fully client-side browser application. No backend, no telemetry, no data leaves your browser. All API calls go directly from your browser to Microsoft Graph as the signed-in user using MSAL with PKCE.</p>
+
+        <h3>How duplicates are detected</h3>
+        <p>Each Entra device has a <code>physicalIds</code> array. DupedDevices reads the <code>[HWID]</code> entry (and falls back to the trailing token of <code>[USER-HWID]</code>) and treats it as the canonical hardware fingerprint. Devices that share that hardware id are grouped together. Within a group, the device with the most recent <code>approximateLastSignInDateTime</code> (falling back to <code>createdDateTime</code>) is marked as the current registration; the rest are flagged as stale candidates for cleanup.</p>
+        <p>Autopilot detection uses Intune managedDevices <code>autopilotEnrolled</code> when available and falls back to the Entra marker <code>[ZTDId]</code> in device physical IDs. This way you still get useful recognition even when Intune enrichment is unavailable.</p>
+        <p>By default, only enabled devices are considered when detecting duplicates so a previously-disabled record cannot shadow a fresh re-enrolment. You can flip a checkbox if you also want to see the disabled ones for context.</p>
+
+        <h3>Cleanup workflow</h3>
+        <ol>
+          <li>Pick a cleanup mode: <strong>Disable</strong> (recommended) or <strong>Delete</strong>.</li>
+          <li>Optionally pick an extensionAttribute (1-15) where DupedDevices will write a timestamp at the moment of disabling. This lets the tool later find devices that have been disabled long enough to safely delete.</li>
+          <li>Scan, review the proposed candidates, deselect anything you want to keep.</li>
+          <li>Click <strong>Apply to selected</strong>. Each PATCH/DELETE goes through Graph one by one (with retry on 429/503) and you'll see per-device success or failure.</li>
+          <li>Later: open the <strong>Past grace period</strong> tab to find disabled devices whose stamp is older than your grace period and delete them in bulk.</li>
+        </ol>
+
+        <h3>Permissions</h3>
+        <p>Read-only operations only need <code>Device.Read.All</code> + <code>Directory.Read.All</code>. The first time you click a write action, DupedDevices does an extra consent for <code>Directory.AccessAsUser.All</code> (Graph requires this scope, not just Device.ReadWrite.All, when you also write to <code>extensionAttributes</code>).</p>
+
+        <h3>What this tool does NOT do</h3>
+        <ul>
+          <li>It does not touch Intune objects. If a device is also in Intune, retire/wipe it there separately.</li>
+          <li>It does not delete devices that aren't part of a duplicate group (unless you use the past-grace-period tab).</li>
+          <li>It does not change anything until you explicitly click an action button.</li>
+        </ul>
+      </div>
+    </section>
+  </main>
+
+  <script src="src/log.js"></script>
+  <script src="src/concurrency.js"></script>
+  <script src="src/auth.js"></script>
+  <script src="src/graph.js"></script>
+  <script src="src/devices.js"></script>
+  <script src="src/export.js"></script>
+  <script src="src/app.js"></script>
+</body>
+</html>

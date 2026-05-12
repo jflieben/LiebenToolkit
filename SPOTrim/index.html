@@ -1,0 +1,273 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>SPOTrim - SharePoint stale site cleanup</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>✂️</text></svg>">
+  <link rel="stylesheet" href="style.css" />
+  <script src="https://cdn.jsdelivr.net/npm/@azure/msal-browser@3.27.0/lib/msal-browser.min.js"
+          onerror="window.__msalLoadFailed=true"></script>
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+    <!-- Google Analytics (GDPR Compliant) -->
+    <script async src="https://www.googletagmanager.com/gtag/js?id=G-20PYJ8S2G7"></script>
+    <script>
+        window.dataLayer = window.dataLayer || [];
+        function gtag(){dataLayer.push(arguments);}
+        gtag('js', new Date());
+        gtag('config', 'G-20PYJ8S2G7', {
+        'anonymize_ip': true,
+        'storage': 'none',
+        'client_storage': 'none'
+        });
+        gtag('consent', 'default', {
+        'ad_storage': 'denied',
+        'ad_user_data': 'denied',
+        'ad_personalization': 'denied',
+        'analytics_storage': 'denied'
+        });
+    </script>  
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <div class="logo">SPO</div>
+      <div>
+        <h1>SPOTrim</h1>
+        <p class="subtitle">SharePoint &amp; OneDrive stale site analysis</p>
+      </div>
+    </div>
+    <div class="topbar-actions">
+      <a href="../index.html" class="ghost-btn toolkit-link" title="Back to LCToolkit">&larr; Toolkit</a>
+      <button id="darkToggle" class="icon-btn" title="Toggle dark mode">🌙</button>
+      <div id="userBox" class="user-box hidden">
+        <span id="userName"></span>
+        <button id="signOutBtn" class="ghost-btn">Sign out</button>
+      </div>
+    </div>
+  </header>
+
+  <nav class="tabs">
+    <button class="tab active" data-tab="discover">1. Discover &amp; Analyze</button>
+    <button class="tab" data-tab="results">2. Results</button>
+    <button class="tab" data-tab="debug">Debug</button>
+    <button class="tab" data-tab="about">About</button>
+  </nav>
+
+  <main>
+    <!-- DISCOVER TAB -->
+    <section class="tab-panel active" id="tab-discover">
+      <div class="card" id="connectCard">
+        <h2>Connect to your tenant</h2>
+        <p>SPOTrim runs entirely in your browser. It signs you in with Microsoft (PKCE) using the public Lieben Consultancy multi-tenant app and queries the Microsoft Graph &amp; SharePoint REST APIs as you.</p>
+        <p>Your token and data never leave your browser and are NOT transmitted to Lieben Consultancy (or anyone else).</p>
+        <p>Required delegated permissions:</p>
+        <ul>
+          <li><code>Sites.Read.All</code> - enumerate all sites, read site analytics &amp; pages</li>
+          <li><code>Sites.FullControl.All</code> - read site/web modification details via SharePoint REST</li>
+          <li><code>User.Read</code> - sign-in identity</li>
+        </ul>
+        <button id="signInBtn" class="primary-btn">Sign in with Microsoft</button>
+      </div>
+
+      <div class="card hidden" id="discoveryCard">
+        <h2>Site discovery</h2>
+        <p>Click below to enumerate all SharePoint sites &amp; OneDrive sites in your tenant.</p>
+        <div class="row">
+          <label class="checkbox"><input type="checkbox" id="includeOneDrive" checked /> Include OneDrive sites</label>
+          <label class="checkbox"><input type="checkbox" id="includeSharePoint" checked /> Include SharePoint sites</label>
+        </div>
+        <div class="row">
+          <label>Concurrency: <input type="number" id="concurrency" value="8" min="1" max="32" style="width:60px"/></label>
+          <label>Stale threshold (days): <input type="number" id="staleDays" value="365" min="30" max="3650" style="width:80px"/></label>
+        </div>
+        <div class="row">
+          <label class="checkbox" title="Temporarily make yourself a site collection admin so SPOTrim can read every site's modification and view signals"><input type="checkbox" id="forceScan" /> Force scan (add me as owner where needed, remove afterwards)</label>
+        </div>
+        <p class="table-hint" id="forceScanHelp">By default SPOTrim only sees data for sites you already have access to. Sites you cannot read end up as <strong>No access</strong>. With force scan enabled, SPOTrim adds you as a temporary site collection admin to every site you don't already own, runs the analysis, and then removes you again. Sites where you are already an owner are left alone (so you don't lose existing access). Requires the <strong>SharePoint Administrator</strong> role.</p>
+        <div class="row">
+          <button id="discoverBtn" class="primary-btn">Discover sites</button>
+          <button id="analyzeBtn" class="primary-btn" disabled>Analyze selected (<span id="selCount">0</span>)</button>
+          <button id="selectAllBtn" class="ghost-btn" disabled>Select all</button>
+          <button id="selectNoneBtn" class="ghost-btn" disabled>Select none</button>
+        </div>
+
+        <div id="progressBox" class="progress-box hidden">
+          <div class="progress-header">
+            <span id="progressLabel">Working...</span>
+            <span id="progressEta"></span>
+          </div>
+          <div class="progress-bar"><div id="progressFill"></div></div>
+          <div class="progress-footer">
+            <span id="progressCount">0/0</span>
+            <button id="cancelBtn" class="ghost-btn">Cancel</button>
+          </div>
+        </div>
+
+        <div id="siteListWrap" class="hidden">
+          <div class="row">
+            <input type="search" id="siteFilter" placeholder="Filter by URL or title..." />
+            <select id="typeFilter">
+              <option value="">All types</option>
+            </select>
+          </div>
+          <div class="table-wrap">
+            <table class="data-table sortable" id="siteTable">
+              <thead>
+                <tr>
+                  <th><input type="checkbox" id="selAll"/></th>
+                  <th data-sort="title">Title</th>
+                  <th data-sort="url">URL</th>
+                  <th data-sort="type">Type</th>
+                  <th data-sort="template">Template</th>
+                  <th data-sort="created" data-sort-type="date">Created</th>
+                </tr>
+              </thead>
+              <tbody></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- RESULTS TAB -->
+    <section class="tab-panel" id="tab-results">
+      <div class="card">
+        <div class="row between">
+          <h2>Stale site analysis</h2>
+          <div>
+            <button id="exportXlsxBtn" class="primary-btn" disabled>Export to Excel</button>
+            <button id="exportCsvBtn" class="ghost-btn" disabled>Export to CSV</button>
+          </div>
+        </div>
+        <div class="notice notice-info" id="ownerNotice">
+          Heads up: SPOTrim can only read full data for sites you have access to. Sites where you aren't an owner either show up as <strong>No access</strong> or with missing modification or view data. Use the <strong>Force scan</strong> option on the Discover &amp; Analyze tab to have SPOTrim temporarily add you as a site collection admin for those sites and remove you again afterwards.
+        </div>
+        <div id="resultNotices"></div>
+        <div class="row">
+          <input type="search" id="resultFilter" placeholder="Filter results by title or URL..." />
+          <button id="clearFiltersBtn" class="ghost-btn" type="button">Clear column filters</button>
+        </div>
+        <div class="table-wrap">
+          <table class="data-table sortable" id="resultTable">
+            <thead>
+              <tr>
+                <th data-sort="advice" data-filter="advice">Recommendation</th>
+                <th data-sort="title">Title</th>
+                <th data-sort="url">URL</th>
+                <th data-sort="type" data-filter="type">Type</th>
+                <th data-sort="lastModified" data-sort-type="date">Last modified</th>
+                <th data-sort="lastViewed" data-sort-type="date">Last viewed</th>
+                <th data-sort="daysIdle" data-sort-type="number">Days idle</th>
+                <th data-sort="storageMB" data-sort-type="number">Storage (MB)</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+        <p class="table-hint">Tip: click a row to see all signals for that site.</p>
+      </div>
+    </section>
+
+    <!-- DEBUG TAB -->
+    <section class="tab-panel" id="tab-debug">
+      <div class="card">
+        <div class="row between">
+          <h2>Debug log</h2>
+          <div>
+            <label class="checkbox"><input type="checkbox" id="verboseLog"/> Verbose</label>
+            <button id="clearLogBtn" class="ghost-btn">Clear</button>
+          </div>
+        </div>
+        <pre id="logPanel" class="log-panel"></pre>
+      </div>
+    </section>
+
+    <!-- ABOUT TAB -->
+    <section class="tab-panel" id="tab-about">
+      <div class="card">
+        <h2>About SPOTrim</h2>
+        <p>SPOTrim is part of the <a href="https://github.com/jflieben/LCToolKit" target="_blank" rel="noopener">LCToolKit</a> by Lieben Consultancy.</p>
+        <p>It is a fully client-side browser application. No backend, no telemetry, no data leaves your browser. All API calls are made directly from your browser to Microsoft Graph and SharePoint REST as the signed-in user, using MSAL with PKCE. SPOTrim works on any static web host - no proxy or server-side component is required.</p>
+
+        <h3>Discovery</h3>
+        <ul>
+          <li><strong>SharePoint sites</strong>: enumerated via Graph <code>/sites?search=*</code> (paginated), supplemented by SharePoint Search.</li>
+          <li><strong>OneDrive sites</strong>: enumerated via the SharePoint Admin Tenant REST API (requires the SharePoint Administrator role). OneDrive personal sites are not returned by Graph site search and the user-facing search index trims them to what the current user can access.</li>
+          <li>Sites are classified into a richer taxonomy (Communication, Team, Modern Group, OneDrive, Hub, App Catalog, Search Center, classic templates, etc.) using the SharePoint <code>WebTemplate</code> captured during discovery.</li>
+        </ul>
+
+        <h3>Last-modified signals</h3>
+        <p>For each analysed site, SPOTrim collects modification timestamps from multiple sources and uses the most recent:</p>
+        <ul>
+          <li><strong>Graph site</strong>: <code>lastModifiedDateTime</code> on <code>/sites/{id}</code></li>
+          <li><strong>SharePoint web</strong>: <code>LastItemUserModifiedDate</code> from <code>_api/web</code> (excludes system/crawl updates)</li>
+          <li><strong>Document libraries</strong>: max <code>LastItemUserModifiedDate</code> across non-hidden libraries via <code>_api/web/lists</code></li>
+          <li><strong>Site Pages</strong>: most recently edited modern page via Graph <code>/sites/{id}/pages</code> - catches news posts and landing-page edits that happen outside document libraries</li>
+        </ul>
+
+        <h3>Page-view / "last viewed" signals</h3>
+        <p>All view data is fetched per-site directly from <code>graph.microsoft.com</code> (CORS-friendly, no proxy required), batched into a single Graph <code>$batch</code> call:</p>
+        <ul>
+          <li><strong>All-time access count</strong>: <code>/sites/{id}/analytics/allTime</code> - total accesses ever recorded for the site, plus distinct actor count.</li>
+          <li><strong>Last 7 days access count</strong>: <code>/sites/{id}/analytics/lastSevenDays</code> - recent activity bucket.</li>
+          <li><strong>Last 30 days, daily activity</strong>: <code>/sites/{id}/drive/items/root/getActivitiesByInterval(…,interval='day')</code> - bucketed daily counts on the default document library, summed and converted into both a 30-day total and a most-recent active day. This is the most granular signal available via Graph and lets SPOTrim pinpoint "viewed in the last N days" rather than the coarse 7-day vs all-time choice.</li>
+        </ul>
+
+        <h3>Other engagement signals</h3>
+        <ul>
+          <li><strong>Storage used</strong>: <code>/sites/{id}/drive?$select=quota</code> - live byte-accurate usage on the default drive (no usage report needed).</li>
+          <li><strong>Last page edit</strong>: doubles as a modification signal AND tells you who last touched the site visually (name, page title, modifier).</li>
+        </ul>
+
+        <h3>Recommendations</h3>
+        <ul>
+          <li><strong>Keep</strong>: modified within the stale threshold.</li>
+          <li><strong>Review</strong>: not modified within the threshold but still accessed in the last 30 / 7 days, or has nonzero all-time views - likely a reference or archive site.</li>
+          <li><strong>Clean up</strong>: not modified within the threshold and 0 all-time page views, or not viewed for at least the threshold.</li>
+          <li><strong>No access</strong>: both <code>_api/web</code> and <code>_api/web/lists</code> returned 401/403. The site exists but the signed-in user lacks rights to read its modification signals. Filter on this advice and grant yourself site collection admin to re-scan.</li>
+          <li><strong>Unknown</strong>: signals were unavailable for non-permission reasons (e.g. transient 5xx).</li>
+        </ul>
+        <p>Hover the "Why" cell in the results table to see the raw signals that drove the recommendation.</p>
+
+        <h3>Required Graph permissions (delegated)</h3>
+        <ul>
+          <li><code>Sites.Read.All</code> - site enumeration, site analytics, drive activities, site pages, drive quota</li>
+          <li><code>Sites.FullControl.All</code> - SharePoint REST web/lists modification metadata</li>
+          <li><code>User.Read</code> - current user identity</li>
+        </ul>
+        <p>For OneDrive enumeration the signed-in user must additionally hold the <strong>SharePoint Administrator</strong> role in Entra ID.</p>
+      </div>
+    </section>
+  </main>
+
+  <div id="toast" class="toast hidden"></div>
+
+  <!-- Site detail modal: opens on row click -->
+  <div id="detailModal" class="modal hidden" aria-hidden="true" role="dialog">
+    <div class="modal-backdrop"></div>
+    <div class="modal-panel" role="document">
+      <div class="modal-header">
+        <h3 id="detailTitle">Site details</h3>
+        <button id="detailCloseBtn" class="icon-btn" aria-label="Close">×</button>
+      </div>
+      <div class="modal-body" id="detailBody"></div>
+    </div>
+  </div>
+
+  <!-- Owners popover (used when a site has more than one owner) -->
+  <div id="ownersPopover" class="popover hidden" role="tooltip"></div>
+
+  <!-- Column filter popover (used by Type / Recommendation headers) -->
+  <div id="columnFilterPopover" class="popover hidden" role="dialog"></div>
+
+  <script src="src/log.js"></script>
+  <script src="src/auth.js"></script>
+  <script src="src/concurrency.js"></script>
+  <script src="src/graph.js"></script>
+  <script src="src/sharepoint.js"></script>
+  <script src="src/analysis.js"></script>
+  <script src="src/export.js"></script>
+  <script src="src/app.js"></script>
+</body>
+</html>

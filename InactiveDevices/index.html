@@ -1,0 +1,326 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>InactiveDevices - find and clean up dormant devices in Entra</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>💻</text></svg>">
+  <link rel="stylesheet" href="style.css" />
+  <script src="https://cdn.jsdelivr.net/npm/@azure/msal-browser@3.27.0/lib/msal-browser.min.js"
+          onerror="window.__msalLoadFailed=true"></script>
+  <script async src="https://www.googletagmanager.com/gtag/js?id=G-20PYJ8S2G7"></script>
+  <script>
+    window.dataLayer = window.dataLayer || [];
+    function gtag(){dataLayer.push(arguments);} // eslint-disable-line no-unused-vars
+    gtag('js', new Date());
+    gtag('config', 'G-20PYJ8S2G7', {
+      anonymize_ip: true,
+      storage: 'none',
+      client_storage: 'none'
+    });
+    gtag('consent', 'default', {
+      ad_storage: 'denied',
+      ad_user_data: 'denied',
+      ad_personalization: 'denied',
+      analytics_storage: 'denied'
+    });
+  </script>
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <div class="logo">ID</div>
+      <div>
+        <h1>InactiveDevices</h1>
+        <p class="subtitle">Find and clean up dormant devices in Entra</p>
+      </div>
+    </div>
+    <div class="topbar-actions">
+      <a href="../index.html" class="ghost-btn toolkit-link" title="Back to LCToolkit">&larr; Toolkit</a>
+      <button id="darkToggle" class="icon-btn" title="Toggle dark mode">&#127769;</button>
+      <div id="userBox" class="user-box hidden">
+        <span id="userName"></span>
+        <button id="signOutBtn" class="ghost-btn">Sign out</button>
+      </div>
+    </div>
+  </header>
+
+  <nav class="tabs">
+    <button class="tab active" data-tab="discover">1. Connect &amp; Scan</button>
+    <button class="tab" data-tab="results">2. Results</button>
+    <button class="tab" data-tab="grace">3. Past grace period</button>
+    <button class="tab" data-tab="debug">Debug</button>
+    <button class="tab" data-tab="about">About</button>
+  </nav>
+
+  <main>
+    <section class="tab-panel active" id="tab-discover">
+      <div class="card" id="connectCard">
+        <h2>Connect to your tenant</h2>
+        <p>InactiveDevices runs entirely in your browser. It signs you in with Microsoft (PKCE) and queries Microsoft Graph as you. No backend, no telemetry, no data leaves your browser.</p>
+        <p>Required delegated permissions:</p>
+        <ul>
+          <li><code>Device.Read.All</code> - list Entra devices</li>
+          <li><code>AuditLog.Read.All</code> - read sign-in activity metadata</li>
+          <li><code>Directory.Read.All</code> - read directory attributes used for filtering</li>
+          <li><code>DeviceManagementManagedDevices.Read.All</code> - optional Intune primary user, sync date, and Autopilot enrollment status</li>
+          <li><code>User.Read</code> - sign-in identity</li>
+          <li><code>Device.ReadWrite.All</code> + <code>Directory.AccessAsUser.All</code> <span class="muted">(only when you actually disable, enable or delete)</span></li>
+        </ul>
+        <p>To change or delete devices you also need an Entra role that can manage devices, like <strong>Cloud Device Administrator</strong> or <strong>Global Administrator</strong>.</p>
+        <button id="signInBtn" class="primary-btn">Sign in with Microsoft</button>
+      </div>
+
+      <div class="card hidden" id="discoveryCard">
+        <h2>Scan settings</h2>
+        <h3 style="margin-top:0">Cleanup mode</h3>
+        <p class="muted" style="margin-top:0">First you will only get an overview of matching devices. No disable/delete action is executed until you explicitly confirm Apply to selected.</p>
+        <div class="row">
+          <label class="checkbox"><input type="radio" name="cleanupMode" value="disable" checked/> <span><strong>Disable</strong> stale devices first (recommended)</span></label>
+        </div>
+        <div class="row">
+          <label class="checkbox"><input type="radio" name="cleanupMode" value="delete"/> <span><strong>Delete</strong> stale devices immediately</span></label>
+        </div>
+
+        <h3 style="margin-top:18px">Disable timestamp (extension attribute)</h3>
+        <p class="muted" style="margin-top:0">When disabling, optionally store a timestamp in an extension attribute. The grace-period tab uses this to find devices safe to delete later.</p>
+        <div class="row">
+          <label>Attribute:
+            <select id="extAttrSelect">
+              <option value="">(do not write a timestamp)</option>
+              <option value="extensionAttribute1">extensionAttribute1</option>
+              <option value="extensionAttribute2">extensionAttribute2</option>
+              <option value="extensionAttribute3">extensionAttribute3</option>
+              <option value="extensionAttribute4">extensionAttribute4</option>
+              <option value="extensionAttribute5">extensionAttribute5</option>
+              <option value="extensionAttribute6">extensionAttribute6</option>
+              <option value="extensionAttribute7">extensionAttribute7</option>
+              <option value="extensionAttribute8">extensionAttribute8</option>
+              <option value="extensionAttribute9">extensionAttribute9</option>
+              <option value="extensionAttribute10">extensionAttribute10</option>
+              <option value="extensionAttribute11">extensionAttribute11</option>
+              <option value="extensionAttribute12">extensionAttribute12</option>
+              <option value="extensionAttribute13">extensionAttribute13</option>
+              <option value="extensionAttribute14">extensionAttribute14</option>
+              <option value="extensionAttribute15">extensionAttribute15</option>
+            </select>
+          </label>
+          <label>Grace period (days): <input type="number" id="gracePeriod" value="30" min="0" max="3650" style="width:80px"/></label>
+          <label>Concurrency for actions: <input type="number" id="concurrency" value="4" min="1" max="20" style="width:60px"/></label>
+        </div>
+
+        <div class="row">
+          <button id="scanBtn" class="primary-btn">Load inactive devices</button>
+          <span id="loadStatus" class="muted"></span>
+        </div>
+
+        <div id="progressBox" class="progress-box hidden">
+          <div class="progress-header">
+            <span id="progressLabel">Loading...</span>
+            <span id="progressEta"></span>
+          </div>
+          <div class="progress-bar"><div id="progressFill"></div></div>
+          <div class="progress-footer">
+            <span id="progressCount">0/0</span>
+            <button id="cancelBtn" class="ghost-btn">Cancel</button>
+          </div>
+        </div>
+
+        <p id="managedNotice" class="notice notice-info hidden"></p>
+      </div>
+    </section>
+
+    <section class="tab-panel" id="tab-results">
+      <div class="card">
+        <div class="row between">
+          <h2>Inactive device results</h2>
+          <div>
+            <button id="exportXlsxBtn" class="primary-btn" disabled>Export XLSX</button>
+            <button id="exportCsvBtn" class="ghost-btn" disabled>Export CSV</button>
+          </div>
+        </div>
+
+        <div id="summaryBar" class="summary-bar hidden"></div>
+
+        <div id="filterRow" class="row hidden">
+          <input type="search" id="search" placeholder="Filter display name, primary user, OS or device id..." />
+          <label>Inactive &gt;
+            <input type="number" id="minInactive" min="0" step="30" value="90" style="width:80px"/> days
+          </label>
+          <label>Min age
+            <input type="number" id="minAge" min="0" step="30" value="0" style="width:80px"/> days
+          </label>
+          <select id="osFilter">
+            <option value="any">Any OS</option>
+            <option value="windows">Windows</option>
+            <option value="ios">iOS</option>
+            <option value="android">Android</option>
+            <option value="macos">macOS</option>
+            <option value="linux">Linux</option>
+            <option value="other">Other</option>
+          </select>
+          <select id="joinType">
+            <option value="any">Any join type</option>
+            <option value="Azure AD joined">Azure AD joined</option>
+            <option value="Hybrid Azure AD joined">Hybrid Azure AD joined</option>
+            <option value="Azure AD registered">Azure AD registered</option>
+            <option value="Unknown">Unknown</option>
+          </select>
+          <select id="autopilot">
+            <option value="any">Autopilot and non-Autopilot</option>
+            <option value="yes">Only Autopilot</option>
+            <option value="no" selected>Only non-Autopilot</option>
+          </select>
+          <select id="managed">
+            <option value="any">Managed and unmanaged</option>
+            <option value="managed">Only managed</option>
+            <option value="unmanaged">Only unmanaged</option>
+          </select>
+          <select id="hasPrimaryUser">
+            <option value="any">Primary user known or unknown</option>
+            <option value="yes">Primary user known</option>
+            <option value="no">Primary user unknown</option>
+          </select>
+          <select id="enabled">
+            <option value="any">Enabled or disabled</option>
+            <option value="enabled">Only enabled</option>
+            <option value="disabled">Only disabled</option>
+          </select>
+          <button id="selectAllFilteredBtn" class="ghost-btn" type="button" disabled>Select all filtered</button>
+          <button id="selectNoneBtn" class="ghost-btn" type="button" disabled>Select none</button>
+        </div>
+
+        <div id="tableWrap" class="table-wrap hidden">
+          <table class="data-table sortable" id="devicesTable">
+            <colgroup>
+              <col class="col-chk">
+              <col class="col-name">
+              <col class="col-user">
+              <col class="col-os">
+              <col class="col-join">
+              <col class="col-ap">
+              <col class="col-mgd">
+              <col class="col-en">
+              <col class="col-cr">
+              <col class="col-la">
+              <col class="col-in">
+            </colgroup>
+            <thead>
+              <tr>
+                <th><input type="checkbox" id="selectAll" /></th>
+                <th data-sort="displayName">Device</th>
+                <th data-sort="primaryUser">Primary user</th>
+                <th data-sort="operatingSystem">OS</th>
+                <th data-sort="joinType">Join type</th>
+                <th data-sort="isAutopilot">Autopilot</th>
+                <th data-sort="isManagedEffective">Managed</th>
+                <th data-sort="accountEnabled">Enabled</th>
+                <th data-sort="createdDateTime">Created</th>
+                <th data-sort="lastActive">Last active</th>
+                <th data-sort="inactiveDays">Inactive</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+        <p id="tableHint" class="table-hint hidden"></p>
+
+        <div class="action-bar hidden" id="actionBar">
+          <span class="grow"><strong id="selCount">0</strong> device(s) selected. Action: <span id="actionLabel" class="kbd">disable</span></span>
+          <button id="executeBtn" class="danger-btn" disabled>Apply to selected</button>
+        </div>
+        <ul id="actionResults" class="action-result-list hidden"></ul>
+      </div>
+    </section>
+
+    <section class="tab-panel" id="tab-grace">
+      <div class="card">
+        <h2>Devices past grace period</h2>
+        <p>Lists currently disabled devices with an InactiveDevices timestamp in your chosen extension attribute older than the configured grace period.</p>
+        <div class="row">
+          <button id="findExpiredBtn" class="primary-btn" disabled>Find expired disabled devices</button>
+          <button id="deleteExpiredBtn" class="danger-btn" disabled>Delete all listed</button>
+        </div>
+        <div id="expiredContainer"></div>
+      </div>
+    </section>
+
+    <section class="tab-panel" id="tab-debug">
+      <div class="card">
+        <div class="row between">
+          <h2>Debug log</h2>
+          <div>
+            <label class="checkbox"><input type="checkbox" id="verboseLog"/> Verbose</label>
+            <button id="clearLogBtn" class="ghost-btn">Clear</button>
+          </div>
+        </div>
+        <pre id="logPanel" class="log-panel"></pre>
+      </div>
+    </section>
+
+    <section class="tab-panel" id="tab-about">
+      <div class="card">
+        <h2>About InactiveDevices</h2>
+        <p>InactiveDevices is part of the <a href="../index.html">LCToolkit</a> by Lieben Consultancy. It helps you identify stale Entra devices and take bulk actions.</p>
+
+        <h3>What it can do</h3>
+        <ul>
+          <li>List every device in Entra with inactivity details, OS, join type, Autopilot hint and managed status.</li>
+          <li>Optionally enrich with Intune data for primary user and last sync timestamps.</li>
+          <li>Filter by inactivity threshold, creation age, OS, join type, Autopilot, managed status, primary user availability and enabled state.</li>
+          <li>Bulk disable, re-enable or delete selected devices with explicit confirmation.</li>
+          <li>Export your filtered set to XLSX or CSV.</li>
+        </ul>
+
+        <h3>How it works</h3>
+        <ul>
+          <li><strong>Device list</strong>: <code>GET /beta/devices?$select=...</code> with paging.</li>
+          <li><strong>Primary user enrichment</strong>: <code>GET /beta/deviceManagement/managedDevices?$select=azureADDeviceId,userPrincipalName,lastSyncDateTime,...</code>.</li>
+          <li><strong>Inactivity</strong>: uses the newest of <code>approximateLastSignInDateTime</code> and Intune <code>lastSyncDateTime</code>; if both are missing it falls back to creation date.</li>
+          <li><strong>Disable</strong>: <code>PATCH /v1.0/devices/{id}</code> with <code>{accountEnabled: false}</code> and optional extension-attribute stamp.</li>
+          <li><strong>Delete</strong>: <code>DELETE /v1.0/devices/{id}</code>.</li>
+        </ul>
+
+        <h3>Autopilot note</h3>
+        <p>The Autopilot indicator is inferred from <code>devicePhysicalIds</code> containing entries like <code>[ZTDId]:...</code>. This is a practical heuristic and can be empty on some older objects.</p>
+
+        <h3>Recommended workflow</h3>
+        <ol>
+          <li>Pick cleanup mode before scanning: disable-first (recommended) or immediate delete.</li>
+          <li>If using disable-first, pick an extension attribute for timestamping and set a grace period.</li>
+          <li>Scan, filter, and select devices in Results, then apply the preselected action.</li>
+          <li>Later, use the grace-period tab to delete only devices that stayed disabled long enough.</li>
+        </ol>
+      </div>
+    </section>
+  </main>
+
+  <div id="toast" class="toast hidden"></div>
+
+  <div id="confirmModal" class="modal hidden" role="dialog">
+    <div class="modal-backdrop"></div>
+    <div class="modal-panel">
+      <div class="modal-header">
+        <h3 id="confirmTitle">Confirm</h3>
+        <button id="confirmCloseBtn" class="icon-btn">&times;</button>
+      </div>
+      <div class="modal-body" id="confirmBody"></div>
+      <div class="modal-header" style="border-top:1px solid var(--border); border-bottom:none">
+        <span></span>
+        <div>
+          <button id="confirmCancelBtn" class="ghost-btn">Cancel</button>
+          <button id="confirmOkBtn" class="danger-btn">Confirm</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="src/log.js"></script>
+  <script src="src/concurrency.js"></script>
+  <script src="src/auth.js"></script>
+  <script src="src/graph.js"></script>
+  <script src="src/devices.js"></script>
+  <script src="src/export.js"></script>
+  <script src="src/app.js"></script>
+</body>
+</html>

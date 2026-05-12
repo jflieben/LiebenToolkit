@@ -1,0 +1,323 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>SimpleMaester - Browser-based Maester for Microsoft 365</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>✅</text></svg>">
+  <link rel="stylesheet" href="style.css" />
+  <script src="https://cdn.jsdelivr.net/npm/@azure/msal-browser@3.27.0/lib/msal-browser.min.js"
+          onerror="window.__msalLoadFailed=true"></script>
+  <script src="https://cdn.jsdelivr.net/npm/marked@12.0.2/marked.min.js"
+          onerror="window.__markedLoadFailed=true"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"
+          onerror="window.__chartLoadFailed=true"></script>
+    <!-- Google Analytics (GDPR Compliant) -->
+    <script async src="https://www.googletagmanager.com/gtag/js?id=G-20PYJ8S2G7"></script>
+    <script>
+      window.dataLayer = window.dataLayer || [];
+      function gtag(){dataLayer.push(arguments);}
+      gtag('js', new Date());
+      gtag('config', 'G-20PYJ8S2G7', {
+        'anonymize_ip': true,
+        'storage': 'none',
+        'client_storage': 'none'
+      });
+      gtag('consent', 'default', {
+        'ad_storage': 'denied',
+        'ad_user_data': 'denied',
+        'ad_personalization': 'denied',
+        'analytics_storage': 'denied'
+      });
+    </script>             
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <div class="logo">SM</div>
+      <div>
+        <h1>SimpleMaester</h1>
+        <p class="subtitle">Browser-based port of <a href="https://maester.dev" target="_blank" rel="noopener">Maester</a> - Microsoft 365 security tests, no PowerShell needed</p>
+      </div>
+    </div>
+    <div class="topbar-actions">
+      <a href="../index.html" class="ghost-btn toolkit-link" title="Back to LCToolkit">&larr; Toolkit</a>
+      <button id="darkToggle" class="icon-btn" title="Toggle dark mode">&#127769;</button>
+      <div id="userBox" class="user-box hidden">
+        <span id="userName"></span>
+        <button id="signOutBtn" class="ghost-btn">Sign out</button>
+      </div>
+    </div>
+  </header>
+
+  <nav class="tabs">
+    <button class="top-tab active" data-top="run">Run</button>
+    <button class="top-tab" data-top="results">Results</button>
+    <button class="top-tab" data-top="history">History</button>
+    <button class="top-tab" data-top="tests">Test catalog</button>
+    <button class="top-tab" data-top="debug">Debug</button>
+    <button class="top-tab" data-top="about">About</button>
+  </nav>
+
+  <main>
+    <!-- RUN TAB -->
+    <section class="top-panel active" id="top-run">
+      <div class="card" id="connectCard">
+        <h2>Connect to your tenant</h2>
+        <p>SimpleMaester runs entirely in your browser. It signs you in with Microsoft using PKCE and queries Microsoft Graph as you. Nothing is sent to a server we run.</p>
+        <p>The first sign in only asks for the basic Graph read scopes. SimpleMaester will ask for additional consent the first time a test needs it. This could happen multiple times depending on the API's / scopes the tests use</p>
+        <p class="muted">SimpleMaester does not write anything. It is read-only.</p>
+        <button id="signInBtn" class="primary-btn">Sign in with Microsoft</button>
+      </div>
+
+      <div id="runWorkspace" class="hidden">
+        <div class="card" id="categoryPickerCard">
+          <h2>What do you want to test?</h2>
+          <p class="muted">Pick a category to run those Maester tests, or build your own selection.</p>
+          <div id="categoryTiles" class="category-grid"></div>
+        </div>
+
+        <div class="card hidden" id="customPickerCard">
+          <div class="row between">
+            <h2>Custom selection</h2>
+            <button id="backToCategoriesBtn" class="ghost-btn">&larr; Back to categories</button>
+          </div>
+          <div class="row">
+            <select id="catalogFilterCategory" title="Filter by category">
+              <option value="">All categories</option>
+            </select>
+            <select id="catalogFilterSeverity" title="Filter by severity">
+              <option value="">All severities</option>
+              <option value="Critical">Critical</option>
+              <option value="High">High</option>
+              <option value="Medium">Medium</option>
+              <option value="Low">Low</option>
+              <option value="Info">Info</option>
+            </select>
+            <select id="catalogFilterStatus" title="Filter by implementation status">
+              <option value="implemented">Implemented only</option>
+              <option value="all">All (incl. not implemented)</option>
+            </select>
+          </div>
+          <div class="row">
+            <button id="selectAllBtn" class="ghost-btn">Select all visible</button>
+            <button id="selectNoneBtn" class="ghost-btn">Clear selection</button>
+            <button id="restoreLastBtn" class="ghost-btn" title="Restore the selection from your last custom run">Restore last run</button>
+          </div>
+          <div id="catalogStats" class="muted" style="margin: 6px 0 12px;"></div>
+          <div id="catalogList" class="catalog-list"></div>
+          <div class="row between">
+            <span id="selectionStats" class="muted"></span>
+            <div>
+              <button id="cancelRunBtn" class="ghost-btn hidden">Cancel</button>
+              <button id="runBtn" class="primary-btn">Run selected</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="card hidden" id="progressCard">
+          <h2>Running tests</h2>
+          <div class="progress-wrap">
+            <div class="progress-bar"><span id="progressFill"></span></div>
+            <div id="progressText" class="muted"></div>
+          </div>
+          <div class="progress-wrap hidden" id="subProgressWrap">
+            <div class="progress-bar sub"><span id="subProgressFill"></span></div>
+            <div id="subProgressText" class="muted"></div>
+          </div>
+          <div class="row" style="margin-top: 8px;">
+            <button id="cancelRunBtn2" class="ghost-btn">Cancel scan</button>
+          </div>
+          <pre id="progressLog" class="log-panel"></pre>
+        </div>
+      </div>
+    </section>
+
+    <!-- RESULTS TAB -->
+    <section class="top-panel" id="top-results">
+      <div class="card" id="noResultsCard">
+        <h2>No results yet</h2>
+        <p>Run some tests on the <a href="#" data-goto="run">Run</a> tab first.</p>
+      </div>
+
+      <div id="resultsWorkspace" class="hidden">
+        <div class="card">
+          <div class="row between">
+            <div>
+              <h2 style="margin-bottom: 4px;">Latest scan</h2>
+              <div id="scanMeta" class="muted"></div>
+            </div>
+            <div>
+              <select id="scanPicker"></select>
+              <button id="exportJsonBtn" class="ghost-btn">Export JSON</button>
+              <button id="exportCsvBtn" class="ghost-btn">Export CSV</button>
+            </div>
+          </div>
+          <div class="summary-grid" id="summaryGrid"></div>
+        </div>
+
+        <div class="card">
+          <div class="row">
+            <input type="search" id="resultsSearch" placeholder="Filter by id, title, tag..." />
+            <select id="filterSeverity">
+              <option value="">All severities</option>
+              <option value="Critical">Critical</option>
+              <option value="High">High</option>
+              <option value="Medium">Medium</option>
+              <option value="Low">Low</option>
+              <option value="Info">Info</option>
+            </select>
+            <select id="filterStatus">
+              <option value="">All statuses</option>
+              <option value="Passed">Passed</option>
+              <option value="Failed">Failed</option>
+              <option value="Skipped">Skipped</option>
+              <option value="Error">Error</option>
+            </select>
+            <select id="filterTag"><option value="">All tags</option></select>
+          </div>
+          <table class="results-table" id="resultsTable">
+            <thead>
+              <tr>
+                <th data-sort="status">Status</th>
+                <th data-sort="severity">Severity</th>
+                <th data-sort="id">Id</th>
+                <th data-sort="title">Title</th>
+                <th data-sort="tag">Category</th>
+                <th data-sort="durationMs">Duration</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- HISTORY TAB -->
+    <section class="top-panel" id="top-history">
+      <div class="card">
+        <div class="row between">
+          <h2>Trend over time</h2>
+          <div class="row">
+            <select id="historyTenantFilter"><option value="">All tenants</option></select>
+            <button id="clearHistoryBtn" class="ghost-btn danger">Clear all history</button>
+          </div>
+        </div>
+        <p class="muted">All scans for this browser are kept in local storage. Pick a tenant to see how its posture has evolved.</p>
+        <canvas id="historyChart" height="100"></canvas>
+        <div id="historyEmpty" class="muted">No history yet.</div>
+      </div>
+
+      <div class="card">
+        <h2>Per-test history</h2>
+        <p class="muted">Click any test below to see how its result has changed across all your scans.</p>
+        <input type="search" id="historyTestSearch" placeholder="Search test id or title..." />
+        <table class="results-table" id="historyTestTable">
+          <thead>
+            <tr>
+              <th>Test</th>
+              <th>Last result</th>
+              <th>Pass rate</th>
+              <th>Times run</th>
+              <th>Last 10</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- TEST CATALOG TAB -->
+    <section class="top-panel" id="top-tests">
+      <div class="card">
+        <h2>Test catalog</h2>
+        <p>SimpleMaester ships with a curated subset of Maester's tests ported to JavaScript. Tests not yet implemented in the browser are listed too so you can see the gap. The full reference lives at <a href="https://maester.dev/docs/tests/" target="_blank" rel="noopener">maester.dev</a>.</p>
+        <div class="row">
+          <input type="search" id="catalogFullSearch" placeholder="Search..." />
+          <select id="catalogFullCategory"><option value="">All categories</option></select>
+          <select id="catalogFullStatus">
+            <option value="">All</option>
+            <option value="implemented">Implemented</option>
+            <option value="stub">Not implemented</option>
+          </select>
+        </div>
+        <div id="catalogFullList" class="catalog-list"></div>
+      </div>
+    </section>
+
+    <!-- DEBUG TAB -->
+    <section class="top-panel" id="top-debug">
+      <div class="card">
+        <div class="row between">
+          <h2>Debug log</h2>
+          <div>
+            <label class="checkbox"><input type="checkbox" id="verboseLog"/> Verbose</label>
+            <button id="clearLogBtn" class="ghost-btn">Clear</button>
+          </div>
+        </div>
+        <pre id="logPanel" class="log-panel"></pre>
+      </div>
+    </section>
+
+    <!-- ABOUT TAB -->
+    <section class="top-panel" id="top-about">
+      <div class="card">
+        <h2>About SimpleMaester</h2>
+        <p>SimpleMaester is part of the <a href="../index.html">LCToolkit</a> by Lieben Consultancy. It is a browser-only port of the excellent <a href="https://maester.dev" target="_blank" rel="noopener">Maester PowerShell module</a> by Merill Fernando, Thomas Naunheim and the many other Maester contributors. All credit goes to them, this tool just tries to make running Maester a little easier for those unfamiliar with PowerShell.</p>
+        <p>The aim is to make all Maester tests run fully through a browser, without compromising on security.</p>
+
+        <h3>What's implemented</h3>
+        <ul>
+          <li><strong>EIDSCA</strong> - the full set of EIDSCA controls</li>
+          <li><strong>Maester core</strong> - a curated set of Entra-focused tests (privileged role MFA, app secret expiry, emergency access account exists, conditional access baselines that can be checked over Graph).</li>
+          <li><strong>CISA</strong></li>
+          <li><strong>CIS</strong></li>
+        </ul>
+
+        <h3>What's NOT implemented yet</h3>
+        <p>Anything that needs Exchange Online, Teams admin, Defender, Intune, Purview, Azure DevOps or Power Platform PowerShell modules is for now listed in the catalog with a "not implemented" tag so the gap is visible. Since Microsoft portals often block CORS, I'll have to implement a tiny proxy first. PRs welcome.</p>
+
+        <h3>Privacy</h3>
+        <p>Tokens stay in your browser's local storage. SimpleMaester does not have a backend and does not phone home. Outbound calls go directly to the Microsoft endpoints needed to run the tests you ran. Scan history is stored in IndexedDB on YOUR machine and never leaves it.</p>
+
+        <h3>Credits</h3>
+        <p>Maester &copy; <a href="https://maester.dev" target="_blank" rel="noopener">maester.dev</a>, MIT licensed. SimpleMaester is an independent web port and is not affiliated with the Maester project. Bugs in SimpleMaester are mine, not theirs.</p>
+      </div>
+    </section>
+  </main>
+
+  <!-- Test detail drawer -->
+  <div id="detailDrawer" class="drawer hidden">
+    <div class="drawer-backdrop"></div>
+    <div class="drawer-panel">
+      <div class="drawer-header">
+        <h2 id="detailTitle"></h2>
+        <button class="icon-btn" id="closeDetail">&times;</button>
+      </div>
+      <div class="drawer-body" id="detailBody"></div>
+    </div>
+  </div>
+
+  <div id="toast" class="toast hidden"></div>
+
+  <script src="src/log.js"></script>
+  <script src="src/concurrency.js"></script>
+  <script src="src/auth.js"></script>
+  <script src="src/api.js"></script>
+  <script src="src/exo.js"></script>
+  <script src="src/storage.js"></script>
+  <script src="src/tests-eidsca.js"></script>
+  <script src="src/tests-native.js"></script>
+  <script src="src/tests-cis.js"></script>
+  <script src="src/tests-cisa.js"></script>
+  <script src="src/tests-intune.js"></script>
+  <script src="src/tests-governance.js"></script>
+  <script src="src/tests-stubs.js"></script>
+  <script src="src/registry.js"></script>
+  <script src="src/runner.js"></script>
+  <script src="src/ui-results.js"></script>
+  <script src="src/ui-history.js"></script>
+  <script src="src/ui-catalog.js"></script>
+  <script src="src/app.js"></script>
+</body>
+</html>

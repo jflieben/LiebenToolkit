@@ -1,0 +1,289 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>SPNRoleMgr - Manage service principal API permissions</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🔑</text></svg>">
+  <link rel="stylesheet" href="style.css" />
+  <script src="https://cdn.jsdelivr.net/npm/@azure/msal-browser@3.27.0/lib/msal-browser.min.js"
+          onerror="window.__msalLoadFailed=true"></script>
+    <!-- Google Analytics (GDPR Compliant) -->
+    <script async src="https://www.googletagmanager.com/gtag/js?id=G-20PYJ8S2G7"></script>
+    <script>
+      window.dataLayer = window.dataLayer || [];
+      function gtag(){dataLayer.push(arguments);}
+      gtag('js', new Date());
+      gtag('config', 'G-20PYJ8S2G7', {
+        'anonymize_ip': true,
+        'storage': 'none',
+        'client_storage': 'none'
+      });
+      gtag('consent', 'default', {
+        'ad_storage': 'denied',
+        'ad_user_data': 'denied',
+        'ad_personalization': 'denied',
+        'analytics_storage': 'denied'
+      });
+    </script>             
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <div class="logo">SR</div>
+      <div>
+        <h1>SPNRoleMgr</h1>
+        <p class="subtitle">Manage API permissions on service principals and managed identities</p>
+      </div>
+    </div>
+    <div class="topbar-actions">
+      <a href="../index.html" class="ghost-btn toolkit-link" title="Back to LCToolkit">&larr; Toolkit</a>
+      <button id="darkToggle" class="icon-btn" title="Toggle dark mode">&#127769;</button>
+      <div id="userBox" class="user-box hidden">
+        <span id="userName"></span>
+        <button id="signOutBtn" class="ghost-btn">Sign out</button>
+      </div>
+    </div>
+  </header>
+
+  <nav class="tabs">
+    <button class="tab active" data-tab="browse">1. Browse SPNs</button>
+    <button class="tab" data-tab="manage">2. Manage permissions</button>
+    <button class="tab" data-tab="debug">Debug</button>
+    <button class="tab" data-tab="about">About</button>
+  </nav>
+
+  <main>
+    <!-- BROWSE TAB -->
+    <section class="tab-panel active" id="tab-browse">
+      <div class="card" id="connectCard">
+        <h2>Connect to your tenant</h2>
+        <p>SPNRoleMgr runs entirely in your browser. It signs you in with Microsoft (PKCE) and queries Microsoft Graph as you. No backend, no telemetry, no data leaves your browser.</p>
+        <p>Required delegated permissions:</p>
+        <ul>
+          <li><code>Application.Read.All</code> - list service principals and the API surfaces they consume</li>
+          <li><code>Directory.Read.All</code> - resolve owners and other directory metadata</li>
+          <li><code>User.Read</code> - sign-in identity</li>
+          <li><code>AppRoleAssignment.ReadWrite.All</code> <span class="muted">(only when you actually save changes)</span></li>
+          <li><code>DelegatedPermissionGrant.ReadWrite.All</code> <span class="muted">(only when you actually save changes)</span></li>
+        </ul>
+        <p>To grant tenant-wide application permissions or delegated grants for all users, your account also needs a privileged role: <strong>Privileged Role Administrator</strong>, <strong>Cloud Application Administrator</strong>, <strong>Application Administrator</strong> or <strong>Global Administrator</strong>. Without one of these, Graph will return 403 on save.</p>
+        <button id="signInBtn" class="primary-btn">Sign in with Microsoft</button>
+      </div>
+
+      <div class="card hidden" id="browseCard">
+        <h2>Service principals</h2>
+        <div class="row">
+          <button id="loadSpnsBtn" class="primary-btn">Load all service principals</button>
+          <span id="loadStatus" class="muted"></span>
+        </div>
+
+        <div id="progressBox" class="progress-box hidden">
+          <div class="progress-header">
+            <span id="progressLabel">Loading...</span>
+            <span id="progressEta"></span>
+          </div>
+          <div class="progress-bar"><div id="progressFill"></div></div>
+          <div class="progress-footer">
+            <span id="progressCount">0/0</span>
+            <button id="cancelBtn" class="ghost-btn">Cancel</button>
+          </div>
+        </div>
+
+        <div id="spnFilterRow" class="row hidden">
+          <input type="search" id="spnFilter" placeholder="Filter by name or appId..." />
+          <select id="typeFilter">
+            <option value="">All types</option>
+          </select>
+          <label class="checkbox" title="Microsoft owns about 250 first-party service principals you usually don't want to touch."><input type="checkbox" id="hideMs" checked/> Hide Microsoft first-party SPNs</label>
+        </div>
+
+        <div id="spnTableWrap" class="table-wrap hidden">
+          <table class="data-table sortable" id="spnTable">
+            <thead>
+              <tr>
+                <th data-sort="name">Display name</th>
+                <th data-sort="type">Type</th>
+                <th data-sort="appId">AppId</th>
+                <th data-sort="enabled">Enabled</th>
+                <th>Action</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+        <p id="spnHint" class="table-hint hidden"></p>
+      </div>
+    </section>
+
+    <!-- MANAGE TAB -->
+    <section class="tab-panel" id="tab-manage">
+      <div class="card hidden" id="noSelectionCard">
+        <p class="muted">Pick a service principal on the Browse tab to manage its permissions.</p>
+      </div>
+
+      <div class="card hidden" id="spnHeaderCard">
+        <div class="row between">
+          <div>
+            <h2 id="selSpnName" style="margin-bottom:4px"></h2>
+            <div class="muted" id="selSpnMeta"></div>
+          </div>
+          <button id="refreshPermsBtn" class="ghost-btn">Refresh</button>
+        </div>
+      </div>
+
+      <div class="card hidden" id="appRolesCard">
+        <h3>Application permissions <span class="muted" id="appRolesCount"></span></h3>
+        <p class="table-hint">These are <em>tenant-wide</em> app roles granted to this service principal. They allow the SPN to act without a signed-in user.</p>
+        <div class="table-wrap">
+          <table class="data-table" id="appRolesTable">
+            <thead>
+              <tr>
+                <th>API</th>
+                <th>Permission</th>
+                <th>Description</th>
+                <th>Granted</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+        <p id="appRolesEmpty" class="table-hint hidden">No application permissions granted.</p>
+      </div>
+
+      <div class="card hidden" id="oauth2Card">
+        <h3>Delegated permissions <span class="muted" id="oauth2Count"></span></h3>
+        <p class="table-hint">Delegated grants tied to a signed-in user. <strong>AllPrincipals</strong> means the grant covers every user in the tenant; <strong>Principal</strong> is a single-user consent.</p>
+        <div class="table-wrap">
+          <table class="data-table" id="oauth2Table">
+            <thead>
+              <tr>
+                <th>API</th>
+                <th>Scope(s)</th>
+                <th>Consent type</th>
+                <th>Principal</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+        <p id="oauth2Empty" class="table-hint hidden">No delegated grants on this SPN.</p>
+      </div>
+
+      <div class="card hidden" id="addCard">
+        <h3>Add permission</h3>
+        <div class="row">
+          <label>API:
+            <input type="search" id="apiSearch" list="apiSuggestions" placeholder="Microsoft Graph, SharePoint Online, ..." style="min-width:280px"/>
+            <datalist id="apiSuggestions"></datalist>
+          </label>
+          <button id="loadApiBtn" class="ghost-btn" type="button">Load API permissions</button>
+          <span id="apiLoadStatus" class="muted"></span>
+        </div>
+        <div class="row" id="apiKindRow">
+          <label class="checkbox"><input type="radio" name="permKind" value="AppRole" checked/> Application permissions</label>
+          <label class="checkbox"><input type="radio" name="permKind" value="OAuth2"/> Delegated permissions</label>
+          <input type="search" id="permFilter" placeholder="Filter permissions..." />
+        </div>
+        <div class="table-wrap">
+          <table class="data-table" id="addPermTable">
+            <thead>
+              <tr>
+                <th style="width:32px"></th>
+                <th>Permission</th>
+                <th>Type</th>
+                <th>Description</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+        <div class="action-bar">
+          <span class="grow"><strong id="addSelCount">0</strong> permission(s) selected</span>
+          <button id="addPermsBtn" class="primary-btn" disabled>Grant selected</button>
+        </div>
+        <ul id="addResults" class="action-result-list hidden"></ul>
+      </div>
+    </section>
+
+    <!-- DEBUG TAB -->
+    <section class="tab-panel" id="tab-debug">
+      <div class="card">
+        <div class="row between">
+          <h2>Debug log</h2>
+          <div>
+            <label class="checkbox"><input type="checkbox" id="verboseLog"/> Verbose</label>
+            <button id="clearLogBtn" class="ghost-btn">Clear</button>
+          </div>
+        </div>
+        <pre id="logPanel" class="log-panel"></pre>
+      </div>
+    </section>
+
+    <!-- ABOUT TAB -->
+    <section class="tab-panel" id="tab-about">
+      <div class="card">
+        <h2>About SPNRoleMgr</h2>
+        <p>SPNRoleMgr is part of the <a href="../index.html">LCToolkit</a> by Lieben Consultancy. It lets you inspect and modify the API permissions of any service principal or managed identity in your tenant. The user interface mimics the "Add a permission" experience on Entra app registrations, but works for SPNs that have no app registration in your tenant (managed identities, federated apps, multi-tenant apps).</p>
+
+        <h3>What it can do</h3>
+        <ul>
+          <li>Browse every service principal in the tenant with quick filters for type and Microsoft first-party.</li>
+          <li>For a chosen SPN, list both application permissions (<code>appRoleAssignments</code>) and delegated grants (<code>oauth2PermissionGrants</code>) it currently has.</li>
+          <li>Revoke any single permission (per-permission delete, not per-API).</li>
+          <li>Pick any API exposed in the tenant (Microsoft Graph, SharePoint, Exchange, Azure-Storage, third-party APIs you've consented to, etc.) and grant either application or delegated permissions on it.</li>
+        </ul>
+
+        <h3>How it works</h3>
+        <ul>
+          <li><strong>Listing SPNs</strong>: <code>GET /servicePrincipals?$top=999</code> with <code>ConsistencyLevel: eventual</code> for max throughput.</li>
+          <li><strong>Listing permissions</strong>: <code>GET /servicePrincipals/{id}/appRoleAssignments</code> + <code>GET /servicePrincipals/{id}/oauth2PermissionGrants</code> in parallel.</li>
+          <li><strong>Resolving names</strong>: when an assignment points at a resource SPN we don't have cached, we look up <code>GET /servicePrincipals/{resourceId}</code> to translate the role/scope GUID into a human-readable name.</li>
+          <li><strong>Granting</strong>: for application permissions we POST to <code>/servicePrincipals/{spId}/appRoleAssignments</code> with <code>{principalId, resourceId, appRoleId}</code>. For delegated, we look for an existing <code>oauth2PermissionGrants</code> entry with the same client+resource+consentType and PATCH its <code>scope</code> string; if none exists we POST a new one with <code>consentType=AllPrincipals</code>.</li>
+          <li><strong>Revoking</strong>: DELETE on the assignment or grant id; for delegated, if removing the last scope from a grant we delete the grant entirely.</li>
+        </ul>
+
+        <h3>What it does NOT do</h3>
+        <ul>
+          <li>It does not change the application's own published API surface (i.e. it doesn't edit the resource SPN's <code>appRoles</code> or <code>oauth2PermissionScopes</code>). To do that, edit the underlying app registration in Entra.</li>
+          <li>It does not assign Entra directory roles (Global Admin, Reader, etc.). Use Entra for that.</li>
+          <li>It does not configure Conditional Access, app authentication policies, or password/certificate credentials.</li>
+        </ul>
+
+        <h3>Required permissions</h3>
+        <p>Read-only browsing only needs <code>Application.Read.All</code> + <code>Directory.Read.All</code>. The first time you save a change SPNRoleMgr asks for <code>AppRoleAssignment.ReadWrite.All</code> and <code>DelegatedPermissionGrant.ReadWrite.All</code>. Granting tenant-wide also requires you to hold a privileged Entra role (Privileged Role Admin, Cloud App Admin, Application Admin or Global Admin); without one, Graph returns 403 on the save.</p>
+      </div>
+    </section>
+  </main>
+
+  <div id="toast" class="toast hidden"></div>
+
+  <!-- Confirmation modal for destructive actions -->
+  <div id="confirmModal" class="modal hidden" role="dialog">
+    <div class="modal-backdrop"></div>
+    <div class="modal-panel">
+      <div class="modal-header">
+        <h3 id="confirmTitle">Confirm</h3>
+        <button id="confirmCloseBtn" class="icon-btn">&times;</button>
+      </div>
+      <div class="modal-body" id="confirmBody"></div>
+      <div class="modal-header" style="border-top:1px solid var(--border); border-bottom:none">
+        <span></span>
+        <div>
+          <button id="confirmCancelBtn" class="ghost-btn">Cancel</button>
+          <button id="confirmOkBtn" class="danger-btn">Confirm</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="src/log.js"></script>
+  <script src="src/concurrency.js"></script>
+  <script src="src/auth.js"></script>
+  <script src="src/graph.js"></script>
+  <script src="src/spns.js"></script>
+  <script src="src/app.js"></script>
+</body>
+</html>

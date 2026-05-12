@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>SimpleZTA - Browser Zero Trust Assessment</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🔒</text></svg>">
+  <link rel="stylesheet" href="style.css" />
+  <script src="https://cdn.jsdelivr.net/npm/@azure/msal-browser@3.27.0/lib/msal-browser.min.js" onerror="window.__msalLoadFailed=true"></script>
+    <!-- Google Analytics (GDPR Compliant) -->
+    <script async src="https://www.googletagmanager.com/gtag/js?id=G-20PYJ8S2G7"></script>
+    <script>
+      window.dataLayer = window.dataLayer || [];
+      function gtag(){dataLayer.push(arguments);}
+      gtag('js', new Date());
+      gtag('config', 'G-20PYJ8S2G7', {
+        'anonymize_ip': true,
+        'storage': 'none',
+        'client_storage': 'none'
+      });
+      gtag('consent', 'default', {
+        'ad_storage': 'denied',
+        'ad_user_data': 'denied',
+        'ad_personalization': 'denied',
+        'analytics_storage': 'denied'
+      });
+    </script>     
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <div class="logo">SZ</div>
+      <div>
+        <h1>SimpleZTA</h1>
+        <p class="subtitle">Browser-based Zero Trust Assessment for Microsoft 365</p>
+      </div>
+    </div>
+    <div class="topbar-actions">
+      <button id="toolkitBtn" class="ghost-btn" type="button">Toolkit</button>
+      <button id="themeBtn" class="ghost-btn" title="Toggle theme">Theme</button>
+      <div id="userBox" class="hidden user-box">
+        <span id="userText"></span>
+        <button id="signOutBtn" class="ghost-btn">Sign out</button>
+      </div>
+    </div>
+  </header>
+
+  <nav class="tabs">
+    <button class="tab active" data-tab="run">Run</button>
+    <button class="tab" data-tab="results">Results</button>
+    <button class="tab" data-tab="history">History</button>
+    <button class="tab" data-tab="catalog">Catalog</button>
+    <button class="tab" data-tab="about">About</button>
+    <button class="tab" data-tab="debug">Debug</button>
+  </nav>
+
+  <main>
+    <section id="panel-run" class="panel active">
+      <div id="connectCard" class="card">
+        <h2>Connect</h2>
+        <p>SimpleZTA runs fully client-side in your browser and uses delegated authentication with Microsoft Graph.</p>
+        <p>Required scopes are requested up front. If additional scopes are needed for specific controls, consent is requested once.</p>
+        <button id="signInBtn" class="primary-btn">Sign in with Microsoft</button>
+      </div>
+
+      <div id="runCard" class="card hidden">
+        <div class="row between">
+          <h2>Run assessment</h2>
+          <div class="row">
+            <label for="pillarSelect">Pillar</label>
+            <select id="pillarSelect">
+              <option value="All">All</option>
+              <option value="Identity">Identity</option>
+              <option value="Devices">Devices</option>
+              <option value="Network">Network</option>
+              <option value="Data">Data</option>
+              <option value="Infrastructure">Infrastructure</option>
+              <option value="SecOps">SecOps</option>
+              <option value="AI">AI</option>
+            </select>
+            <label for="tenantTypeSelect">Tenant type</label>
+            <select id="tenantTypeSelect">
+              <option value="">All</option>
+              <option value="Workforce">Workforce</option>
+              <option value="External">External</option>
+            </select>
+            <label for="riskSelect">Risk</label>
+            <select id="riskSelect">
+              <option value="">All</option>
+              <option value="High">High</option>
+              <option value="Medium">Medium</option>
+              <option value="Low">Low</option>
+            </select>
+            <label for="implementationSelect">Implementation</label>
+            <select id="implementationSelect">
+              <option value="">Any</option>
+              <option value="full">Full</option>
+              <option value="partial">Partial</option>
+              <option value="none">Planned</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="row">
+          <input id="searchBox" type="search" placeholder="Filter by id, title, category" />
+          <button id="selectVisibleBtn" class="ghost-btn">Select visible</button>
+          <button id="clearSelectionBtn" class="ghost-btn">Clear selection</button>
+          <button id="runBtn" class="primary-btn">Run selected</button>
+          <button id="cancelBtn" class="ghost-btn hidden">Cancel</button>
+        </div>
+
+        <div id="runStats" class="muted"></div>
+        <div id="testList" class="test-list"></div>
+      </div>
+
+      <div id="progressCard" class="card hidden">
+        <h2>Running</h2>
+        <div class="progress-bar"><span id="progressFill"></span></div>
+        <div id="progressText" class="muted"></div>
+        <div id="progressMeta" class="muted"></div>
+        <div id="subTestProgress" class="muted"></div>
+        <pre id="progressLog" class="log"></pre>
+      </div>
+    </section>
+
+    <section id="panel-results" class="panel">
+      <div class="card">
+        <div class="row between">
+          <h2>Scan results</h2>
+          <div class="row">
+            <select id="scanPicker"></select>
+            <button id="exportJsonBtn" class="ghost-btn">Export JSON</button>
+            <button id="exportCsvBtn" class="ghost-btn">Export CSV</button>
+          </div>
+        </div>
+        <div id="scanMeta" class="muted"></div>
+        <div id="summaryGrid" class="summary-grid"></div>
+        <div id="resultsCharts" class="results-charts"></div>
+      </div>
+
+      <div class="card">
+        <div class="row">
+          <input id="resultSearch" type="search" placeholder="Filter results" />
+          <select id="statusFilter">
+            <option value="">All status</option>
+            <option value="Passed">Passed</option>
+            <option value="Failed">Failed</option>
+            <option value="Skipped">Skipped</option>
+            <option value="Error">Error</option>
+          </select>
+          <select id="riskFilter">
+            <option value="">All risks</option>
+            <option value="High">High</option>
+            <option value="Medium">Medium</option>
+            <option value="Low">Low</option>
+          </select>
+        </div>
+        <table class="results-table" id="resultsTable">
+          <thead>
+            <tr>
+              <th>Status</th>
+              <th>ID</th>
+              <th>Title</th>
+              <th>Pillar</th>
+              <th>Risk</th>
+              <th>Duration</th>
+              <th>Docs</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+
+    </section>
+
+    <section id="panel-history" class="panel">
+      <div class="card">
+        <div class="row between">
+          <h2>History and trend</h2>
+          <button id="clearHistoryBtn" class="ghost-btn danger">Clear local history</button>
+        </div>
+        <div id="historySummary"></div>
+      </div>
+      <div class="card">
+        <h2>Per-test movement</h2>
+        <input id="historySearch" type="search" placeholder="Search per-test trend" />
+        <table class="results-table" id="historyTable">
+          <thead>
+            <tr>
+              <th>Test</th>
+              <th>Last</th>
+              <th>Pass rate</th>
+              <th>Runs</th>
+              <th>Recent</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </section>
+
+    <section id="panel-catalog" class="panel">
+      <div class="card">
+        <h2>Test catalog</h2>
+        <p class="muted">Catalog is loaded from Microsoft ZeroTrustAssessment metadata in the bundled PowerShell module.</p>
+        <div id="catalogStats"></div>
+      </div>
+    </section>
+
+    <section id="panel-about" class="panel">
+      <div class="card">
+        <h2>About</h2>
+        <p>SimpleZTA is a browser-native implementation inspired by and mapped to the Microsoft ZeroTrustAssessment PowerShell module.</p>
+        <p>Copyright and credit: Microsoft ZeroTrustAssessment module is copyright Microsoft Corporation. This tool provides a client-side companion UX for delegated Graph-based assessment workflows.</p>
+        <p>SimpleZTA stores scan history only in your local browser storage.</p>
+      </div>
+    </section>
+
+    <section id="panel-debug" class="panel">
+      <div class="card">
+        <div class="row between">
+          <h2>Debug</h2>
+          <button id="clearLogBtn" class="ghost-btn">Clear log</button>
+        </div>
+        <pre id="debugLog" class="log"></pre>
+      </div>
+    </section>
+  </main>
+
+  <div id="toast" class="toast hidden"></div>
+
+  <div id="resultModal" class="modal hidden" aria-hidden="true">
+    <div id="resultModalBackdrop" class="modal-backdrop"></div>
+    <div class="modal-dialog" role="dialog" aria-modal="true" aria-labelledby="resultModalTitle">
+      <div class="modal-header">
+        <h2 id="resultModalTitle">Result detail</h2>
+        <button id="closeResultModalBtn" class="ghost-btn" type="button">Close</button>
+      </div>
+      <div id="detailView" class="detail"></div>
+    </div>
+  </div>
+
+  <script src="src/log.js"></script>
+  <script src="src/auth.js"></script>
+  <script src="src/api.js"></script>
+  <script src="src/storage.js"></script>
+  <script src="src/tests-impl.js"></script>
+  <script src="src/registry.js"></script>
+  <script src="src/runner.js"></script>
+  <script src="src/ui-results.js"></script>
+  <script src="src/ui-history.js"></script>
+  <script src="src/app.js"></script>
+</body>
+</html>
