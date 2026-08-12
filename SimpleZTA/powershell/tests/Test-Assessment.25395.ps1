@@ -1,0 +1,493 @@
+<#
+.SYNOPSIS
+    Validates that Entra Private Access applications enforce least-privilege
+    using granular network segments and Custom Security Attributes (CSA).
+
+.DESCRIPTION
+    This test evaluates Private Access applications to ensure segmentation
+    follows least-privilege principles and supports attribute-based
+    Conditional Access targeting.
+
+.NOTES
+    Test ID: 25395
+    Category: Global Secure Access
+    Required APIs: applications (beta), servicePrincipals (beta), conditionalAccess/policies (beta)
+#>
+
+function Test-Assessment-25395 {
+
+    [ZtTest(
+    	Category = 'Global Secure Access',
+    	ImplementationCost = 'High',
+    	Service = ('Graph'),
+    	MinimumLicense = ('Entra_Premium_Private_Access'),
+    	CompatibleLicense = ('Entra_Premium_Private_Access'),
+    	Pillar = 'Network',
+    	RiskLevel = 'High',
+    	SfiPillar = 'Protect networks',
+    	TenantType = ('Workforce'),
+    	TestId = 25395,
+    	Title = 'Entra Private Access Application segments are defined to enforce least-privilege access',
+    	UserImpact = 'Medium'
+    )]
+    [CmdletBinding()]
+    param(
+        $Database
+    )
+
+    # Active Directory well-known ports
+    $AD_WELL_KNOWN_PORTS = @('53','88','135','389','445','464','636','3268','3269')
+
+    # Portal link templates
+    $portalLinkAppList = 'https://entra.microsoft.com/#view/Microsoft_AAD_IAM/EnterpriseApplicationListBladeV3/fromNav/globalSecureAccess/applicationType/GlobalSecureAccessApplication'
+    $portalLinkAppTemplate = 'https://entra.microsoft.com/#view/Microsoft_AAD_RegisteredApps/ApplicationMenuBlade/~/overview/appId/{0}'
+
+    #region Helper Functions
+
+    function Test-HasCustomSecurityAttributes {
+        <#
+        .SYNOPSIS
+            Checks if customSecurityAttributes is non-null and non-empty.
+        .DESCRIPTION
+            Graph API returns an empty object {} when CSAs are removed, which
+            evaluates as $true in PowerShell. This function properly checks
+            whether actual CSA values are present.
+        .OUTPUTS
+            System.Boolean - True if CSAs are assigned, false otherwise.
+        #>
+        param($Csa)
+        if ($null -eq $Csa) { return $false }
+        # Handle empty string
+        if ($Csa -is [string]) {
+            if ([string]::IsNullOrWhiteSpace($Csa)) { return $false }
+            # Check for empty JSON object
+            if ($Csa.Trim() -eq '{}') { return $false }
+            # Non-empty string (likely JSON with data)
+            return $true
+        }
+        # Handle hashtable
+        if ($Csa -is [hashtable]) { return $Csa.Count -gt 0 }
+        # Handle PSCustomObject or other objects - check for properties
+        $props = @($Csa.PSObject.Properties | Where-Object { $_.MemberType -eq 'NoteProperty' })
+        return $props.Count -gt 0
+    }
+
+    function Test-IsBroadCidr {
+        <#
+        .SYNOPSIS
+            Checks if a CIDR range is overly permissive (broader than /24).
+        .DESCRIPTION
+            CIDR ranges with prefix length < 24 are treated as overly permissive.
+            This includes /23 (512 IPs), /22 (1,024 IPs), and any broader ranges.
+        .OUTPUTS
+            System.Boolean
+            True  - CIDR prefix length < 24
+            False - CIDR prefix length >= 24 or invalid format
+        #>
+        param([string]$Cidr)
+        if ($Cidr -match '/(\d+)$') { return ([int]$matches[1] -lt 24) }
+        return $false
+    }
+
+    function Test-IsBroadIpRange {
+        <#
+        .SYNOPSIS
+            Checks if an IP range spans more than 256 addresses.
+        .OUTPUTS
+            System.Boolean - True if range exceeds 256 addresses, false otherwise.
+        #>
+        param([string]$Range)
+        if ($Range -match '^([\d\.]+)-([\d\.]+)$') {
+            $start = [System.Net.IPAddress]::Parse($matches[1]).GetAddressBytes()
+            $end   = [System.Net.IPAddress]::Parse($matches[2]).GetAddressBytes()
+            [array]::Reverse($start)
+            [array]::Reverse($end)
+            return (([BitConverter]::ToUInt32($end,0) - [BitConverter]::ToUInt32($start,0) + 1) -gt 256)
+        }
+        return $false
+    }
+
+    function Test-IsBroadPortRange {
+        <#
+        .SYNOPSIS
+            Checks if a port range is overly broad (>10 ports or fully open).
+        .OUTPUTS
+            System.Boolean - True if port range is considered too broad, false otherwise.
+        #>
+        param([string]$Port)
+
+        # Maximum number of ports allowed in a range before it is considered "broad".
+        $BroadPortRangeThreshold = 10
+
+        if ($Port -eq '1-65535') { return $true }
+        if ($Port -match '^(\d+)-(\d+)$' -and (([int]$matches[2] - [int]$matches[1] + 1) -gt $BroadPortRangeThreshold)) { return $true }
+        return $false
+    }
+
+    function Test-IsAdRpcException {
+        <#
+        .SYNOPSIS
+            Checks if a port range is a valid Active Directory RPC ephemeral port exception.
+        .OUTPUTS
+            System.Boolean - True if port is a valid AD RPC exception, false otherwise.
+        #>
+        param([string]$AppName, [string]$Port)
+        if ($AppName -match 'Active Directory|Domain Controller|AD DS') {
+            if ($Port -in @('49152-65535','1025-5000')) { return $true }
+        }
+        return $false
+    }
+
+    function Test-IsAdWellKnownPort {
+        <#
+        .SYNOPSIS
+            Checks if a port is a well-known Active Directory port.
+        .OUTPUTS
+            System.Boolean - True if port is a valid AD well-known port, false otherwise.
+        #>
+        param([string]$Port)
+        if ($Port -match '^(\d+)-(\d+)$') {
+            return ($matches[1] -eq $matches[2] -and $AD_WELL_KNOWN_PORTS -contains $matches[1])
+        }
+        return ($AD_WELL_KNOWN_PORTS -contains $Port)
+    }
+
+    function Test-ContainsAdWellKnownPort {
+        <#
+        .SYNOPSIS
+            Checks if a port range contains any well-known Active Directory ports.
+        .DESCRIPTION
+            Evaluates whether a port range (e.g., '50-500') includes any of the
+            well-known AD ports (53, 88, 135, 389, 445, 464, 636, 3268, 3269).
+        .OUTPUTS
+            System.Boolean - True if range contains AD ports, false otherwise.
+        #>
+        param([string]$Port)
+        if ($Port -match '^(\d+)-(\d+)$') {
+            $start = [int]$matches[1]
+            $end = [int]$matches[2]
+            foreach ($adPort in $AD_WELL_KNOWN_PORTS) {
+                if ([int]$adPort -ge $start -and [int]$adPort -le $end) {
+                    return $true
+                }
+            }
+        }
+        return $false
+    }
+
+    #endregion Helper Functions
+
+    #region Data Collection
+
+    Write-PSFMessage '🟦 Start' -Tag Test -Level VeryVerbose
+    $activity = 'Evaluating Private Access application segmentation'
+    Write-ZtProgress -Activity $activity -Status 'Querying applications'
+
+    # Query Q1: List all Private Access enterprise applications
+    $apps = $null
+    if ($Database) {
+        Write-PSFMessage 'Querying database for Private Access applications' -Tag Test -Level VeryVerbose
+        try {
+            $sql = @"
+SELECT id, appId, displayName, tags
+FROM Application
+WHERE list_contains(tags, 'PrivateAccessNonWebApplication')
+"@
+            $apps = @(Invoke-DatabaseQuery -Database $Database -Sql $sql -AsCustomObject)
+            Write-PSFMessage "Found $($apps.Count) Private Access application(s) from database" -Tag Test -Level VeryVerbose
+        }
+        catch {
+            Write-PSFMessage "Database query failed: $_" -Tag Test -Level Warning
+            $apps = $null
+        }
+    }
+
+    # Query Q2: Retrieve service principals with Custom Security Attributes
+    $servicePrincipals = @()
+    if ($Database) {
+        Write-PSFMessage 'Querying database for service principals' -Tag Test -Level VeryVerbose
+        try {
+            $sql = @"
+SELECT id, appId, displayName, customSecurityAttributes
+FROM ServicePrincipal
+WHERE list_contains(tags, 'PrivateAccessNonWebApplication')
+"@
+            $servicePrincipals = @(Invoke-DatabaseQuery -Database $Database -Sql $sql -AsCustomObject)
+            Write-PSFMessage "Found $($servicePrincipals.Count) service principal(s) from database" -Tag Test -Level VeryVerbose
+        }
+        catch {
+            Write-PSFMessage "Database query for service principals failed: $_" -Tag Test -Level Warning
+            $servicePrincipals = @()
+        }
+    }
+
+    # Query Q3: Retrieve enabled Conditional Access policies
+    $caPolicies     = $null
+    $filterPolicies = @()
+
+    if ($null -ne $apps -and $apps.Count -gt 0) {
+
+        Write-ZtProgress -Activity $activity -Status 'Checking Conditional Access policies'
+
+        $allCAPolicies = Get-ZtConditionalAccessPolicy
+        $caPolicies    = $allCAPolicies | Where-Object { $_.state -eq 'enabled' }
+
+        if ($caPolicies) {
+            $filterPolicies = $caPolicies | Where-Object {
+                $_.conditions.applications.applicationFilter
+            }
+        }
+    }
+
+    #endregion Data Collection
+
+    #region Assessment Logic
+
+    # Initialize evaluation containers
+    $passed             = $false
+    $customStatus       = $null
+    $testResultMarkdown = ''
+    $broadAccessApps    = @()
+    $appsWithoutCSA     = @()
+    $segmentFindings    = @()
+    $appResults         = @()
+    # Step 1: Check if any per-app Private Access applications exist
+    if ($null -ne $apps -and $apps.Count -gt 0) {
+
+        Write-ZtProgress -Activity $activity -Status 'Evaluating application segments'
+
+        foreach ($app in $apps) {
+
+            # Query Q4: Retrieve application segments for the current app
+            try {
+                $segments = Invoke-ZtGraphRequest -RelativeUri "applications/$($app.id)/onPremisesPublishing/segmentsConfiguration/microsoft.graph.ipSegmentConfiguration/applicationSegments" -ApiVersion beta -ErrorAction Stop
+            }
+            catch {
+                Write-PSFMessage -Level Warning -Message "Failed to retrieve segments for app $($app.displayName): $_"
+                $segments = $null
+            }
+
+            $hasBroadSegment = $false
+            $hasWildcardDns  = $false
+            $hasBroadPorts   = $false
+            $segmentSummary  = @()
+
+            if (-not $segments -or $segments.Count -eq 0) {
+                $segmentSummary = @('No segments configured')
+            }
+
+            foreach ($segment in $segments) {
+
+                # Step 2: Evaluate segment destination granularity
+                $issues = @()
+
+                $segmentSummary += "$($segment.destinationHost):$($segment.ports -join ',')"
+
+                switch ($segment.destinationType) {
+                    'dnsSuffix' {
+                        $hasWildcardDns = $true
+                        $issues += 'Wildcard DNS'
+                    }
+                    'ipRangeCidr' {
+                        if (Test-IsBroadCidr $segment.destinationHost) {
+                            $hasBroadSegment = $true
+                            $issues += 'Broad CIDR'
+                        }
+                    }
+                    'ipRange' {
+                        if (Test-IsBroadIpRange $segment.destinationHost) {
+                            $hasBroadSegment = $true
+                            $issues += 'Broad IP range'
+                        }
+                    }
+                }
+
+                # Step 3: Evaluate port breadth with AD RPC exceptions
+                foreach ($port in $segment.ports) {
+                    if (Test-IsBroadPortRange $port) {
+                        # Check if this is a valid AD RPC exception or exact AD well-known port
+                        if (-not (Test-IsAdRpcException -AppName $app.displayName -Port $port) `
+                            -and -not (Test-IsAdWellKnownPort $port)) {
+                            $hasBroadPorts = $true
+                            $issues += 'Broad port range'
+
+                            # Additionally flag if the broad range contains AD well-known ports
+                            if (Test-ContainsAdWellKnownPort $port) {
+                                $issues += 'Broad range overlaps AD ports'
+                            }
+                        }
+                    }
+                }
+
+                # Step 4: Flag dual-protocol usage combined with broad scope
+                if ($segment.protocol -eq 'tcp,udp' -and $issues.Count -gt 0) {
+                    $hasBroadPorts = $true
+                    $issues += 'Dual protocol with broad scope'
+                }
+
+                if ($issues.Count -gt 0) {
+                    $segmentFindings += [PSCustomObject]@{
+                        AppName     = $app.displayName
+                        AppId       = $app.appId
+                        SegmentId   = $segment.id
+                        Issue       = ($issues -join ', ')
+                        Destination = $segment.destinationHost
+                        Ports       = ($segment.ports -join ', ')
+                    }
+                }
+            }
+
+            # Step 5: Identify apps with overly broad access
+            if ($hasBroadSegment -or $hasWildcardDns -or $hasBroadPorts) {
+                $broadAccessApps += $app
+            }
+
+            # Step 6: Check CSA presence for the app
+            $sp = $servicePrincipals | Where-Object { $_.appId -eq $app.appId }
+            $hasCSA = Test-HasCustomSecurityAttributes $sp.customSecurityAttributes
+            if (-not $hasCSA) {
+                $appsWithoutCSA += $app
+            }
+
+            # Determine per-app status including Manual Review when filterPolicies exist
+            $appStatus = if ($hasBroadSegment -or $hasWildcardDns -or $hasBroadPorts) {
+                'Fail – Broad segment'
+            } elseif (-not $hasCSA) {
+                'Investigate – Missing CSA'
+            } elseif ($filterPolicies.Count -gt 0) {
+                'Manual Review'
+            } else {
+                'Pass'
+            }
+
+            $appResults += [PSCustomObject]@{
+                AppName      = $app.displayName
+                AppObjectId  = $app.id
+                AppId        = $app.appId
+                SegmentType  = if ($segments) { ($segments.destinationType | Select-Object -Unique) -join ', ' } else { 'None' }
+                SegmentScope = ($segmentSummary -join ', ')
+                HasCSA       = $hasCSA
+                Status       = $appStatus
+            }
+
+
+        }
+    }
+
+    # Step 7: Determine overall test result (Pass / Fail / Investigate)
+
+    if (-not $apps -or $apps.Count -eq 0) {
+
+        $customStatus = 'Investigate'
+        $testResultMarkdown =
+            "⚠️ No per-app Private Access applications configured. Please review the documentation on how to configure Private Access applications with granular network segments.`n`n%TestResult%"
+
+    }
+    elseif ($broadAccessApps.Count -eq 0 -and $appsWithoutCSA.Count -eq 0) {
+
+        if ($filterPolicies.Count -gt 0) {
+
+            # Pass conditions met but filterPolicies exist - requires manual review
+            $customStatus = 'Investigate'
+            $testResultMarkdown =
+                "⚠️ Private Access applications exist with appropriate segmentation and CSAs assigned. CA policies use applicationFilter targeting. Manual review required to verify CA policy coverage for these apps.`n`n%TestResult%"
+
+        }
+        else {
+
+            $passed = $true
+            $testResultMarkdown =
+                "✅ All Private Access applications are configured with granular network segments and are protected by Conditional Access policies using Custom Security Attributes, enforcing least-privilege access.`n`n%TestResult%"
+
+        }
+
+    }
+    elseif ($broadAccessApps.Count -gt 0) {
+
+        $passed = $false
+        $testResultMarkdown =
+            "❌ One or more Private Access applications have overly broad network segments, potentially allowing excessive network access.`n`n%TestResult%"
+
+    }
+    else {
+
+        # broadAccessApps = 0 but appsWithoutCSA > 0 → Investigate
+        $customStatus = 'Investigate'
+        $testResultMarkdown =
+            "⚠️ Private Access applications are missing Custom Security Attributes. Consider adding Custom Security Attributes to enable attribute-based Conditional Access targeting.`n`n%TestResult%"
+
+    }
+
+    #endregion Assessment Logic
+
+    #region Report Generation
+
+    $mdInfo  = "`n## Summary`n`n"
+    $mdInfo += "| Metric | Value |`n|---|---|`n"
+    $mdInfo += "| Total Private Access apps | $($apps.Count) |`n"
+    $mdInfo += "| Apps with broad segments | $($broadAccessApps.Count) |`n"
+    $mdInfo += "| Apps with CSA assigned | $($apps.Count - $appsWithoutCSA.Count) |`n"
+    $mdInfo += "| Apps without CSA | $($appsWithoutCSA.Count) |`n"
+    $mdInfo += "| CA policies using applicationFilter | $($filterPolicies.Count) |`n`n"
+
+    if ($appResults.Count -gt 0) {
+        $tableRows = ""
+        $formatTemplate = @'
+## [Application details]({0})
+
+| App name | Segment type | Segment scope | Has CSAs | Status |
+|---|---|---|---|---|
+{1}
+
+'@
+        foreach ($r in $appResults) {
+            $appLink = $portalLinkAppTemplate -f $r.AppId
+            $linkedAppName = "[{0}]({1})" -f (Get-SafeMarkdown $r.AppName), $appLink
+            $hasCSAText = if ($r.HasCSA) {'Yes'} else {'No'}
+            $segmentTypeSafe = Get-SafeMarkdown $r.SegmentType
+            $segmentScopeSafe = Get-SafeMarkdown $r.SegmentScope
+            $tableRows += "| $linkedAppName | $segmentTypeSafe | $segmentScopeSafe | $hasCSAText | $($r.Status) |`n"
+        }
+        $mdInfo += $formatTemplate -f $portalLinkAppList, $tableRows
+    }
+
+
+    if ($segmentFindings.Count -gt 0) {
+        $tableRows = ""
+        $formatTemplate = @'
+## Segment findings
+
+| App name | Issue | Destination | Ports | Recommendation |
+|---|---|---|---|---|
+{0}
+
+'@
+        foreach ($f in $segmentFindings) {
+            $appLink = $portalLinkAppTemplate -f $f.AppId
+            $linkedAppName = "[{0}]({1})" -f (Get-SafeMarkdown $f.AppName), $appLink
+            $issueSafe = Get-SafeMarkdown $f.Issue
+            $destSafe = Get-SafeMarkdown $f.Destination
+            $portsSafe = Get-SafeMarkdown $f.Ports
+            $tableRows += "| $linkedAppName | $issueSafe | $destSafe | $portsSafe | Narrow destination and ports |`n"
+        }
+        $mdInfo += $formatTemplate -f $tableRows
+    }
+
+    # Replace the placeholder with detailed information
+    $testResultMarkdown = $testResultMarkdown -replace '%TestResult%', $mdInfo
+    #endregion Report Generation
+    $params = @{
+        TestId = '25395'
+        Title  = 'Entra Private Access Application segments are defined to enforce least-privilege access'
+        Status = $passed
+        Result = $testResultMarkdown
+    }
+
+    # Add CustomStatus if status is 'Investigate'
+    if ($null -ne $customStatus) {
+        $params.CustomStatus = $customStatus
+    }
+
+    # Add test result details
+    Add-ZtTestResultDetail @params
+}

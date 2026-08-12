@@ -1,6 +1,7 @@
 (() => {
   const SCANS_KEY = 'SimpleZTA:scans:v1';
   const LAST_SELECTION_KEY = 'SimpleZTA:lastSelection:v1';
+  const PROFILES_KEY = 'SimpleZTA:profiles:v1';
 
   function loadScans() {
     try {
@@ -209,6 +210,30 @@
     return out;
   }
 
+  function loadProfiles() {
+    try {
+      const raw = localStorage.getItem(PROFILES_KEY);
+      const obj = raw ? JSON.parse(raw) : {};
+      return obj && typeof obj === 'object' ? obj : {};
+    } catch {
+      return {};
+    }
+  }
+
+  function saveProfile(name, ids) {
+    const profiles = loadProfiles();
+    profiles[name] = Array.isArray(ids) ? ids.map(x => `${x}`) : [];
+    localStorage.setItem(PROFILES_KEY, JSON.stringify(profiles));
+    return profiles;
+  }
+
+  function deleteProfile(name) {
+    const profiles = loadProfiles();
+    delete profiles[name];
+    localStorage.setItem(PROFILES_KEY, JSON.stringify(profiles));
+    return profiles;
+  }
+
   window.Store = {
     loadScans,
     saveScan,
@@ -219,5 +244,8 @@
     getAverageDurationByTest,
     rememberSelection,
     loadSelection,
+    loadProfiles,
+    saveProfile,
+    deleteProfile,
   };
 })();

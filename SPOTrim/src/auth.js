@@ -18,6 +18,13 @@
     sharepointAdmin: () => [`https://${adminHost}/.default`],
   };
 
+  function _shouldClosePopupAfterAuth(resp) {
+    if (!window.opener || window.opener.closed) return false;
+    if (resp && resp.account) return true;
+    const authBits = `${window.location.hash || ''}&${window.location.search || ''}`;
+    return /(?:^|[?&#])(code|error|id_token|access_token|state)=/i.test(authBits);
+  }
+
   /**
    * Loads the .auth file (sibling of index.html) and parses key:value lines.
    * Required keys: clientId, redirect-url-local, redirect-url-web.
@@ -72,7 +79,7 @@
     REDIRECT_URI = pickRedirectUri(authConfig);
 
     if (window.__msalLoadFailed || !window.msal || !window.msal.PublicClientApplication) {
-      throw new Error('MSAL.js failed to load from CDN. Check your network connection or CSP - the SPA needs https://cdn.jsdelivr.net to be reachable.');
+      throw new Error('MSAL.js failed to load. Check that ../vendor/msal-browser.3.27.0.min.js is present and allowed by CSP.');
     }
 
     msal = new window.msal.PublicClientApplication({
@@ -81,6 +88,12 @@
     });
     await msal.initialize();
     const resp = await msal.handleRedirectPromise().catch(e => { Log.err('Redirect handler:', e); return null; });
+    if (_shouldClosePopupAfterAuth(resp)) {
+      Log.info('Auth popup callback completed. Closing popup window.');
+      try { window.close(); } catch {}
+      if (!window.closed) window.location.replace('about:blank');
+      return null;
+    }
     if (resp && resp.account) {
       account = resp.account;
     } else {
@@ -114,21 +127,13 @@
 
   async function signIn() {
     const req = { scopes: SCOPES.graph, prompt: 'select_account' };
-    try {
-      const r = await msal.loginPopup(req);
-      account = r.account;
-    } catch (e) {
-      Log.warn('Popup sign-in failed, falling back to redirect:', e.message);
-      await msal.loginRedirect(req);
-      return null;
-    }
-    await detectTenantHosts();
-    return account;
+    await msal.loginRedirect(req);
+    return null;
   }
 
   async function signOut() {
     if (!account) return;
-    try { await msal.logoutPopup({ account }); } catch (e) { Log.warn('Logout popup failed:', e.message); }
+    await msal.logoutRedirect({ account });
     account = null;
   }
 
@@ -141,9 +146,9 @@
         const r = await msal.acquireTokenSilent({ scopes, account });
         return r.accessToken;
       } catch (e) {
-        Log.warn(`Silent token acquisition failed for [${scopes.join(',')}], using popup`);
-        const r = await msal.acquireTokenPopup({ scopes, account });
-        return r.accessToken;
+        Log.warn(`Silent token acquisition failed for [${scopes.join(',')}], using redirect`);
+        await msal.acquireTokenRedirect({ scopes, account });
+        return new Promise(() => {});
       } finally {
         // Brief debounce: keep the inflight entry only until first await chain settles
       }

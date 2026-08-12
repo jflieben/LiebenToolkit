@@ -17,6 +17,13 @@
     ],
   };
 
+  function _shouldClosePopupAfterAuth(resp) {
+    if (!window.opener || window.opener.closed) return false;
+    if (resp && resp.account) return true;
+    const authBits = `${window.location.hash || ''}&${window.location.search || ''}`;
+    return /(?:^|[?&#])(code|error|id_token|access_token|state)=/i.test(authBits);
+  }
+
   async function loadAuthConfig() {
     const res = await fetch('./.auth', { cache: 'no-store' });
     if (!res.ok) {
@@ -73,6 +80,12 @@
       Log.err('Redirect handler failed:', e.message);
       return null;
     });
+    if (_shouldClosePopupAfterAuth(response)) {
+      Log.info('Auth popup callback completed. Closing popup window.');
+      try { window.close(); } catch {}
+      if (!window.closed) window.location.replace('about:blank');
+      return null;
+    }
     if (response && response.account) {
       account = response.account;
     } else {
@@ -85,24 +98,13 @@
   async function signIn(includeWriteScopes = false) {
     const scopes = includeWriteScopes ? [...SCOPES.write] : [...SCOPES.read];
     const req = { scopes, prompt: 'select_account' };
-    try {
-      const res = await msal.loginPopup(req);
-      account = res.account;
-      return account;
-    } catch (e) {
-      Log.warn('Popup sign-in failed, trying redirect:', e.message);
-      await msal.loginRedirect(req);
-      return null;
-    }
+    await msal.loginRedirect(req);
+    return null;
   }
 
   async function signOut() {
     if (!account) return;
-    try {
-      await msal.logoutPopup({ account });
-    } catch (e) {
-      Log.warn('Logout popup failed:', e.message);
-    }
+    await msal.logoutRedirect({ account });
     account = null;
   }
 
@@ -114,9 +116,10 @@
       try {
         const r = await msal.acquireTokenSilent({ scopes, account });
         return r.accessToken;
-      } catch {
-        const r = await msal.acquireTokenPopup({ scopes, account });
-        return r.accessToken;
+      } catch (e) {
+        Log.warn(`Silent token failed for [${scopes.join(', ')}], using redirect:`, e.message || e);
+        await msal.acquireTokenRedirect({ scopes, account });
+        return new Promise(() => {});
       }
     })();
     tokenInflight.set(key, promise);

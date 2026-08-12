@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8" />
+<title>PermView smoke test</title>
+<style>
+  body { font-family: -apple-system, "Segoe UI", sans-serif; padding: 20px; }
+  .pass { color: #128d4f; }
+  .fail { color: #c0392b; }
+  pre { background: #f4f6fa; padding: 10px; border-radius: 6px; overflow: auto; }
+</style>
+</head>
+<body>
+<h1>PermView smoke tests</h1>
+<p>Open this page over HTTP (use <code>serve.ps1</code>) and check the console / output below. These tests run without signing in and only verify the static module loading + parsing of the .auth file.</p>
+<div id="out"></div>
+
+<script src="../src/log.js"></script>
+<script src="../src/concurrency.js"></script>
+<script src="../src/auth.js"></script>
+<script src="../src/api.js"></script>
+<script src="../src/providers.js"></script>
+
+<script>
+(async () => {
+  const out = document.getElementById('out');
+  const results = [];
+  function check(name, ok, detail) {
+    results.push({ name, ok, detail });
+    const div = document.createElement('div');
+    div.className = ok ? 'pass' : 'fail';
+    div.textContent = (ok ? 'PASS  ' : 'FAIL  ') + name + (detail ? ' - ' + detail : '');
+    out.appendChild(div);
+  }
+
+  check('Log loaded', !!window.Log && typeof window.Log.info === 'function');
+  check('Concurrency loaded', !!window.Concurrency && typeof window.Concurrency.pmap === 'function');
+  check('Auth loaded', !!window.Auth && typeof window.Auth.signIn === 'function');
+  check('Api loaded',  !!window.Api && !!window.Api.Graph);
+  check('Providers loaded', !!window.Providers && Array.isArray(window.Providers.list));
+  check('Providers count == 9', (window.Providers.list || []).length === 9,
+    (window.Providers.list || []).map(p => p.id).join(','));
+
+  // .auth file must exist and parse
+  try {
+    const r = await fetch('../.auth', { cache: 'no-store' });
+    check('.auth fetched (HTTP 200)', r.ok, 'status ' + r.status);
+    const text = await r.text();
+    const cfg = window.Auth._parseAuthFile ? window.Auth._parseAuthFile(text) : null;
+    if (cfg) check('.auth has clientId', !!cfg.clientId, cfg.clientId);
+  } catch (e) {
+    check('.auth fetched', false, e.message);
+  }
+
+  // Each provider must declare the required surface
+  for (const p of (window.Providers.list || [])) {
+    check(`Provider ${p.id} has run()`, typeof p.run === 'function');
+    check(`Provider ${p.id} has form array`, Array.isArray(p.form));
+    check(`Provider ${p.id} has icon`, !!p.icon);
+  }
+})();
+</script>
+</body>
+</html>

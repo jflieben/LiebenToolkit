@@ -16,11 +16,14 @@
 
     const tenantId = account?.tenantId || '';
     let tenantDomain = '';
+    let tenantName = '';
     try {
       const org = await Api.graph('organization', { query: { '$select': 'verifiedDomains,id,displayName' } });
       const first = org?.value?.[0];
       const initial = (first?.verifiedDomains || []).find(d => d.isInitial);
-      tenantDomain = initial?.name || first?.displayName || '';
+      const preferred = (first?.verifiedDomains || []).find(d => d.isDefault) || initial;
+      tenantDomain = preferred?.name || first?.displayName || '';
+      tenantName = first?.displayName || '';
     } catch (e) {
       log(`Tenant lookup failed: ${e.message}`);
     }
@@ -87,6 +90,10 @@
       const trace = [];
       Api.setTraceCollector(trace);
 
+      // Port of the module's TestTimeout: a hung control marks itself Error and the run
+      // continues. Best-effort — in-flight fetches are abandoned, not aborted.
+      const testTimeoutMs = Number(opts.testTimeoutMs) > 0 ? Number(opts.testTimeoutMs) : 180000;
+
       try {
         let out;
         if (!test.implemented || !test.run) {
@@ -97,7 +104,7 @@
             message: 'Not yet implemented in browser engine.',
           };
         } else {
-          out = await test.run(test, {
+          const execution = test.run(test, {
             tenantId,
             tenantDomain,
             report: (message, percent) => {
@@ -107,6 +114,15 @@
               };
             },
           });
+          let timeoutHandle;
+          const timeout = new Promise((_, reject) => {
+            timeoutHandle = setTimeout(() => reject(new Error(`Test timed out after ${Math.round(testTimeoutMs / 1000)}s`)), testTimeoutMs);
+          });
+          try {
+            out = await Promise.race([execution, timeout]);
+          } finally {
+            clearTimeout(timeoutHandle);
+          }
         }
         out.durationMs = Math.round(performance.now() - start);
         out.pillar = test.pillar;
@@ -159,13 +175,40 @@
       });
     }
 
+    // Tenant insight collection (sankey/overview graphics data) runs after the tests so a
+    // collector failure can never invalidate test results.
+    let tenantInfo = null;
+    let tenantInfoNotes = null;
+    if (opts.collectTenantInfo !== false && !cancelled && typeof TenantInfo !== 'undefined') {
+      try {
+        log('Collecting tenant insight data (overview graphics)...');
+        const collected = await TenantInfo.collect({
+          log,
+          days: opts.tenantInfoDays,
+          progress: (message) => progress({
+            done, total, current: null,
+            elapsedTotalMs: Date.now() - runStartedAt,
+            elapsedCurrentMs: 0, etaMs: 0, currentEstimateMs: 0,
+            subProgress: { message, percent: null },
+          }),
+        });
+        tenantInfo = collected.tenantInfo;
+        tenantInfoNotes = collected.notes;
+      } catch (e) {
+        log(`Tenant insight collection failed: ${e.message || e}`);
+      }
+    }
+
     const scan = {
       id: `scan-${Date.now()}`,
       startedAt: new Date().toISOString(),
       tenantId,
       tenantDomain,
+      tenantName,
       results,
       summary: Store.computeSummary(results),
+      tenantInfo,
+      tenantInfoNotes,
       implementationCoverage: {
         totalCatalog: tests.length,
         implemented: tests.filter(t => t.implemented).length,

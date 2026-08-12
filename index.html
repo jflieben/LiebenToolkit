@@ -1,0 +1,370 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Cloud Toolkit by Lieben Consultancy</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🛠️</text></svg>">
+  <meta name="description" content="A small collection of browser-based tools for Microsoft 365 admins. Runs client-side, no backend, you stay in control of your tokens and data." />
+    <!-- Google Analytics (GDPR Compliant) -->
+    <script async src="https://www.googletagmanager.com/gtag/js?id=G-20PYJ8S2G7"></script>
+    <script>
+      window.dataLayer = window.dataLayer || [];
+      function gtag(){dataLayer.push(arguments);}
+      gtag('js', new Date());
+      gtag('config', 'G-20PYJ8S2G7', {
+        'anonymize_ip': true,
+        'storage': 'none',
+        'client_storage': 'none'
+      });
+      gtag('consent', 'default', {
+        'ad_storage': 'denied',
+        'ad_user_data': 'denied',
+        'ad_personalization': 'denied',
+        'analytics_storage': 'denied'
+      });
+    </script>    
+  <style>
+    :root {
+      --bg: #f6f8fb;
+      --card: #ffffff;
+      --text: #1a2332;
+      --muted: #607089;
+      --border: #e3e8f0;
+      --accent: #0a66c2;
+      --accent-hover: #084a8e;
+      --accent-soft: #e8f1fb;
+      --danger: #c0392b;
+      --warn: #d97706;
+      --ok: #128d4f;
+      --shadow: 0 1px 3px rgba(15, 30, 60, 0.06), 0 4px 14px rgba(15, 30, 60, 0.05);
+      --radius: 12px;
+    }
+    [data-theme="dark"] {
+      --bg: #0f1722;
+      --card: #182233;
+      --text: #e6eef9;
+      --muted: #8a9bb5;
+      --border: #243246;
+      --accent: #4b9eff;
+      --accent-hover: #6db0ff;
+      --accent-soft: #1e3553;
+      --shadow: 0 1px 3px rgba(0,0,0,0.4), 0 4px 14px rgba(0,0,0,0.3);
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      font-size: 14px;
+      line-height: 1.55;
+    }
+    a { color: var(--accent); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+
+    .topbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 14px 24px;
+      background: var(--card);
+      border-bottom: 1px solid var(--border);
+      position: sticky; top: 0; z-index: 10;
+    }
+    .brand { display: flex; align-items: center; gap: 14px; }
+    .brand .logo {
+      width: 42px; height: 42px;
+      border-radius: 10px;
+      background: linear-gradient(135deg, var(--accent), #1a8cff);
+      color: #fff;
+      display: flex; align-items: center; justify-content: center;
+      font-weight: 700; letter-spacing: 1px;
+      box-shadow: var(--shadow);
+    }
+    .brand h1 { margin: 0; font-size: 18px; }
+    .brand .subtitle { margin: 2px 0 0; color: var(--muted); font-size: 12px; }
+    .theme-toggle {
+      background: none;
+      border: 1px solid var(--border);
+      color: var(--text);
+      padding: 6px 12px;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 13px;
+    }
+    .theme-toggle:hover { border-color: var(--accent); color: var(--accent); }
+
+    main { padding: 32px 24px 60px; max-width: 1100px; margin: 0 auto; }
+
+    .hero { margin-bottom: 32px; }
+    .hero h2 {
+      margin: 0 0 8px;
+      font-size: 26px;
+      font-weight: 700;
+      letter-spacing: -0.3px;
+    }
+    .hero p { margin: 0; color: var(--muted); max-width: 720px; font-size: 15px; }
+
+    .section-title {
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      color: var(--muted);
+      margin: 36px 0 14px;
+      font-weight: 600;
+    }
+    .section-title:first-of-type { margin-top: 0; }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+      gap: 16px;
+    }
+
+    .tool-card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 18px;
+      box-shadow: var(--shadow);
+      cursor: pointer;
+      transition: transform 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      color: inherit;
+      text-decoration: none;
+      position: relative;
+    }
+    .tool-card:hover {
+      transform: translateY(-2px);
+      border-color: var(--accent);
+      box-shadow: 0 4px 10px rgba(15,30,60,0.08), 0 12px 24px rgba(10,102,194,0.12);
+      text-decoration: none;
+    }
+    .tool-card .icon {
+      width: 38px; height: 38px;
+      border-radius: 9px;
+      background: var(--accent-soft);
+      color: var(--accent);
+      display: flex; align-items: center; justify-content: center;
+      font-size: 18px;
+      font-weight: 700;
+    }
+    .tool-card h3 {
+      margin: 0;
+      font-size: 16px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .tool-card p {
+      margin: 0;
+      color: var(--muted);
+      font-size: 13px;
+      flex: 1;
+    }
+    .tool-card .meta {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-size: 12px;
+      color: var(--muted);
+      margin-top: 4px;
+    }
+    .pill {
+      display: inline-block;
+      background: var(--accent-soft);
+      color: var(--accent);
+      padding: 2px 8px;
+      border-radius: 999px;
+      font-size: 11px;
+      font-weight: 600;
+    }
+    .pill.ext { background: transparent; border: 1px solid var(--border); color: var(--muted); }
+
+    .notice {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-left: 3px solid var(--warn);
+      border-radius: 10px;
+      padding: 14px 16px;
+      margin-top: 32px;
+      color: var(--muted);
+      font-size: 13px;
+    }
+    .notice strong { color: var(--text); }
+
+    footer {
+      margin-top: 40px;
+      padding-top: 18px;
+      border-top: 1px solid var(--border);
+      color: var(--muted);
+      font-size: 12px;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 14px;
+      justify-content: space-between;
+    }
+    footer .links { display: flex; gap: 14px; flex-wrap: wrap; }
+
+    @media (max-width: 600px) {
+      main { padding: 20px 14px 40px; }
+      .topbar { padding: 12px 14px; }
+      .hero h2 { font-size: 22px; }
+    }
+  </style>
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <div class="logo">LC</div>
+      <div>
+        <h1>LC Toolkit</h1>
+        <p class="subtitle">Browser-based tools for Microsoft Cloud admins</p>
+      </div>
+    </div>
+    <button class="theme-toggle" id="themeToggle" type="button" aria-label="Toggle dark mode">Dark mode</button>
+  </header>
+
+  <main>
+    <section class="hero">
+      <h2>Small, focused tools that just run in your browser.</h2>
+      <p>No backend, no telemetry. You use your own account, your browser talks to Microsoft directly.</p>
+    </section>
+
+    <h3 class="section-title">In this repo</h3>
+    <div class="grid" id="repoTools">
+      <a class="tool-card" href="ConditionalAccess/index.html">
+        <div class="icon">CA</div>
+        <h3>ConditionalAccess <span class="pill">Open source</span></h3>
+        <p>Import, export and compare Conditional Access policies. Add name prefixes/suffixes, set policy mode per import item, resolve missing users/groups, and bootstrap with a starter baseline set.</p>
+        <div class="meta"><span>Click to open</span><span>&rsaquo;</span></div>
+      </a>
+      <a class="tool-card" href="SPOTrim/index.html">
+        <div class="icon">SP</div>
+        <h3>SPOTrim <span class="pill">Open source</span></h3>
+        <p>Find stale SharePoint and OneDrive sites in your tenant, see who owns them, when they were last touched or viewed, and decide what to clean up.</p>
+        <div class="meta"><span>Click to open</span><span>&rsaquo;</span></div>
+      </a>
+      <a class="tool-card" href="DupedDevices/index.html">
+        <div class="icon">DD</div>
+        <h3>DupedDevices <span class="pill">Open source</span></h3>
+        <p>Find duplicate device registrations in Entra ID, decide which one to keep, and disable or delete the rest. Optional grace period using extension attributes so you can disable now and delete safely later.</p>
+        <div class="meta"><span>Click to open</span><span>&rsaquo;</span></div>
+      </a>
+      <a class="tool-card" href="SPNRoleMgr/index.html">
+        <div class="icon">SR</div>
+        <h3>SPNRoleMgr <span class="pill">Open source</span></h3>
+        <p>Inspect or change Graph API permissions for any Service Principal or Managed Identity. NEW: Also manage Sites.Selected permissions for Sharepoint Sites, directly in your browser!</p>
+        <div class="meta"><span>Click to open</span><span>&rsaquo;</span></div>
+      </a>
+      <a class="tool-card" href="PermView/index.html">
+        <div class="icon">PV</div>
+        <h3>PermView <span class="pill">Open source</span></h3>
+        <p>Quick top-level permission viewer across Entra, SharePoint, OneDrive, Mailbox, Azure, Azure DevOps, Power BI and Power Platform. The fast first look before you reach for a deeper audit tool.</p>
+        <div class="meta"><span>Click to open</span><span>&rsaquo;</span></div>
+      </a>
+      <a class="tool-card" href="InactiveGuests/index.html">
+        <div class="icon">IG</div>
+        <h3>InactiveGuests <span class="pill">Open source</span></h3>
+        <p>Find dormant guest accounts in Entra ID, filtered by inactivity, redemption state and account age. Bulk disable, delete or restore them.</p>
+        <div class="meta"><span>Click to open</span><span>&rsaquo;</span></div>
+      </a>
+      <a class="tool-card" href="InactiveDevices/index.html">
+        <div class="icon">ID</div>
+        <h3>InactiveDevices <span class="pill">Open source</span></h3>
+        <p>Find dormant Entra devices using inactivity, OS, join type, Autopilot and managed status filters. Bulk disable, enable or delete selected devices.</p>
+        <div class="meta"><span>Click to open</span><span>&rsaquo;</span></div>
+      </a>
+      <a class="tool-card" href="SimpleMaester/index.html">
+        <div class="icon">SM</div>
+        <h3>SimpleMaester <span class="pill">Open source</span></h3>
+        <p>Browser-based port of Maester. Run M365 security baseline tests (EIDSCA, conditional access, role hardening) without installing PowerShell, and watch your posture trend over time.</p>
+        <div class="meta"><span>Click to open</span><span>&rsaquo;</span></div>
+      </a>
+      <a class="tool-card" href="SimpleZTA/index.html">
+        <div class="icon">SZ</div>
+        <h3>SimpleZTA <span class="pill">Open source</span></h3>
+        <p>Browser-based Zero Trust Assessment companion for Microsoft 365. Run delegated Graph checks, track historical posture movement, and drill down into control-level evidence locally.</p>
+        <div class="meta"><span>Click to open</span><span>&rsaquo;</span></div>
+      </a>
+    </div>
+
+    <h3 class="section-title">Other tools by Lieben Consultancy</h3>
+    <div class="grid">
+      <a class="tool-card" href="https://github.com/jflieben/DriftMaester" target="_blank" rel="noopener">
+        <div class="icon">DM</div>
+        <h3>DriftMaester <span class="pill ext">GitHub</span></h3>
+        <p>Plug & Play Azure Automation wrapper for Maester with continuous drift detection, automated alerting/reporting in HTML for Microsoft 365 security posture.</p>
+        <div class="meta"><span>github.com/jflieben/DriftMaester</span><span>&rsaquo;</span></div>
+      </a>
+      <a class="tool-card" href="https://github.com/jflieben/M365AutoLink" target="_blank" rel="noopener">
+        <div class="icon">ML</div>
+        <h3>M365AutoLink <span class="pill ext">GitHub</span></h3>
+        <p>Automatically discovers SharePoint and Teams libraries and creates OneDrive shortcuts, with exclusion management and tray-based run controls.</p>
+        <div class="meta"><span>github.com/jflieben/M365AutoLink</span><span>&rsaquo;</span></div>
+      </a>
+      <a class="tool-card" href="https://github.com/jflieben/M365AutoRevocate" target="_blank" rel="noopener">
+        <div class="icon">AR</div>
+        <h3>M365AutoRevocate <span class="pill ext">GitHub</span></h3>
+        <p>Automated offboarding cleanup for Microsoft 365. Reacts to inactive, disabled or deleted users via Graph change notifications and runs the revocation actions you enable, all through a managed identity with a small admin web app.</p>
+        <div class="meta"><span>github.com/jflieben/M365AutoRevocate</span><span>&rsaquo;</span></div>
+      </a>
+      <a class="tool-card" href="https://www.m365permissions.com" target="_blank" rel="noopener">
+        <div class="icon">P</div>
+        <h3>M365Permissions <span class="pill ext">External</span></h3>
+        <p>Know who has what access in your tenant, at any level, at any point in time. Built for organisations that take permissions seriously.</p>
+        <div class="meta"><span>m365permissions.com</span><span>&rsaquo;</span></div>
+      </a>
+      <a class="tool-card" href="https://weatherradius.com" target="_blank" rel="noopener">
+        <div class="icon">W</div>
+        <h3>WeatherRadius <span class="pill ext">External</span></h3>
+        <p>Pick a starting point and a date range, and find the spot with the best weather within driving or public transport distance. Great for sunny weekend escapes or getting away from hot city weather.</p>
+        <div class="meta"><span>weatherradius.com</span><span>&rsaquo;</span></div>
+      </a>
+    </div>
+
+    <div class="notice">
+      <strong>Heads up:</strong> these tools are provided as-is, use them at your own risk. Always test changes in a non-production tenant first, and review what the tool is doing before you let it touch anything. Using any of these tools commercially? Have a look at the
+      <a href="https://lieben.nu/liebensraum/commercial-use/" target="_blank" rel="noopener">commercial use terms</a>.
+    </div>
+
+    <footer>
+      <div>&copy; <span id="year"></span> Lieben Consultancy</div>
+      <div class="links">
+        <a href="https://lieben.nu/liebensraum/commercial-use/" target="_blank" rel="noopener">Commercial use</a>
+        <a href="https://lieben.nu" target="_blank" rel="noopener">lieben.nu</a>
+        <a href="https://github.com/jflieben" target="_blank" rel="noopener">GitHub</a>
+      </div>
+    </footer>
+  </main>
+
+  <script>
+    (function () {
+      var btn = document.getElementById('themeToggle');
+      var root = document.documentElement;
+      var stored = null;
+      try { stored = localStorage.getItem('m365tk-theme'); } catch (e) {}
+      if (stored === 'dark') {
+        root.setAttribute('data-theme', 'dark');
+        btn.textContent = 'Light mode';
+      }
+      btn.addEventListener('click', function () {
+        var dark = root.getAttribute('data-theme') === 'dark';
+        if (dark) {
+          root.removeAttribute('data-theme');
+          btn.textContent = 'Dark mode';
+          try { localStorage.setItem('m365tk-theme', 'light'); } catch (e) {}
+        } else {
+          root.setAttribute('data-theme', 'dark');
+          btn.textContent = 'Light mode';
+          try { localStorage.setItem('m365tk-theme', 'dark'); } catch (e) {}
+        }
+      });
+      document.getElementById('year').textContent = new Date().getFullYear();
+    })();
+  </script>
+</body>
+</html>

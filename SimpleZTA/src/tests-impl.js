@@ -146,30 +146,12 @@
   }
 
   async function getEntraDiagnosticSettings() {
-    const armScope = ['https://management.azure.com/user_impersonation'];
-    const url = 'https://management.azure.com/providers/microsoft.aadiam/diagnosticsettings?api-version=2017-04-01-preview';
-
+    // Routed through Api.arm() (not a raw fetch) so the call is captured in the API trace.
     try {
-      const token = await Auth.getTokenSilent(armScope);
-      if (!token) return null;
-
-      const response = await fetch(url, {
-        method: 'GET',
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      });
-
-      const text = response.status === 204 ? '' : await response.text();
-      const parsed = text ? JSON.parse(text) : {};
-      if (!response.ok) {
-        const err = new Error(`ARM ${response.status}: ${text}`);
-        err.status = response.status;
-        throw err;
-      }
-
-      return toArray(parsed?.value);
+      const payload = await Api.arm('providers/microsoft.aadiam/diagnosticsettings?api-version=2017-04-01-preview');
+      return toArray(payload?.value);
     } catch (err) {
+      if (err.armConsent) return null;
       if (err.status === 400 || err.status === 401 || err.status === 403 || err.status === 404) return null;
       if ((err?.message || '').includes('Interaction required')) return null;
       throw err;
@@ -226,13 +208,16 @@
   }
 
   async function getUsersByIds(ids) {
+    // directoryObjects/getByIds does not support $select and never returns signInActivity
+    // (confirmed against a live tenant), so fetch each id via /users/{id} instead. IDs that
+    // belong to a non-user principal (group, service principal) 404 and are dropped.
     const uniqueIds = uniqueBy(toArray(ids).filter(Boolean), id => `${id}`).map(id => `${id}`);
     if (!uniqueIds.length) return [];
-    const payload = await Api.graph('directoryObjects/getByIds', {
-      method: 'POST',
-      body: { ids: uniqueIds, types: ['user'] },
-    });
-    return toArray(payload?.value).filter(item => lower(item?.['@odata.type']).includes('user'));
+    const select = 'id,displayName,userPrincipalName,accountEnabled,userType,signInActivity';
+    const results = await Promise.all(uniqueIds.map(id =>
+      Api.graph(`users/${id}`, { beta: true, query: { '$select': select } }).catch(() => null)
+    ));
+    return results.filter(Boolean);
   }
 
   async function getUserAuthMethods(userId) {
@@ -482,42 +467,18 @@
   }
 
   async function getArmRootRoleAssignments() {
-    const armScope = ['https://management.azure.com/user_impersonation'];
-    let token = null;
-
+    // Routed through Api.arm() (not a raw fetch) so the call is captured in the API trace.
     try {
-      token = await Auth.getTokenSilent(armScope);
-      if (!token) {
-        // If scope is missing, attempt interactive consent request.
-        token = await Auth.getToken(armScope);
-      }
-      if (!token) return { assignments: null, scopePrompted: true };
-
-      const response = await fetch('https://management.azure.com/providers/Microsoft.Authorization/roleAssignments?$filter=atScope()&api-version=2022-04-01', {
-        method: 'GET',
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      });
-
-      const text = response.status === 204 ? '' : await response.text();
-      let parsed = {};
-      if (text) {
-        try {
-          parsed = JSON.parse(text);
-        } catch {
-          parsed = {};
-        }
-      }
-
-      if (!response.ok) {
-        const err = new Error(`ARM ${response.status}: ${text}`);
-        err.status = response.status;
-        throw err;
-      }
-
-      return { assignments: toArray(parsed?.value), scopePrompted: false };
+      const payload = await Api.arm('providers/Microsoft.Authorization/roleAssignments?$filter=atScope()&api-version=2022-04-01');
+      return { assignments: toArray(payload?.value), scopePrompted: false };
     } catch (err) {
+      if (err.armConsent) {
+        // No silent ARM token available yet; kick off interactive consent so a re-run succeeds.
+        try {
+          await Auth.getToken(['https://management.azure.com/user_impersonation']);
+        } catch { /* redirect in flight, or consent declined */ }
+        return { assignments: null, scopePrompted: true };
+      }
       if (err.status === 400 || err.status === 401 || err.status === 403 || err.status === 404) {
         return { assignments: null, scopePrompted: false };
       }
@@ -1027,9 +988,23 @@
     },
 
     '21775': async (test) => {
+      // Current control: the tenant default app management policy must be ENABLED and
+      // enforce credential restrictions on app/service-principal password & key credentials.
       const policy = await Api.graph('policies/defaultAppManagementPolicy', { beta: true });
-      if (policy?.id) return pass(test, 'Default app management policy is configured.', { id: policy.id, displayName: policy.displayName || '' });
-      return fail(test, 'Default app management policy endpoint returned no policy.');
+      if (!policy) return fail(test, 'Tenant app management policy could not be retrieved or does not exist.');
+      if (!policy.isEnabled) return fail(test, 'Tenant app management policy exists but is not enabled.', { isEnabled: false });
+      const enabledRestrictions = [];
+      const scan = (restrictions, context, kind) => {
+        for (const r of toArray(restrictions)) {
+          if (lower(r?.state) === 'enabled') enabledRestrictions.push(`${context} ${kind}: ${r.restrictionType}`);
+        }
+      };
+      scan(policy.applicationRestrictions?.passwordCredentials, 'Application', 'password');
+      scan(policy.applicationRestrictions?.keyCredentials, 'Application', 'key');
+      scan(policy.servicePrincipalRestrictions?.passwordCredentials, 'Service principal', 'password');
+      scan(policy.servicePrincipalRestrictions?.keyCredentials, 'Service principal', 'key');
+      if (enabledRestrictions.length) return pass(test, 'Tenant app management policy is enabled with active credential restrictions.', { enabledRestrictions });
+      return fail(test, 'Tenant app management policy is enabled but no credential restrictions are enabled — standards for app secrets and certificates are not enforced.');
     },
 
     '21776': async (test) => {
@@ -1688,10 +1663,16 @@
       const sys = await fetch('./powershell/assets/27004-system-bypass-fqdns.json').then(response => response.json());
       const systemFqdns = new Set((sys?.fqdns || []).map(item => `${item}`.toLowerCase()));
 
-      const policies = await Api.graph('networkAccess/tlsInspectionPolicies', {
-        beta: true,
-        query: { '$expand': 'policyRules' },
-      });
+      let policies = null;
+      try {
+        policies = await Api.graph('networkAccess/tlsInspectionPolicies', {
+          beta: true,
+          query: { '$expand': 'policyRules' },
+        });
+      } catch (err) {
+        if ([400, 403, 404].includes(err.status)) return skip(test, 'Global Secure Access TLS inspection is not available or not licensed in this tenant.');
+        throw err;
+      }
       const list = Array.isArray(policies?.value) ? policies.value : [];
       if (!list.length) return skip(test, 'TLS inspection policies are not configured in this tenant.');
 
@@ -2437,10 +2418,10 @@
       const settings = await getDirectorySettings();
       const pwdSettings = settings.find(s => lower(s.displayName) === 'passwordrulesettings' || s.templateId === '5cf42378-d67d-4f36-ba46-e8b86229381d');
       if (!pwdSettings) return skip(test, 'Password rule settings not found in directory settings. On-premises password protection may be managed outside the tenant portal.');
-      const onPremEnabled = toArray(pwdSettings.values).find(v => lower(v.name) === 'enablebannedpasswordonpremises')?.value;
+      const onPremEnabled = toArray(pwdSettings.values).find(v => lower(v.name) === 'enablebannedpasswordcheckonpremises')?.value;
       const mode = toArray(pwdSettings.values).find(v => lower(v.name) === 'bannedpasswordcheckonpremisesmode')?.value;
-      if (lower(onPremEnabled) === 'true') return pass(test, 'On-premises password protection is enabled.', { enableBannedPasswordOnPremises: onPremEnabled, mode });
-      return fail(test, 'On-premises password protection does not appear to be enabled in directory settings.', { enableBannedPasswordOnPremises: onPremEnabled || null, mode: mode || null });
+      if (lower(onPremEnabled) === 'true') return pass(test, 'On-premises password protection is enabled.', { EnableBannedPasswordCheckOnPremises: onPremEnabled, mode });
+      return fail(test, 'On-premises password protection does not appear to be enabled in directory settings.', { EnableBannedPasswordCheckOnPremises: onPremEnabled || null, mode: mode || null });
     },
 
     '21848': async (test) => {
@@ -2806,14 +2787,6 @@
       });
     },
 
-    '22098': async (test) => {
-      return skip(test, 'Integration of Entra audit logs with Azure Monitor cannot be verified via Microsoft Graph. Check Azure Portal -> Entra ID -> Monitoring -> Diagnostic settings to confirm audit logs are forwarded to a Log Analytics workspace.', { note: 'Azure Monitor integration requires ARM API access, not available in this browser-only tool.' });
-    },
-
-    '22099': async (test) => {
-      return skip(test, 'Integration of Entra sign-in logs with Azure Monitor cannot be verified via Microsoft Graph. Check Azure Portal -> Entra ID -> Monitoring -> Diagnostic settings to confirm sign-in logs are forwarded to a Log Analytics workspace.', { note: 'Azure Monitor integration requires ARM API access, not available in this browser-only tool.' });
-    },
-
     '24540': async (test) => {
       const [configs, policies] = await Promise.all([getDeviceConfigurations(), getConfigurationPolicies()]);
       if (configs === null && policies === null) return skip(test, 'Intune device configuration is not accessible.');
@@ -3146,21 +3119,6 @@
       return fail(test, 'Seamless SSO is enabled but no recent sign-in activity was detected — consider disabling Seamless SSO if it is no longer in use.', enabled.map(s => ({ displayName: s.displayName, appId: s.appId })));
     },
 
-    '22102': async (test) => {
-      const payload = await graphWithFallback('domains', [
-        { query: { '$select': 'id,isDefault,isInitial,isVerified', '$top': '50' } },
-        { query: { '$top': '50' } },
-      ]).catch(err => {
-        if (err.status === 400 || err.status === 403 || err.status === 404) return null;
-        throw err;
-      });
-      if (!payload) return skip(test, 'Could not enumerate verified domains due Graph API limitations or insufficient permissions.');
-      const domains = toArray(payload?.value);
-      const customDomains = domains.filter(d => !lower(d.id).endsWith('.onmicrosoft.com') && !d.isInitial);
-      if (customDomains.length) return pass(test, `Found ${customDomains.length} verified custom domain(s).`, customDomains.map(d => ({ id: d.id, isDefault: d.isDefault })));
-      return fail(test, 'No verified custom domains found. The tenant only uses the default .onmicrosoft.com domain — configure a custom domain for a professional identity.');
-    },
-
     '21778': async (test) => {
       const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
       const signIns = await getSignInLogs(`createdDateTime ge ${thirtyDaysAgo}T00:00:00Z and status/errorCode eq 0`, 50);
@@ -3180,7 +3138,7 @@
 
     '21779': async (test) => {
       const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
-      const signIns = await getSignInLogs(`createdDateTime ge ${thirtyDaysAgo}T00:00:00Z and status/errorCode eq 0 and appDisplayName eq 'Microsoft Office'`, 25);
+      const signIns = await getSignInLogs(`createdDateTime ge ${thirtyDaysAgo}T00:00:00Z and status/errorCode eq 0 and appDisplayName eq 'Microsoft Office'`, 25, { timeoutMs: 120000 });
       if (signIns === null) return skip(test, 'Sign-in logs are not accessible or timed out. Verifying Microsoft application versions requires sign-in log access (AuditLog.Read.All required).');
       // We can check client app user agent from signIn, but Graph doesn't expose full user agent version in basic sign-in fields
       return skip(test, 'Application version data is not available through the Microsoft Graph sign-in logs API at the required granularity. Use Microsoft Intune or Endpoint Analytics to verify application versions.');
@@ -3257,18 +3215,46 @@
       return skip(test, 'Verifying that Azure resources used by Microsoft Entra only allow access from privileged roles requires Azure Resource Manager (ARM) RBAC API access, which is not available in this browser-only tool.');
     },
 
-    '22100': async (test) => {
-      return skip(test, 'WAF (Web Application Firewall) configuration for ciamlogin.com endpoints requires Azure Front Door or Application Gateway API access, which is not available via Microsoft Graph in this browser tool. Verify in Azure Portal → Azure Front Door → WAF policies.');
-    },
-
-    '22101': async (test) => {
-      return skip(test, 'ciamlogin endpoint management requires CIAM (External ID) tenant configuration access, which is not available via the standard Microsoft Graph API in this browser tool.');
-    },
-
   };
 
+  // Mirror of the PowerShell module's Get-ZtSkippedReason so browser skips read
+  // identically to the module. In a pure client-side app the "not connected" service
+  // reasons collapse to "not reachable from the browser".
+  const SKIP_REASONS = {
+    NotConnectedAzure: 'Not connected to Azure. Azure Resource Manager consent is required for this control.',
+    NotConnectedExchange: 'Exchange Online configuration is not reachable from a browser-only tool (no delegated REST equivalent for Exchange Online PowerShell).',
+    NotConnectedSecurityCompliance: 'Microsoft Purview / Security & Compliance configuration is not reachable from a browser-only tool (no delegated REST equivalent for the Security & Compliance PowerShell session).',
+    NotConnectedSharePoint: 'SharePoint Online admin configuration is not reachable from a browser-only tool (no delegated REST equivalent for SharePoint Online Management Shell).',
+    NotSupported: 'This test relies on capabilities not available to a browser-only tool (e.g. an admin PowerShell session with no delegated Graph/REST equivalent).',
+    NotApplicable: 'This test is not applicable to the current environment.',
+    NoAzureAccess: 'The signed-in user does not have access to the Azure subscription needed to perform this test.',
+    NotLicensedEntraIDP1: 'This test is for tenants licensed for Microsoft Entra ID P1.',
+    NotLicensedEntraIDP2: 'This test is for tenants licensed for Microsoft Entra ID P2.',
+    NotLicensedIntune: 'This test is for tenants licensed for Microsoft Intune.',
+    NoCompatibleLicenseFound: 'This test requires one of the following licenses: {0}.',
+    TimeoutReached: 'This test did not complete within the expected time frame (the tenant may have a large number of objects).',
+  };
+  function skippedReason(code, arg) {
+    const text = SKIP_REASONS[code] || code;
+    return arg != null ? text.replace('{0}', Array.isArray(arg) ? arg.join(', ') : `${arg}`) : text;
+  }
+
+  // Shared helpers exposed so additional control files (tests-impl-*.js) can reuse the
+  // same result/format/Graph primitives instead of duplicating them.
+  window.ZtaLib = {
+    result, pass, fail, skip, skippedReason,
+    daysBetween, toArray, lower, uniqueBy, cloneWithoutKeys,
+    intersects, isTimeoutError, isRetriableBadRequest,
+    graphAllWithFallback, graphWithFallback,
+    summarizeTargets, includeTargetsAllUsers,
+  };
+
+  // Registry so control implementations can be contributed from multiple files.
+  const registry = { ...impl };
   window.ZtaImpl = {
-    get: (id) => impl[id] || null,
-    count: () => Object.keys(impl).length,
+    register: (map) => { Object.assign(registry, map || {}); return registry; },
+    get: (id) => registry[id] || null,
+    count: () => Object.keys(registry).length,
+    ids: () => Object.keys(registry),
   };
 })();

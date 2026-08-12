@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <title>SimpleZTA smoke test</title>
+  <base href="../"/>
+</head>
+<body>
+  <div id="dashboardRoot"></div>
+  <pre id="smoke-output">PENDING</pre>
+  <script>
+    window.__smokeErrors = [];
+    window.onerror = (msg, src, line, col) => {
+      window.__smokeErrors.push(`${msg} @ ${src}:${line}:${col}`);
+    };
+    window.onunhandledrejection = e => {
+      window.__smokeErrors.push(`unhandledrejection: ${e.reason?.message || e.reason}`);
+    };
+    // Stub Auth so registry/report modules run without MSAL in the harness.
+    window.Auth = { coreScopes: [], getAccount: () => null, getToken: async () => null, getTokenSilent: async () => null };
+  </script>
+  <script src="src/log.js"></script>
+  <script src="src/api.js"></script>
+  <script src="src/storage.js"></script>
+  <script src="src/md.js"></script>
+  <script src="src/charts.js"></script>
+  <script src="src/tenantinfo.js"></script>
+  <script src="src/report-official.js"></script>
+  <script src="src/report-native.js"></script>
+  <script src="src/tests-impl.js"></script>
+  <script src="src/tests-graph.js"></script>
+  <script src="src/tests-azure.js"></script>
+  <script src="src/tests-purview.js"></script>
+  <script src="src/registry.js"></script>
+  <script src="src/runner.js"></script>
+  <script src="src/ui-dashboard.js"></script>
+  <script>
+    (async () => {
+      const checks = [];
+      const check = (name, fn) => {
+        try {
+          const out = fn();
+          if (out instanceof Promise) return out.then(v => checks.push(`PASS ${name}`)).catch(e => checks.push(`FAIL ${name}: ${e.message}`));
+          checks.push(`PASS ${name}`);
+        } catch (e) {
+          checks.push(`FAIL ${name}: ${e.message}`);
+        }
+        return Promise.resolve();
+      };
+      const assert = (cond, msg) => { if (!cond) throw new Error(msg || 'assertion failed'); };
+
+      const fakeScan = {
+        id: 'scan-smoke',
+        startedAt: new Date().toISOString(),
+        tenantId: '00000000-0000-0000-0000-000000000000',
+        tenantDomain: 'contoso.onmicrosoft.com',
+        tenantName: 'Contoso',
+        summary: { total: 3, passed: 1, failed: 1, skipped: 1, error: 0 },
+        results: [
+          { id: '21772', title: 'Applications do not have client secrets configured', status: 'Failed', message: 'Found 3 apps with secrets', pillar: 'Identity', risk: 'High', category: 'Application management', implementationLevel: 'full', durationMs: 100, evidence: { apps: ['a<' + '/script>pp1'] } },
+          { id: '21770', title: 'Inactive applications', status: 'Passed', message: 'All good', pillar: 'Identity', risk: 'Medium', category: 'Access control', implementationLevel: 'partial', implementationNotes: { implemented: 'x', notImplemented: 'y' }, durationMs: 50 },
+          { id: '21771', title: 'Inactive privileged apps', status: 'Skipped', message: 'Not evaluable', pillar: 'Devices', risk: 'High', category: 'Application management', implementationLevel: 'none', durationMs: 5 },
+        ],
+        tenantInfo: {
+          TenantOverview: { UserCount: 10, GuestCount: 2, GroupCount: 5, ApplicationCount: 7, DeviceCount: 4, ManagedDeviceCount: 3 },
+          OverviewCaMfaAllUsers: { description: 'test', nodes: [
+            { source: 'User sign in', target: 'No CA applied', value: 4 },
+            { source: 'User sign in', target: 'CA applied', value: 10 },
+            { source: 'CA applied', target: 'No MFA', value: 2 },
+            { source: 'CA applied', target: 'MFA', value: 8 } ] },
+          OverviewCaDevicesAllUsers: null,
+          OverviewAuthMethodsAllUsers: { description: 'auth', nodes: [
+            { source: 'Users', target: 'Single factor', value: 3 },
+            { source: 'Users', target: 'Phishable', value: 5 },
+            { source: 'Phishable', target: 'Phone', value: 2 },
+            { source: 'Phishable', target: 'Authenticator', value: 3 },
+            { source: 'Users', target: 'Phish resistant', value: 2 },
+            { source: 'Phish resistant', target: 'Passkey', value: 1 },
+            { source: 'Phish resistant', target: 'WHfB', value: 1 } ] },
+          OverviewAuthMethodsPrivilegedUsers: null,
+          DeviceOverview: {
+            DesktopDevicesSummary: { description: 'desktop', nodes: [
+              { source: 'Desktop devices', target: 'Windows', value: 6 },
+              { source: 'Windows', target: 'Entra joined', value: 4 },
+              { source: 'Windows', target: 'Entra registered', value: 2 },
+              { source: 'Entra joined', target: 'Compliant', value: 3 },
+              { source: 'Entra joined', target: 'Non-compliant', value: 1 },
+              { source: 'Entra registered', target: 'Unmanaged', value: 2 } ], totalDevices: 6, entrajoined: 4, entrahybridjoined: 0, entrareigstered: 2 },
+            MobileSummary: { description: 'mobile', nodes: [] },
+            DeviceOwnership: { corporateCount: 3, personalCount: 1 },
+            ManagedDevices: null,
+            DeviceCompliance: null,
+          },
+          ConfigWindowsEnrollment: [{ Type: 'MDM', PolicyName: 'Intune', AppliesTo: 'All', Groups: 'Not Applicable' }],
+          ConfigDeviceEnrollmentRestriction: null,
+          ConfigDeviceCompliancePolicies: null,
+          ConfigDeviceAppProtectionPolicies: null,
+        },
+        tenantInfoNotes: { OverviewCaDevicesAllUsers: 'Requires Entra ID P1 or higher.' },
+      };
+
+      await check('Md.mdToHtml renders markdown', () => {
+        const html = Md.mdToHtml('# Title\n\n- item [link](https://example.com)\n\n| a | b |\n|---|---|\n| 1 | 2 |\n\n```json\n{"x":1}\n```');
+        assert(html.includes('<h3>'), 'heading');
+        assert(html.includes('<li>'), 'list');
+        assert(html.includes('href="https://example.com"'), 'link');
+        assert(html.includes('<table'), 'table');
+        assert(html.includes('<pre><code>'), 'code');
+      });
+
+      await check('Md.mdToHtml escapes html injection', () => {
+        const html = Md.mdToHtml('<img src=x onerror=alert(1)> and [x](javascript:alert(1))');
+        assert(!html.includes('<img'), 'img not escaped');
+        assert(!html.includes('javascript:'), 'js url not stripped');
+      });
+
+      await check('Md.buildResultMarkdown embeds evidence', () => {
+        const md = Md.buildResultMarkdown(fakeScan.results[0], 'Checked things.\n\n%TestResult%');
+        assert(md.includes('Checked things.'), 'template');
+        assert(md.includes('Failed'), 'status');
+      });
+
+      await check('Charts.gauge/donut/heatmap/trend/sparkline render', () => {
+        assert(Charts.gauge({ label: 'Identity', value: 3, total: 5 }).includes('<svg'), 'gauge');
+        assert(Charts.donut({ segments: [{ label: 'Passed', value: 3, color: 'var(--viz-good)' }, { label: 'Failed', value: 1, color: 'var(--viz-critical)' }] }).includes('<svg'), 'donut');
+        assert(Charts.heatmap({ rows: ['Identity'], cols: ['High'], get: () => 2 }).includes('viz-heat-cell'), 'heatmap');
+        assert(Charts.trend({ series: [{ name: 'Overall', color: 'var(--text)', points: [{ label: 'a', value: 10 }, { label: 'b', value: 20 }] }], yMax: 100 }).includes('polyline'), 'trend');
+        assert(Charts.sparkline([1, 0, 1]).includes('<svg'), 'sparkline');
+      });
+
+      await check('Charts.sankey lays out multi-level flows', () => {
+        const svg = Charts.sankey({ data: fakeScan.tenantInfo.OverviewAuthMethodsAllUsers });
+        assert(svg.includes('<svg'), 'svg');
+        assert(svg.includes('Phish resistant'), 'node label');
+        assert((svg.match(/<path/g) || []).length >= 7, 'ribbons');
+      });
+
+      await check('Charts.sankey empty state', () => {
+        assert(Charts.sankey({ data: { nodes: [] } }).includes('viz-empty'), 'empty');
+      });
+
+      await check('UIDashboard.render draws full dashboard', () => {
+        UIDashboard.render(fakeScan);
+        const html = document.getElementById('dashboardRoot').innerHTML;
+        assert(html.includes('Pillar scores'), 'gauges');
+        assert(html.includes('Tenant overview'), 'kpis');
+        assert(html.includes('Conditional access'), 'sankey card');
+        assert(html.includes('Top fixes'), 'top fixes');
+        assert(html.includes('Requires Entra ID P1'), 'note surfaced');
+      });
+
+      await check('ReportOfficial.buildAssessmentJson shape', async () => {
+        const data = await ReportOfficial.buildAssessmentJson(fakeScan);
+        assert(data.EndOfJson === 'EndOfJson', 'EndOfJson');
+        assert(data.TestResultSummary.IdentityTotal === 2, `IdentityTotal=${data.TestResultSummary.IdentityTotal}`);
+        assert(data.TestResultSummary.IdentityPassed === 1, 'IdentityPassed');
+        assert(data.TestResultSummary.DevicesTotal === 0, 'Planned excluded from totals');
+        const t = data.Tests.find(x => x.TestId === '21772');
+        assert(t.TestStatus === 'Failed', 'status mapping');
+        assert(t.TestDescription.length > 100, 'md description loaded');
+        const planned = data.Tests.find(x => x.TestId === '21771');
+        assert(planned.TestStatus === 'Planned', 'unimplemented -> Planned');
+        assert(data.TenantInfo.TenantOverview.UserCount === 10, 'tenantInfo passthrough');
+      });
+
+      await check('ReportOfficial.buildReportHtml splices template safely', async () => {
+        const html = await ReportOfficial.buildReportHtml(fakeScan);
+        assert(html.includes('reportData= {'), 'splice marker');
+        assert(html.includes('contoso.onmicrosoft.com'), 'tenant data embedded');
+        assert(!html.includes('a<' + '/script>pp1'), 'script tag escaped in evidence');
+        assert(html.length > 2000000, 'template bulk present');
+      });
+
+      await check('ReportNative.buildHtml produces standalone report', async () => {
+        const html = await ReportNative.buildHtml(fakeScan);
+        assert(html.startsWith('<!DOCTYPE html>'), 'doctype');
+        assert(html.includes('Zero Trust Assessment'), 'title');
+        assert(html.includes('Findings'), 'findings');
+        assert(html.includes('21772'), 'failed control listed');
+        assert(!html.includes('src="http'), 'no external resources');
+      });
+
+      await check('Registry loads full catalog with metadata', async () => {
+        const all = await Registry.getAll();
+        assert(all.length >= 300, `catalog size ${all.length}`);
+        // Two module controls (21778/21779) ship without a Pillar; the registry falls back
+        // to pillar 'Unknown' with an empty pillars array for those.
+        assert(all.every(t => t.pillars.length >= 1 || t.pillar === 'Unknown'), 'pillars normalized');
+      });
+
+      await check('Store profiles round-trip', () => {
+        Store.saveProfile('smoke', ['1', '2']);
+        assert((Store.loadProfiles().smoke || []).length === 2, 'saved');
+        Store.deleteProfile('smoke');
+        assert(!Store.loadProfiles().smoke, 'deleted');
+      });
+
+      const errors = window.__smokeErrors;
+      const failed = checks.filter(c => c.startsWith('FAIL'));
+      document.getElementById('smoke-output').textContent = [
+        ...checks,
+        ...errors.map(e => `PAGE-ERROR ${e}`),
+        (failed.length || errors.length) ? 'SMOKE-RESULT: FAIL' : 'SMOKE-RESULT: PASS',
+      ].join('\n');
+    })();
+  </script>
+</body>
+</html>

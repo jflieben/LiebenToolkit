@@ -9,6 +9,31 @@
   --danger: #be2d2d;
   --ok: #13874d;
   --warn: #cf7e08;
+
+  /* Data-viz palette (validated categorical order — assign in order, never cycle) */
+  --viz-s1: #2a78d6;
+  --viz-s2: #1baf7a;
+  --viz-s3: #eda100;
+  --viz-s4: #008300;
+  --viz-s5: #4a3aa7;
+  --viz-s6: #e34948;
+  --viz-s7: #e87ba4;
+  --viz-s8: #eb6834;
+  /* Status roles (reserved — never used as series colors) */
+  --viz-good: #0ca30c;
+  --viz-warning: #fab219;
+  --viz-serious: #ec835a;
+  --viz-critical: #d03b3b;
+  --viz-neutral: #898781;
+  /* Sequential blue ramp (magnitude) */
+  --viz-seq-1: #cde2fb;
+  --viz-seq-2: #9ec5f4;
+  --viz-seq-3: #6da7ec;
+  --viz-seq-4: #2a78d6;
+  --viz-seq-5: #1c5cab;
+  /* Chart chrome */
+  --viz-grid: #e1e0d9;
+  --viz-axis: #c3c2b7;
 }
 
 [data-theme="dark"] {
@@ -22,6 +47,28 @@
   --danger: #ff7b7b;
   --ok: #69d99e;
   --warn: #f3b555;
+
+  /* Dark steps of the same hues, selected for the dark surface (not a hue flip) */
+  --viz-s1: #3987e5;
+  --viz-s2: #199e70;
+  --viz-s3: #c98500;
+  --viz-s4: #008300;
+  --viz-s5: #9085e9;
+  --viz-s6: #e66767;
+  --viz-s7: #d55181;
+  --viz-s8: #d95926;
+  --viz-good: #0ca30c;
+  --viz-warning: #fab219;
+  --viz-serious: #ec835a;
+  --viz-critical: #d03b3b;
+  --viz-neutral: #898781;
+  --viz-seq-1: #184f95;
+  --viz-seq-2: #256abf;
+  --viz-seq-3: #3987e5;
+  --viz-seq-4: #6da7ec;
+  --viz-seq-5: #9ec5f4;
+  --viz-grid: #2c2c2a;
+  --viz-axis: #383835;
 }
 
 * { box-sizing: border-box; }
@@ -381,6 +428,193 @@ button { cursor: pointer; }
   font-family: Consolas, monospace;
   letter-spacing: 1px;
 }
+
+/* ---- Data-viz components ---- */
+
+.viz-gauge-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  justify-content: flex-start;
+}
+.viz-gauge { text-align: center; }
+.viz-gauge-value {
+  font-size: 20px;
+  font-weight: 700;
+  fill: var(--text);
+}
+.viz-gauge-sub {
+  font-size: 10px;
+  fill: var(--muted);
+}
+.viz-gauge-label {
+  font-size: 13px;
+  font-weight: 600;
+  margin-top: 2px;
+}
+
+.viz-donut {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+.viz-legend { display: flex; flex-direction: column; gap: 4px; }
+.viz-legend-inline { flex-direction: row; flex-wrap: wrap; gap: 12px; margin-bottom: 4px; }
+.viz-legend-row { display: flex; align-items: center; gap: 6px; font-size: 12px; }
+.viz-swatch {
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+  display: inline-block;
+  flex: none;
+}
+.viz-legend-label { color: var(--text); }
+.viz-legend-value { color: var(--muted); margin-left: auto; padding-left: 10px; }
+
+.viz-sankey svg { width: 100%; height: auto; }
+.viz-node-label {
+  font-size: 11px;
+  fill: var(--text);
+  paint-order: stroke;
+  stroke: var(--card);
+  stroke-width: 3px;
+  stroke-linejoin: round;
+}
+.viz-node-value { fill: var(--muted); }
+.viz-caption {
+  margin: 6px 0 0;
+  font-size: 12px;
+  color: var(--muted);
+}
+.viz-axis-label {
+  font-size: 10px;
+  fill: var(--muted);
+}
+
+.viz-empty {
+  color: var(--muted);
+  font-size: 13px;
+  padding: 18px 8px;
+  text-align: center;
+  border: 1px dashed var(--border);
+  border-radius: 8px;
+}
+
+.viz-heatmap {
+  border-collapse: collapse;
+  font-size: 12px;
+  min-width: 260px;
+}
+.viz-heatmap th {
+  padding: 6px 8px;
+  text-align: left;
+  color: var(--muted);
+  font-weight: 600;
+}
+.viz-heat-cell {
+  padding: 8px 10px;
+  text-align: center;
+  border: 2px solid var(--card);
+  border-radius: 6px;
+  min-width: 44px;
+  color: #0b0b0b;
+  font-weight: 600;
+}
+.viz-heat-dark { color: #ffffff; }
+.viz-heat-zero { color: var(--muted); background: transparent; font-weight: 400; }
+[data-theme="dark"] .viz-heat-cell { color: #ffffff; }
+[data-theme="dark"] .viz-heat-cell.viz-heat-zero { color: var(--muted); }
+[data-theme="dark"] .viz-heatmap td[style*="--viz-seq-4"],
+[data-theme="dark"] .viz-heatmap td[style*="--viz-seq-5"] { color: #0b0b0b; }
+
+.viz-trend svg { width: 100%; height: auto; }
+.viz-sparkline { vertical-align: middle; }
+
+.viz-tooltip {
+  position: fixed;
+  z-index: 60;
+  pointer-events: none;
+  background: var(--card);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25);
+  padding: 6px 10px;
+  font-size: 12px;
+  max-width: 320px;
+}
+
+.viz-chip {
+  font-size: 12px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 3px 10px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+.viz-chip-good { border-color: var(--viz-good); color: var(--viz-good); }
+.viz-chip-bad { border-color: var(--viz-critical); color: var(--viz-critical); }
+
+.viz-risk {
+  font-size: 11px;
+  font-weight: 600;
+  border-radius: 999px;
+  padding: 2px 8px;
+  border: 1px solid var(--border);
+}
+.viz-risk-critical { border-color: var(--viz-critical); color: var(--viz-critical); }
+.viz-risk-high { border-color: var(--viz-serious); color: var(--viz-serious); }
+.viz-risk-medium { border-color: var(--viz-warning); color: var(--warn); }
+.viz-risk-low { border-color: var(--viz-neutral); color: var(--muted); }
+.viz-risk-unranked { color: var(--muted); }
+
+.viz-fix-row { cursor: pointer; }
+
+.viz-config summary {
+  cursor: pointer;
+  padding: 2px 0;
+}
+.viz-config[open] summary { margin-bottom: 8px; }
+
+.md-table-wrap { overflow-x: auto; }
+
+.hist-dots { white-space: nowrap; }
+.hist-dot {
+  display: inline-block;
+  width: 9px;
+  height: 9px;
+  border-radius: 3px;
+  margin-right: 3px;
+  vertical-align: middle;
+}
+.checkbox-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+/* Markdown blocks inside the detail modal */
+.md-body { line-height: 1.5; font-size: 13px; }
+.md-body h3, .md-body h4, .md-body h5 { margin: 12px 0 4px; }
+.md-body p { margin: 6px 0; }
+.md-body ul, .md-body ol { margin: 6px 0; padding-left: 20px; }
+.md-body code {
+  background: rgba(127, 127, 127, 0.15);
+  border-radius: 4px;
+  padding: 1px 4px;
+  font-size: 12px;
+}
+.md-body pre {
+  background: rgba(127, 127, 127, 0.1);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px;
+  overflow: auto;
+}
+.md-body a { color: var(--accent); }
 
 @media (max-width: 800px) {
   .test-item { grid-template-columns: auto 1fr; }

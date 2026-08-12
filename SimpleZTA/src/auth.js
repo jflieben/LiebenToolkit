@@ -40,6 +40,12 @@
     'https://graph.microsoft.com/DeviceManagementRBAC.Read.All',
     'https://graph.microsoft.com/IdentityRiskEvent.Read.All',
     'https://graph.microsoft.com/IdentityRiskyUser.Read.All',
+    // Added for the expanded control set (Global Secure Access network controls and
+    // Microsoft Information Protection sensitivity labels). Controls that need scopes
+    // beyond these (Copilot/agent-identity preview, Defender for Identity) degrade to a
+    // Skipped result on 403/404 rather than failing the run.
+    'https://graph.microsoft.com/NetworkAccess.Read.All',
+    'https://graph.microsoft.com/InformationProtectionPolicy.Read',
   ];
 
   function parseAuth(text) {

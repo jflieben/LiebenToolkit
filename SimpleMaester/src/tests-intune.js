@@ -94,14 +94,14 @@
     },
   });
 
-  // ── MT.1053  MFA required for Intune enrollment ──────────────────────────────
+  // ── SM.INT.1053  MFA required for Intune enrollment ──────────────────────────────
   // Uses existing CA scope (no new scope needed). Checks for a CA policy
   // requiring MFA when enrolling in the Microsoft Intune Enrollment app.
   tests.push({
-    id: 'MT.1053',
+    id: 'SM.INT.1053',
     title: 'MFA should not be blocked for Intune enrollment',
     severity: 'High', category: 'Intune', tag: 'Intune',
-    docUrl: 'https://maester.dev/docs/tests/MT.1053',
+    docUrl: null,
     description: 'A Conditional Access policy should require MFA for the Microsoft Intune Enrollment app so devices cannot be enrolled without MFA.',
     async run() {
       const t0 = performance.now();
@@ -121,19 +121,19 @@
           return grants.includes('mfa') || !!strength;
         });
         if (!mfaForEnrollment.length) {
-          return { id: 'MT.1053', status: 'Failed', reason: `No active CA policy requiring MFA for the Intune Enrollment app (${INTUNE_ENROLLMENT_APP_ID}) was found. Without this, devices can be enrolled without MFA.`, durationMs: ms(t0) };
+          return { id: 'SM.INT.1053', status: 'Failed', reason: `No active CA policy requiring MFA for the Intune Enrollment app (${INTUNE_ENROLLMENT_APP_ID}) was found. Without this, devices can be enrolled without MFA.`, durationMs: ms(t0) };
         }
-        return { id: 'MT.1053', status: 'Passed', reason: `${mfaForEnrollment.length} CA polic${mfaForEnrollment.length === 1 ? 'y' : 'ies'} require MFA for Intune enrollment: ${mfaForEnrollment.map(p => p.displayName).join(', ')}.`, durationMs: ms(t0) };
-      } catch (e) { return skip403('MT.1053', e, t0); }
+        return { id: 'SM.INT.1053', status: 'Passed', reason: `${mfaForEnrollment.length} CA polic${mfaForEnrollment.length === 1 ? 'y' : 'ies'} require MFA for Intune enrollment: ${mfaForEnrollment.map(p => p.displayName).join(', ')}.`, durationMs: ms(t0) };
+      } catch (e) { return skip403('SM.INT.1053', e, t0); }
     },
   });
 
-  // ── MT.1054  Enrollment restrictions configured ──────────────────────────────
+  // ── SM.INT.1054  Enrollment restrictions configured ──────────────────────────────
   tests.push({
-    id: 'MT.1054',
+    id: 'SM.INT.1054',
     title: 'Intune enrollment restrictions are configured',
     severity: 'Medium', category: 'Intune', tag: 'Intune',
-    docUrl: 'https://maester.dev/docs/tests/MT.1054',
+    docUrl: null,
     description: 'Device enrollment restrictions should be configured to limit which platforms and device types can enroll.',
     requiredScopes: DEVICE_SCOPES,
     async run() {
@@ -146,10 +146,10 @@
           (c['@odata.type'] || '').includes('WindowsHelloForBusiness')
         );
         if (!restrictions.length) {
-          return { id: 'MT.1054', status: 'Failed', reason: 'No device enrollment restriction configurations found in Intune.', durationMs: ms(t0) };
+          return { id: 'SM.INT.1054', status: 'Failed', reason: 'No device enrollment restriction configurations found in Intune.', durationMs: ms(t0) };
         }
-        return { id: 'MT.1054', status: 'Passed', reason: `${restrictions.length} enrollment restriction configuration(s) found.`, durationMs: ms(t0) };
-      } catch (e) { return skip403('MT.1054', e, t0); }
+        return { id: 'SM.INT.1054', status: 'Passed', reason: `${restrictions.length} enrollment restriction configuration(s) found.`, durationMs: ms(t0) };
+      } catch (e) { return skip403('SM.INT.1054', e, t0); }
     },
   });
 
@@ -191,12 +191,12 @@
   tests.push(winCompTest('MT.1098', 'Windows device compliance policy requires defender real-time protection', 'Windows compliance policies should require Defender real-time protection.', null,
     p => p.defenderEnabled === true || p.realTimeProtectionEnabled === true));
 
-  // ── MT.1099  iOS/macOS compliance policy ────────────────────────────────────
+  // ── SM.INT.1099  iOS/macOS compliance policy ────────────────────────────────────
   tests.push({
-    id: 'MT.1099',
+    id: 'SM.INT.1099',
     title: 'iOS/macOS device compliance policy is configured',
     severity: 'High', category: 'Intune', tag: 'Intune',
-    docUrl: 'https://maester.dev/docs/tests/MT.1099',
+    docUrl: null,
     description: 'At least one iOS or macOS compliance policy should be configured.',
     requiredScopes: DEVICE_SCOPES,
     async run() {
@@ -204,18 +204,18 @@
       try {
         const all = await Graph.graphAll('deviceManagement/deviceCompliancePolicies', gOpts);
         const ios = all.filter(p => ['#microsoft.graph.iosCompliancePolicy', '#microsoft.graph.macOSCompliancePolicy'].includes(p['@odata.type']));
-        if (!ios.length) return { id: 'MT.1099', status: 'Failed', reason: 'No iOS or macOS compliance policies found in Intune.', durationMs: ms(t0) };
-        return { id: 'MT.1099', status: 'Passed', reason: `${ios.length} iOS/macOS compliance polic${ios.length === 1 ? 'y' : 'ies'} found.`, durationMs: ms(t0) };
-      } catch (e) { return skip403('MT.1099', e, t0); }
+        if (!ios.length) return { id: 'SM.INT.1099', status: 'Failed', reason: 'No iOS or macOS compliance policies found in Intune.', durationMs: ms(t0) };
+        return { id: 'SM.INT.1099', status: 'Passed', reason: `${ios.length} iOS/macOS compliance polic${ios.length === 1 ? 'y' : 'ies'} found.`, durationMs: ms(t0) };
+      } catch (e) { return skip403('SM.INT.1099', e, t0); }
     },
   });
 
-  // ── MT.1100  Android compliance policy ──────────────────────────────────────
+  // ── SM.INT.1100  Android compliance policy ──────────────────────────────────────
   tests.push({
-    id: 'MT.1100',
+    id: 'SM.INT.1100',
     title: 'Android device compliance policy is configured',
     severity: 'High', category: 'Intune', tag: 'Intune',
-    docUrl: 'https://maester.dev/docs/tests/MT.1100',
+    docUrl: null,
     description: 'At least one Android compliance policy should be configured.',
     requiredScopes: DEVICE_SCOPES,
     async run() {
@@ -223,58 +223,58 @@
       try {
         const all = await Graph.graphAll('deviceManagement/deviceCompliancePolicies', gOpts);
         const and = all.filter(p => (p['@odata.type'] || '').toLowerCase().includes('android'));
-        if (!and.length) return { id: 'MT.1100', status: 'Failed', reason: 'No Android compliance policies found in Intune.', durationMs: ms(t0) };
-        return { id: 'MT.1100', status: 'Passed', reason: `${and.length} Android compliance polic${and.length === 1 ? 'y' : 'ies'} found.`, durationMs: ms(t0) };
-      } catch (e) { return skip403('MT.1100', e, t0); }
+        if (!and.length) return { id: 'SM.INT.1100', status: 'Failed', reason: 'No Android compliance policies found in Intune.', durationMs: ms(t0) };
+        return { id: 'SM.INT.1100', status: 'Passed', reason: `${and.length} Android compliance polic${and.length === 1 ? 'y' : 'ies'} found.`, durationMs: ms(t0) };
+      } catch (e) { return skip403('SM.INT.1100', e, t0); }
     },
   });
 
-  // ── MT.1101/MT.1102  MAM for iOS/Android ───────────────────────────────────
+  // ── SM.INT.1101/SM.INT.1102  MAM for iOS/Android ───────────────────────────────────
   async function getMamPolicies(platform) {
     const all = await Graph.graphAll('deviceAppManagement/managedAppPolicies', gOpts);
     return all.filter(p => (p['@odata.type'] || '').toLowerCase().includes(platform));
   }
 
   tests.push({
-    id: 'MT.1101',
+    id: 'SM.INT.1101',
     title: 'Mobile Application Management policies are configured for iOS',
     severity: 'High', category: 'Intune', tag: 'Intune',
-    docUrl: 'https://maester.dev/docs/tests/MT.1101',
+    docUrl: null,
     description: 'At least one iOS Managed App Protection (MAM) policy should be configured.',
     requiredScopes: DEVICE_SCOPES,
     async run() {
       const t0 = performance.now();
       try {
         const ios = await getMamPolicies('ios');
-        if (!ios.length) return { id: 'MT.1101', status: 'Failed', reason: 'No iOS MAM protection policies found in Intune.', durationMs: ms(t0) };
-        return { id: 'MT.1101', status: 'Passed', reason: `${ios.length} iOS MAM polic${ios.length === 1 ? 'y' : 'ies'} found.`, durationMs: ms(t0) };
-      } catch (e) { return skip403('MT.1101', e, t0); }
+        if (!ios.length) return { id: 'SM.INT.1101', status: 'Failed', reason: 'No iOS MAM protection policies found in Intune.', durationMs: ms(t0) };
+        return { id: 'SM.INT.1101', status: 'Passed', reason: `${ios.length} iOS MAM polic${ios.length === 1 ? 'y' : 'ies'} found.`, durationMs: ms(t0) };
+      } catch (e) { return skip403('SM.INT.1101', e, t0); }
     },
   });
 
   tests.push({
-    id: 'MT.1102',
+    id: 'SM.INT.1102',
     title: 'Mobile Application Management policies are configured for Android',
     severity: 'High', category: 'Intune', tag: 'Intune',
-    docUrl: 'https://maester.dev/docs/tests/MT.1102',
+    docUrl: null,
     description: 'At least one Android Managed App Protection (MAM) policy should be configured.',
     requiredScopes: DEVICE_SCOPES,
     async run() {
       const t0 = performance.now();
       try {
         const and = await getMamPolicies('android');
-        if (!and.length) return { id: 'MT.1102', status: 'Failed', reason: 'No Android MAM protection policies found in Intune.', durationMs: ms(t0) };
-        return { id: 'MT.1102', status: 'Passed', reason: `${and.length} Android MAM polic${and.length === 1 ? 'y' : 'ies'} found.`, durationMs: ms(t0) };
-      } catch (e) { return skip403('MT.1102', e, t0); }
+        if (!and.length) return { id: 'SM.INT.1102', status: 'Failed', reason: 'No Android MAM protection policies found in Intune.', durationMs: ms(t0) };
+        return { id: 'SM.INT.1102', status: 'Passed', reason: `${and.length} Android MAM polic${and.length === 1 ? 'y' : 'ies'} found.`, durationMs: ms(t0) };
+      } catch (e) { return skip403('SM.INT.1102', e, t0); }
     },
   });
 
-  // ── MT.1105  Corporate owned enrollment profile ──────────────────────────────
+  // ── SM.INT.1105  Corporate owned enrollment profile ──────────────────────────────
   tests.push({
-    id: 'MT.1105',
+    id: 'SM.INT.1105',
     title: 'Device enrollment requires corporate owned device profile',
     severity: 'Medium', category: 'Intune', tag: 'Intune',
-    docUrl: 'https://maester.dev/docs/tests/MT.1105',
+    docUrl: null,
     description: 'Enrollment profiles or restrictions should exist for corporate device management (Windows Autopilot, Apple DEP, or similar).',
     requiredScopes: DEVICE_SCOPES,
     async run() {
@@ -294,38 +294,38 @@
         );
         const total = autopilotProfiles.length + depSettings.length + corpConfigs.length;
         if (!total) {
-          return { id: 'MT.1105', status: 'Failed', reason: 'No corporate enrollment profiles (Autopilot, DEP, or corporate device restrictions) found.', durationMs: ms(t0) };
+          return { id: 'SM.INT.1105', status: 'Failed', reason: 'No corporate enrollment profiles (Autopilot, DEP, or corporate device restrictions) found.', durationMs: ms(t0) };
         }
         const parts = [];
         if (autopilotProfiles.length) parts.push(`${autopilotProfiles.length} Autopilot profile(s)`);
         if (depSettings.length) parts.push(`${depSettings.length} DEP setting(s)`);
         if (corpConfigs.length) parts.push(`${corpConfigs.length} enrollment config(s)`);
-        return { id: 'MT.1105', status: 'Passed', reason: `Corporate enrollment configured: ${parts.join(', ')}.`, durationMs: ms(t0) };
-      } catch (e) { return skip403('MT.1105', e, t0); }
+        return { id: 'SM.INT.1105', status: 'Passed', reason: `Corporate enrollment configured: ${parts.join(', ')}.`, durationMs: ms(t0) };
+      } catch (e) { return skip403('SM.INT.1105', e, t0); }
     },
   });
 
-  // ── MT.1123  App Protection PIN required ────────────────────────────────────
+  // ── SM.INT.1123  App Protection PIN required ────────────────────────────────────
   tests.push({
-    id: 'MT.1123',
+    id: 'SM.INT.1123',
     title: 'Intune App Protection PIN is required',
     severity: 'High', category: 'Intune', tag: 'Intune',
-    docUrl: 'https://maester.dev/docs/tests/MT.1123',
+    docUrl: null,
     description: 'App Protection (MAM) policies should require a PIN to access protected apps.',
     requiredScopes: DEVICE_SCOPES,
     async run() {
       const t0 = performance.now();
       try {
         const all = await Graph.graphAll('deviceAppManagement/managedAppPolicies', gOpts);
-        if (!all.length) return { id: 'MT.1123', status: 'Skipped', reason: 'No MAM policies configured.', durationMs: ms(t0) };
+        if (!all.length) return { id: 'SM.INT.1123', status: 'Skipped', reason: 'No MAM policies configured.', durationMs: ms(t0) };
         const withPin = all.filter(p => p.pinRequired === true);
-        if (!withPin.length) return { id: 'MT.1123', status: 'Failed', reason: `None of ${all.length} MAM polic${all.length === 1 ? 'y requires' : 'ies require'} a PIN.`, durationMs: ms(t0) };
-        return { id: 'MT.1123', status: 'Passed', reason: `${withPin.length}/${all.length} MAM polic${withPin.length === 1 ? 'y' : 'ies'} require${withPin.length === 1 ? 's' : ''} a PIN.`, durationMs: ms(t0) };
-      } catch (e) { return skip403('MT.1123', e, t0); }
+        if (!withPin.length) return { id: 'SM.INT.1123', status: 'Failed', reason: `None of ${all.length} MAM polic${all.length === 1 ? 'y requires' : 'ies require'} a PIN.`, durationMs: ms(t0) };
+        return { id: 'SM.INT.1123', status: 'Passed', reason: `${withPin.length}/${all.length} MAM polic${withPin.length === 1 ? 'y' : 'ies'} require${withPin.length === 1 ? 's' : ''} a PIN.`, durationMs: ms(t0) };
+      } catch (e) { return skip403('SM.INT.1123', e, t0); }
     },
   });
 
-  // ─── Defender AV via Intune (MT.1148–MT.1171) ──────────────────────────────
+  // ─── Defender AV via Intune (MT.1148–SM.INT.1171) ──────────────────────────────
   // These checks look at windows10EndpointProtectionConfiguration profiles.
   // Many organizations now use the Settings Catalog instead; we do a best-effort
   // check of both configuration sources.
@@ -414,12 +414,12 @@
     p => p.defenderScheduledScanDay && p.defenderScheduledScanDay !== 'userDefined'
   ));
 
-  // ── MT.1155  ASR rules enabled (consolidated check) ─────────────────────────
+  // ── SM.INT.1155  ASR rules enabled (consolidated check) ─────────────────────────
   tests.push({
-    id: 'MT.1155',
+    id: 'SM.INT.1155',
     title: 'Microsoft Defender Attack Surface Reduction rules are enabled via Intune',
     severity: 'High', category: 'Intune', tag: 'Intune',
-    docUrl: 'https://maester.dev/docs/tests/MT.1155',
+    docUrl: null,
     description: 'Intune endpoint protection profiles should have Attack Surface Reduction (ASR) rules configured.',
     requiredScopes: DEVICE_SCOPES,
     async run() {
@@ -430,8 +430,8 @@
           // Check settings catalog for ASR policies
           const catPolicies = await Graph.graphAll('deviceManagement/configurationPolicies', gOpts);
           const asrPolicies = catPolicies.filter(p => (p.name || '').toLowerCase().match(/asr|attack.surface|reduction/i));
-          if (asrPolicies.length) return { id: 'MT.1155', status: 'Passed', reason: `${asrPolicies.length} ASR settings catalog polic${asrPolicies.length === 1 ? 'y' : 'ies'} found.`, durationMs: ms(t0) };
-          return { id: 'MT.1155', status: 'Failed', reason: 'No endpoint protection profiles or ASR settings catalog policies found.', durationMs: ms(t0) };
+          if (asrPolicies.length) return { id: 'SM.INT.1155', status: 'Passed', reason: `${asrPolicies.length} ASR settings catalog polic${asrPolicies.length === 1 ? 'y' : 'ies'} found.`, durationMs: ms(t0) };
+          return { id: 'SM.INT.1155', status: 'Failed', reason: 'No endpoint protection profiles or ASR settings catalog policies found.', durationMs: ms(t0) };
         }
         const ASR_FIELDS = [
           'defenderOfficeAppsExecutableContentCreationOrLaunchType', 'defenderOfficeAppsLaunchChildProcessType',
@@ -440,9 +440,9 @@
           'defenderNetworkProtectionType', 'defenderGuardMyFoldersType',
         ];
         const withAsr = eps.filter(p => ASR_FIELDS.some(f => p[f] && p[f] !== 'notConfigured' && p[f] !== 'userDefined'));
-        if (!withAsr.length) return { id: 'MT.1155', status: 'Failed', reason: `${eps.length} endpoint protection profile(s) found but none have ASR rules configured.`, durationMs: ms(t0) };
-        return { id: 'MT.1155', status: 'Passed', reason: `${withAsr.length}/${eps.length} endpoint protection profile(s) have ASR rules configured.`, durationMs: ms(t0) };
-      } catch (e) { return skip403('MT.1155', e, t0); }
+        if (!withAsr.length) return { id: 'SM.INT.1155', status: 'Failed', reason: `${eps.length} endpoint protection profile(s) found but none have ASR rules configured.`, durationMs: ms(t0) };
+        return { id: 'SM.INT.1155', status: 'Passed', reason: `${withAsr.length}/${eps.length} endpoint protection profile(s) have ASR rules configured.`, durationMs: ms(t0) };
+      } catch (e) { return skip403('SM.INT.1155', e, t0); }
     },
   });
 
@@ -491,23 +491,23 @@
     });
   }
 
-  // ── MT.1168  Exploit Protection ──────────────────────────────────────────────
+  // ── SM.INT.1168  Exploit Protection ──────────────────────────────────────────────
   tests.push({
-    id: 'MT.1168',
+    id: 'SM.INT.1168',
     title: 'Microsoft Defender Exploit Protection is enabled via Intune',
     severity: 'High', category: 'Intune', tag: 'Intune',
-    docUrl: 'https://maester.dev/docs/tests/MT.1168',
+    docUrl: null,
     description: 'Intune should deploy Exploit Protection (defenderExploitProtectionXml is set).',
     requiredScopes: DEVICE_SCOPES,
     async run() {
       const t0 = performance.now();
       try {
         const eps = await getEndpointProtectionConfigs();
-        if (!eps.length) return { id: 'MT.1168', status: 'Skipped', reason: 'No endpoint protection profiles found.', durationMs: ms(t0) };
+        if (!eps.length) return { id: 'SM.INT.1168', status: 'Skipped', reason: 'No endpoint protection profiles found.', durationMs: ms(t0) };
         const withEP = eps.filter(p => p.defenderExploitProtectionXml && p.defenderExploitProtectionXml.length > 0);
-        if (!withEP.length) return { id: 'MT.1168', status: 'Failed', reason: 'No endpoint protection profile has defenderExploitProtectionXml configured.', durationMs: ms(t0) };
-        return { id: 'MT.1168', status: 'Passed', reason: `${withEP.length} profile(s) deploy Exploit Protection configuration.`, durationMs: ms(t0) };
-      } catch (e) { return skip403('MT.1168', e, t0); }
+        if (!withEP.length) return { id: 'SM.INT.1168', status: 'Failed', reason: 'No endpoint protection profile has defenderExploitProtectionXml configured.', durationMs: ms(t0) };
+        return { id: 'SM.INT.1168', status: 'Passed', reason: `${withEP.length} profile(s) deploy Exploit Protection configuration.`, durationMs: ms(t0) };
+      } catch (e) { return skip403('SM.INT.1168', e, t0); }
     },
   });
 
@@ -525,12 +525,12 @@
     p => p.defenderApplicationGuardEnabled === true
   ));
 
-  // ── MT.1171  Application Control (WDAC) ─────────────────────────────────────
+  // ── SM.INT.1171  Application Control (WDAC) ─────────────────────────────────────
   tests.push({
-    id: 'MT.1171',
+    id: 'SM.INT.1171',
     title: 'Microsoft Defender Application Control is configured via Intune',
     severity: 'Medium', category: 'Intune', tag: 'Intune',
-    docUrl: 'https://maester.dev/docs/tests/MT.1171',
+    docUrl: null,
     description: 'Intune should configure Windows Defender Application Control (WDAC) to restrict which apps can run.',
     requiredScopes: DEVICE_SCOPES,
     async run() {
@@ -547,15 +547,15 @@
           (c.displayName || '').toLowerCase().match(/application.control|wdac|applocker/i)
         );
         const total = wdacPolicies.length + wdacConfigs.length;
-        if (!total) return { id: 'MT.1171', status: 'Failed', reason: 'No Application Control (WDAC/AppLocker) policies found in Intune.', durationMs: ms(t0) };
-        return { id: 'MT.1171', status: 'Passed', reason: `${total} Application Control configuration(s) found (${wdacPolicies.length} settings catalog, ${wdacConfigs.length} custom config).`, durationMs: ms(t0) };
-      } catch (e) { return skip403('MT.1171', e, t0); }
+        if (!total) return { id: 'SM.INT.1171', status: 'Failed', reason: 'No Application Control (WDAC/AppLocker) policies found in Intune.', durationMs: ms(t0) };
+        return { id: 'SM.INT.1171', status: 'Passed', reason: `${total} Application Control configuration(s) found (${wdacPolicies.length} settings catalog, ${wdacConfigs.length} custom config).`, durationMs: ms(t0) };
+      } catch (e) { return skip403('SM.INT.1171', e, t0); }
     },
   });
 
   // ── Build catalog ────────────────────────────────────────────────────────────
   function buildCatalog() {
-    return tests.map(t => ({
+    return tests.filter(t => !/^SM\./.test(t.id)).map(t => ({
       id: t.id, title: t.title, severity: t.severity,
       tag: t.tag || 'Intune', category: t.category || 'Intune',
       runCategory: 'Intune',

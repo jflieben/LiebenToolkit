@@ -6,7 +6,7 @@
   <title>SimpleZTA - Browser Zero Trust Assessment</title>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🔒</text></svg>">
   <link rel="stylesheet" href="style.css" />
-  <script src="https://cdn.jsdelivr.net/npm/@azure/msal-browser@3.27.0/lib/msal-browser.min.js" onerror="window.__msalLoadFailed=true"></script>
+  <script src="../vendor/msal-browser.3.27.0.min.js" onerror="window.__msalLoadFailed=true"></script>
     <!-- Google Analytics (GDPR Compliant) -->
     <script async src="https://www.googletagmanager.com/gtag/js?id=G-20PYJ8S2G7"></script>
     <script>
@@ -47,6 +47,7 @@
 
   <nav class="tabs">
     <button class="tab active" data-tab="run">Run</button>
+    <button class="tab" data-tab="dashboard">Dashboard</button>
     <button class="tab" data-tab="results">Results</button>
     <button class="tab" data-tab="history">History</button>
     <button class="tab" data-tab="catalog">Catalog</button>
@@ -105,8 +106,22 @@
           <input id="searchBox" type="search" placeholder="Filter by id, title, category" />
           <button id="selectVisibleBtn" class="ghost-btn">Select visible</button>
           <button id="clearSelectionBtn" class="ghost-btn">Clear selection</button>
+          <select id="profileSelect" title="Saved scan profiles"><option value="">Profiles...</option></select>
+          <button id="saveProfileBtn" class="ghost-btn" title="Save the current selection as a named profile">Save profile</button>
           <button id="runBtn" class="primary-btn">Run selected</button>
           <button id="cancelBtn" class="ghost-btn hidden">Cancel</button>
+        </div>
+
+        <div class="row">
+          <label class="checkbox-label"><input type="checkbox" id="tenantInfoToggle" checked /> Collect tenant insight graphics (sankeys, device &amp; auth method overviews)</label>
+          <label for="signInDaysSelect">Sign-in window</label>
+          <select id="signInDaysSelect">
+            <option value="1">1 day</option>
+            <option value="3">3 days</option>
+            <option value="7" selected>7 days</option>
+            <option value="14">14 days</option>
+            <option value="30">30 days</option>
+          </select>
         </div>
 
         <div id="runStats" class="muted"></div>
@@ -123,14 +138,21 @@
       </div>
     </section>
 
+    <section id="panel-dashboard" class="panel">
+      <div id="dashboardRoot"></div>
+    </section>
+
     <section id="panel-results" class="panel">
       <div class="card">
         <div class="row between">
           <h2>Scan results</h2>
           <div class="row">
             <select id="scanPicker"></select>
+            <button id="exportOfficialBtn" class="primary-btn">Official report</button>
+            <button id="exportHtmlBtn" class="ghost-btn">HTML report</button>
             <button id="exportJsonBtn" class="ghost-btn">Export JSON</button>
             <button id="exportCsvBtn" class="ghost-btn">Export CSV</button>
+            <button id="exportWorkshopBtn" class="ghost-btn" title="Export findings as a Zero Trust Workshop import file">Workshop JSON</button>
           </div>
         </div>
         <div id="scanMeta" class="muted"></div>
@@ -154,16 +176,26 @@
             <option value="Medium">Medium</option>
             <option value="Low">Low</option>
           </select>
+          <select id="pillarFilter">
+            <option value="">All pillars</option>
+            <option value="Identity">Identity</option>
+            <option value="Devices">Devices</option>
+            <option value="Network">Network</option>
+            <option value="Data">Data</option>
+            <option value="Infrastructure">Infrastructure</option>
+            <option value="SecOps">SecOps</option>
+            <option value="AI">AI</option>
+          </select>
         </div>
         <table class="results-table" id="resultsTable">
           <thead>
             <tr>
-              <th>Status</th>
-              <th>ID</th>
-              <th>Title</th>
-              <th>Pillar</th>
-              <th>Risk</th>
-              <th>Duration</th>
+              <th data-sort="status" class="sortable">Status</th>
+              <th data-sort="id" class="sortable">ID</th>
+              <th data-sort="title" class="sortable">Title</th>
+              <th data-sort="pillar" class="sortable">Pillar</th>
+              <th data-sort="risk" class="sortable">Risk</th>
+              <th data-sort="durationMs" class="sortable">Duration</th>
               <th>Docs</th>
             </tr>
           </thead>
@@ -180,6 +212,18 @@
           <button id="clearHistoryBtn" class="ghost-btn danger">Clear local history</button>
         </div>
         <div id="historySummary"></div>
+      </div>
+      <div class="card">
+        <div class="row between">
+          <h2>Compare scans</h2>
+          <div class="row">
+            <label for="diffFromSelect">From</label>
+            <select id="diffFromSelect"></select>
+            <label for="diffToSelect">To</label>
+            <select id="diffToSelect"></select>
+          </div>
+        </div>
+        <div id="diffRoot"></div>
       </div>
       <div class="card">
         <h2>Per-test movement</h2>
@@ -210,9 +254,9 @@
     <section id="panel-about" class="panel">
       <div class="card">
         <h2>About</h2>
-        <p>SimpleZTA is a browser-native implementation inspired by and mapped to the Microsoft ZeroTrustAssessment PowerShell module.</p>
+        <p>SimpleZTA is a browser-native implementation by Lieben Consultancy, inspired by and mapped to the Microsoft ZeroTrustAssessment PowerShell module.</p>
         <p>Copyright and credit: Microsoft ZeroTrustAssessment module is copyright Microsoft Corporation. This tool provides a client-side companion UX for delegated Graph-based assessment workflows.</p>
-        <p>SimpleZTA stores scan history only in your local browser storage.</p>
+        <p>SimpleZTA stores scan history only in your local browser storage, export it before you clear your browser if you have later need of it.</p>
       </div>
     </section>
 
@@ -244,11 +288,20 @@
   <script src="src/auth.js"></script>
   <script src="src/api.js"></script>
   <script src="src/storage.js"></script>
+  <script src="src/md.js"></script>
+  <script src="src/charts.js"></script>
+  <script src="src/tenantinfo.js"></script>
+  <script src="src/report-official.js"></script>
+  <script src="src/report-native.js"></script>
   <script src="src/tests-impl.js"></script>
+  <script src="src/tests-graph.js"></script>
+  <script src="src/tests-azure.js"></script>
+  <script src="src/tests-purview.js"></script>
   <script src="src/registry.js"></script>
   <script src="src/runner.js"></script>
   <script src="src/ui-results.js"></script>
   <script src="src/ui-history.js"></script>
+  <script src="src/ui-dashboard.js"></script>
   <script src="src/app.js"></script>
 </body>
 </html>

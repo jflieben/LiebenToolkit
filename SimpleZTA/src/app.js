@@ -52,6 +52,7 @@
         document.querySelectorAll('.tab').forEach(x => x.classList.toggle('active', x === btn));
         document.querySelectorAll('.panel').forEach(p => p.classList.toggle('active', p.id === `panel-${tab}`));
         if (tab === 'history') UIHistory.refresh();
+        if (tab === 'dashboard') UIDashboard.refresh();
       });
     });
   }
@@ -102,7 +103,7 @@
     const impl = document.getElementById('implementationSelect').value;
 
     const filtered = tests.filter(t => {
-      if (pillar && pillar !== 'All' && t.pillar !== pillar) return false;
+      if (pillar && pillar !== 'All' && !(t.pillars && t.pillars.length ? t.pillars : [t.pillar]).includes(pillar)) return false;
       if (tenantType && !(t.tenantType || []).includes(tenantType)) return false;
       if (risk && t.risk !== risk) return false;
       if (impl === 'full' && t.implementationLevel !== 'full') return false;
@@ -165,6 +166,52 @@
       renderRunList(tests);
     });
 
+    // Scan profiles: built-in selections plus user-saved ones (stored locally).
+    const BUILTIN_PROFILES = {
+      'Quick wins (high risk, low effort)': t => t.risk === 'High' && t.implementationCost === 'Low' && t.implemented,
+      'High risk only': t => t.risk === 'High',
+      'Identity baseline': t => (t.pillars || [t.pillar]).includes('Identity') && t.implemented,
+      'Implemented controls only': t => t.implemented,
+    };
+
+    function refreshProfilePicker() {
+      const picker = document.getElementById('profileSelect');
+      const saved = Object.keys(Store.loadProfiles()).sort();
+      picker.innerHTML = '<option value="">Profiles...</option>'
+        + Object.keys(BUILTIN_PROFILES).map(n => `<option value="builtin:${n}">${n}</option>`).join('')
+        + saved.map(n => `<option value="saved:${n}">★ ${n}</option>`).join('');
+    }
+
+    document.getElementById('profileSelect').addEventListener('change', e => {
+      const value = e.target.value;
+      if (!value) return;
+      if (value.startsWith('builtin:')) {
+        const fn = BUILTIN_PROFILES[value.slice(8)];
+        if (fn) window.__selectedTests = tests.filter(fn).map(t => t.id);
+      } else if (value.startsWith('saved:')) {
+        const ids = Store.loadProfiles()[value.slice(6)] || [];
+        window.__selectedTests = ids.filter(id => tests.some(t => t.id === id));
+      }
+      renderRunList(tests);
+      toast(`Profile applied: ${(window.__selectedTests || []).length} controls selected.`);
+      e.target.value = '';
+    });
+
+    document.getElementById('saveProfileBtn').addEventListener('click', () => {
+      const selected = window.__selectedTests || [];
+      if (!selected.length) {
+        toast('Select at least one control before saving a profile.');
+        return;
+      }
+      const name = prompt(`Save ${selected.length} selected controls as profile:`);
+      if (!name || !name.trim()) return;
+      Store.saveProfile(name.trim(), selected);
+      refreshProfilePicker();
+      toast(`Profile "${name.trim()}" saved.`);
+    });
+
+    refreshProfilePicker();
+
     async function runSelectedTests(selected, options) {
       const opts = options || {};
       if (!selected.length) {
@@ -216,6 +263,8 @@
 
       try {
         const scan = await Runner.run(selected, {
+          collectTenantInfo: document.getElementById('tenantInfoToggle')?.checked !== false,
+          tenantInfoDays: Number(document.getElementById('signInDaysSelect')?.value) || 7,
           progress: ({ done, total, current, elapsedTotalMs, elapsedCurrentMs, etaMs, currentEstimateMs, subProgress }) => {
             const pct = total ? Math.round((100 * done) / total) : 0;
             document.getElementById('progressFill').style.width = `${pct}%`;
@@ -247,8 +296,9 @@
           toast(`Scan complete: ${scan.summary.passed} passed, ${scan.summary.failed} failed.`);
         }
 
-        document.querySelectorAll('.tab').forEach(x => x.classList.toggle('active', x.dataset.tab === 'results'));
-        document.querySelectorAll('.panel').forEach(p => p.classList.toggle('active', p.id === 'panel-results'));
+        UIDashboard.refresh();
+        document.querySelectorAll('.tab').forEach(x => x.classList.toggle('active', x.dataset.tab === 'dashboard'));
+        document.querySelectorAll('.panel').forEach(p => p.classList.toggle('active', p.id === 'panel-dashboard'));
       } catch (e) {
         Log.err('Run failed', e.message || `${e}`);
         toast(`Run failed: ${e.message || e}`);

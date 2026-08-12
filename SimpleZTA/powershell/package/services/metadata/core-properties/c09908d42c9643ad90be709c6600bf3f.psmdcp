@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<coreProperties xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:dcterms="http://purl.org/dc/terms/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns="http://schemas.openxmlformats.org/package/2006/metadata/core-properties">
+  <dc:creator>Microsoft</dc:creator>
+  <dc:description>Perform a Zero Trust Assessment of your Microsoft 365 environment.</dc:description>
+  <dc:identifier>ZeroTrustAssessment</dc:identifier>
+  <version>2.4.26-preview</version>
+  <keywords>Microsoft Security ZeroTrust Entra Intune PSModule PSIncludes_Function PSFunction_Clear-ZtRequiredModule PSFunction_Connect-ZtAssessment PSFunction_Disconnect-ZtAssessment PSFunction_Get-ZtCurrentLicense PSFunction_Get-ZtExportStatistics PSFunction_Get-ZtGraphScope PSFunction_Get-ZtTest PSFunction_Get-ZtTestStatistics PSFunction_Invoke-ZtAssessment PSFunction_Invoke-ZtAzureRequest PSFunction_Invoke-ZtAzureResourceGraphRequest PSFunction_Invoke-ZtGraphRequest PSCommand_Clear-ZtRequiredModule PSCommand_Connect-ZtAssessment PSCommand_Disconnect-ZtAssessment PSCommand_Get-ZtCurrentLicense PSCommand_Get-ZtExportStatistics PSCommand_Get-ZtGraphScope PSCommand_Get-ZtTest PSCommand_Get-ZtTestStatistics PSCommand_Invoke-ZtAssessment PSCommand_Invoke-ZtAzureRequest PSCommand_Invoke-ZtAzureResourceGraphRequest PSCommand_Invoke-ZtGraphRequest PSCommand_Invoke-ZeroTrustAssessment</keywords>
+  <lastModifiedBy>NuGet, Version=7.6.0.59, Culture=neutral, PublicKeyToken=31bf3856ad364e35;Microsoft Windows NT 10.0.26100.0;.NET Framework 4.7.2</lastModifiedBy>
+</coreProperties>

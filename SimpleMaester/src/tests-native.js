@@ -3,8 +3,7 @@
 // a row in the same shape as the EIDSCA executor produces. This makes it easy to
 // keep adding new tests over time without touching the runner or UI.
 //
-// Test IDs follow Maester's MT.* convention where they map to an existing Maester
-// test. SimpleMaester-specific checks use SM.* IDs.
+// Test IDs in the exposed catalog must map to authoritative Maester docs IDs.
 (() => {
   const tests = [];
 
@@ -44,14 +43,14 @@
     '7495fdc4-34c4-4d15-a289-98788ce399fd', // Azure Information Protection Admin
   ];
 
-  // ---------- MT.1006 Emergency access accounts exist ----------
+  // ---------- SM.1006 Emergency access accounts exist ----------
   tests.push({
-    id: 'MT.1006',
+    id: 'SM.1006',
     title: 'At least one emergency access (break-glass) account exists',
     severity: 'High',
     tag: 'Maester',
     category: 'Maester',
-    docUrl: 'https://maester.dev/docs/tests/MT.1006',
+    docUrl: null,
     description: 'Best practice is to keep one or two cloud-only "break-glass" accounts excluded from CA and MFA policies, with strong long passphrases stored offline. We look for accounts whose UPN or display name contains "break", "emergency" or "bg-".',
     implemented: true,
     async run() {
@@ -61,21 +60,21 @@
         const ba = users.filter(u => /break|emergency|\bbg[-_]/i.test((u.displayName||'') + ' ' + (u.userPrincipalName||'')));
         const enabled = ba.filter(u => u.accountEnabled);
         if (enabled.length === 0) {
-          return { id:'MT.1006', status:'Failed', reason:'No accounts found whose UPN or display name suggests a break-glass purpose.', actual: ba.length, durationMs: ms(start) };
+          return { id:'SM.1006', status:'Failed', reason:'No accounts found whose UPN or display name suggests a break-glass purpose.', actual: ba.length, durationMs: ms(start) };
         }
-        return { id:'MT.1006', status:'Passed', reason:`${enabled.length} candidate emergency access account(s) found: ${enabled.map(u=>u.userPrincipalName).join(', ')}`, actual: enabled.length, durationMs: ms(start) };
-      } catch (e) { return errRow('MT.1006', e, start); }
+        return { id:'SM.1006', status:'Passed', reason:`${enabled.length} candidate emergency access account(s) found: ${enabled.map(u=>u.userPrincipalName).join(', ')}`, actual: enabled.length, durationMs: ms(start) };
+      } catch (e) { return errRow('SM.1006', e, start); }
     },
   });
 
-  // ---------- MT.1030 Global admin count (CIS) ----------
+  // ---------- MT.1032 Global admin count ----------
   tests.push({
-    id: 'MT.1030',
-    title: 'Number of Global Administrators is between 2 and 4',
+    id: 'MT.1032',
+    title: 'Limited number of Global Admins are assigned.',
     severity: 'Medium',
     tag: 'Maester',
     category: 'Maester',
-    docUrl: 'https://maester.dev/docs/tests/MT.1030',
+    docUrl: 'https://maester.dev/docs/tests/MT.1032',
     description: 'Centre for Internet Security recommends 2 to 4 dedicated global admin accounts. Fewer means no backup if one breaks. More inflates the blast radius of a single compromise.',
     implemented: true,
     async run() {
@@ -83,23 +82,23 @@
       try {
         const roles = await getDirectoryRoles();
         const ga = roles.find(r => r.roleTemplateId === '62e90394-69f5-4237-9190-012177145e10');
-        if (!ga) return { id:'MT.1030', status:'Skipped', reason:'Global Administrator role not activated in this tenant.', durationMs: ms(start) };
+        if (!ga) return { id:'MT.1032', status:'Skipped', reason:'Global Administrator role not activated in this tenant.', durationMs: ms(start) };
         const members = await getRoleMembers(ga.id);
         const userCount = members.filter(m => m['@odata.type'] === '#microsoft.graph.user').length;
         const ok = userCount >= 2 && userCount <= 4;
-        return { id:'MT.1030', status: ok ? 'Passed':'Failed', actual: userCount, reason: `Found ${userCount} user(s) in the Global Administrator role.`, durationMs: ms(start) };
-      } catch (e) { return errRow('MT.1030', e, start); }
+        return { id:'MT.1032', status: ok ? 'Passed':'Failed', actual: userCount, reason: `Found ${userCount} user(s) in the Global Administrator role.`, durationMs: ms(start) };
+      } catch (e) { return errRow('MT.1032', e, start); }
     },
   });
 
-  // ---------- MT.1035 Cloud-only admins ----------
+  // ---------- CIS.M365.1.1.1 Cloud-only admins ----------
   tests.push({
-    id: 'MT.1035',
-    title: 'All Global Administrators are cloud-only accounts',
+    id: 'CIS.M365.1.1.1',
+    title: 'Ensure Administrative accounts are cloud-only',
     severity: 'High',
     tag: 'Maester',
     category: 'Maester',
-    docUrl: 'https://maester.dev/docs/tests/MT.1035',
+    docUrl: 'https://maester.dev/docs/tests/CIS.M365.1.1.1',
     description: 'Synced on-prem accounts in privileged roles widen your attack surface to your AD - if AD falls, the cloud goes too. CIS and Microsoft both recommend cloud-only admin accounts.',
     implemented: true,
     async run() {
@@ -107,7 +106,7 @@
       try {
         const roles = await getDirectoryRoles();
         const ga = roles.find(r => r.roleTemplateId === '62e90394-69f5-4237-9190-012177145e10');
-        if (!ga) return { id:'MT.1035', status:'Skipped', reason:'Global Administrator role not activated in this tenant.', durationMs: ms(start) };
+        if (!ga) return { id:'CIS.M365.1.1.1', status:'Skipped', reason:'Global Administrator role not activated in this tenant.', durationMs: ms(start) };
         const members = await getRoleMembers(ga.id);
         const synced = [];
         for (const m of members) {
@@ -117,20 +116,20 @@
             if (u.onPremisesSyncEnabled) synced.push(u.userPrincipalName);
           } catch (e) { Log.debug('user lookup failed', e.message); }
         }
-        if (synced.length === 0) return { id:'MT.1035', status:'Passed', reason:'All Global Administrators are cloud-only.', actual: 0, durationMs: ms(start) };
-        return { id:'MT.1035', status:'Failed', reason:`${synced.length} synced account(s) hold the Global Administrator role: ${synced.join(', ')}`, actual: synced.length, durationMs: ms(start) };
-      } catch (e) { return errRow('MT.1035', e, start); }
+        if (synced.length === 0) return { id:'CIS.M365.1.1.1', status:'Passed', reason:'All Global Administrators are cloud-only.', actual: 0, durationMs: ms(start) };
+        return { id:'CIS.M365.1.1.1', status:'Failed', reason:`${synced.length} synced account(s) hold the Global Administrator role: ${synced.join(', ')}`, actual: synced.length, durationMs: ms(start) };
+      } catch (e) { return errRow('CIS.M365.1.1.1', e, start); }
     },
   });
 
-  // ---------- MT.1040 Privileged users authentication strength ----------
+  // ---------- CISA.MS.AAD.3.6 Phishing-resistant MFA for highly privileged roles ----------
   tests.push({
-    id: 'MT.1040',
-    title: 'All users in privileged Entra roles have a phishing-resistant or MFA method registered',
-    severity: 'Critical',
+    id: 'CISA.MS.AAD.3.6',
+    title: 'Phishing-resistant MFA SHALL be required for highly privileged roles.',
+    severity: 'High',
     tag: 'Maester',
     category: 'Maester',
-    docUrl: 'https://maester.dev/docs/tests/MT.1040',
+    docUrl: 'https://maester.dev/docs/tests/CISA.MS.AAD.3.6',
     description: 'Anyone holding a privileged role should have at least one strong (MFA) method registered. Ideally phishing-resistant (FIDO2, WHfB, certificate). We check the userRegistrationDetails report.',
     implemented: true,
     async run() {
@@ -143,7 +142,7 @@
           const members = await getRoleMembers(r.id);
           for (const m of members) if (m['@odata.type'] === '#microsoft.graph.user') userIds.add(m.id);
         }
-        if (userIds.size === 0) return { id:'MT.1040', status:'Skipped', reason:'No privileged role members found.', durationMs: ms(start) };
+        if (userIds.size === 0) return { id:'CISA.MS.AAD.3.6', status:'Skipped', reason:'No privileged role members found.', durationMs: ms(start) };
         const reg = await Graph.graphAll('reports/authenticationMethods/userRegistrationDetails?$top=999', { apiVersion: 'v1.0' });
         const map = new Map(reg.map(u => [u.id, u]));
         const noMfa = []; const noPhish = [];
@@ -153,22 +152,25 @@
           if (!u.isMfaCapable) noMfa.push(u.userPrincipalName);
           else if (!u.isSystemPreferredAuthenticationMethodEnabled && (!u.methodsRegistered || !u.methodsRegistered.some(m => /fido2|windowsHello|x509Certificate|deviceBasedPush/i.test(m)))) noPhish.push(u.userPrincipalName);
         }
-        if (noMfa.length === 0) {
-          return { id:'MT.1040', status:'Passed', reason: noPhish.length ? `All ${userIds.size} privileged users have MFA. ${noPhish.length} are not yet on phishing-resistant methods (consider FIDO2/WHfB).` : `All ${userIds.size} privileged users have MFA, of which all use phishing-resistant methods.`, actual: 0, durationMs: ms(start) };
+        if (noMfa.length === 0 && noPhish.length === 0) {
+          return { id:'CISA.MS.AAD.3.6', status:'Passed', reason:`All ${userIds.size} privileged users have phishing-resistant methods registered.`, actual: 0, durationMs: ms(start) };
         }
-        return { id:'MT.1040', status:'Failed', reason:`${noMfa.length} privileged user(s) without MFA: ${noMfa.slice(0,10).join(', ')}${noMfa.length>10?', ...':''}`, actual: noMfa.length, durationMs: ms(start) };
-      } catch (e) { return errRow('MT.1040', e, start); }
+        if (noMfa.length > 0) {
+          return { id:'CISA.MS.AAD.3.6', status:'Failed', reason:`${noMfa.length} privileged user(s) without MFA: ${noMfa.slice(0,10).join(', ')}${noMfa.length>10?', ...':''}`, actual: noMfa.length, durationMs: ms(start) };
+        }
+        return { id:'CISA.MS.AAD.3.6', status:'Failed', reason:`${noPhish.length} privileged user(s) without phishing-resistant methods: ${noPhish.slice(0,10).join(', ')}${noPhish.length>10?', ...':''}`, actual: noPhish.length, durationMs: ms(start) };
+      } catch (e) { return errRow('CISA.MS.AAD.3.6', e, start); }
     },
   });
 
-  // ---------- MT.1015 App credentials nearing expiry / expired ----------
+  // ---------- SM.1015 App credentials nearing expiry / expired ----------
   tests.push({
-    id: 'MT.1015',
+    id: 'SM.1015',
     title: 'No application has expired or soon-to-expire credentials in active use',
     severity: 'Medium',
     tag: 'Maester',
     category: 'Maester',
-    docUrl: 'https://maester.dev/docs/tests/MT.1015',
+    docUrl: null,
     description: 'Reports app registrations whose secrets or certificates are already expired or expire within the next 30 days. Expired credentials are a sign of orphaned apps; soon-to-expire ones are a recipe for a 3am outage.',
     implemented: true,
     async run() {
@@ -188,23 +190,23 @@
           }
         }
         if (expired.length === 0 && expiring.length === 0) {
-          return { id:'MT.1015', status:'Passed', reason:`Checked ${apps.length} applications, no expired or expiring credentials in the next 30 days.`, actual: 0, durationMs: ms(start) };
+          return { id:'SM.1015', status:'Passed', reason:`Checked ${apps.length} applications, no expired or expiring credentials in the next 30 days.`, actual: 0, durationMs: ms(start) };
         }
-        return { id:'MT.1015', status: expired.length ? 'Failed':'Failed', actual: expired.length + expiring.length,
+        return { id:'SM.1015', status: expired.length ? 'Failed':'Failed', actual: expired.length + expiring.length,
           reason:`${expired.length} expired credential(s) and ${expiring.length} expiring within 30 days. Examples: ${[...new Set([...expired, ...expiring])].slice(0,5).join(', ')}`,
           durationMs: ms(start) };
-      } catch (e) { return errRow('MT.1015', e, start); }
+      } catch (e) { return errRow('SM.1015', e, start); }
     },
   });
 
-  // ---------- MT.1020 Application owners with MFA enabled ----------
+  // ---------- MT.1063 Application owners with MFA enabled ----------
   tests.push({
-    id: 'MT.1020',
-    title: 'All app registration owners have MFA registered',
+    id: 'MT.1063',
+    title: 'All app registration owners should have MFA registered',
     severity: 'High',
     tag: 'Maester',
     category: 'Maester',
-    docUrl: 'https://maester.dev/docs/tests/MT.1020',
+    docUrl: 'https://maester.dev/docs/tests/MT.1063',
     description: 'Application owners can rotate secrets, add redirect URIs and effectively impersonate the app. They are a valuable target. We check that every owner of every app registration is MFA-registered.',
     implemented: true,
     async run() {
@@ -217,25 +219,25 @@
             for (const o of owners) if (o['@odata.type'] === '#microsoft.graph.user') ownerIds.add(o.id);
           } catch (e) { Log.debug('owner lookup', a.displayName, e.message); }
         });
-        if (ownerIds.size === 0) return { id:'MT.1020', status:'Skipped', reason:'No user app owners found.', durationMs: ms(start) };
+        if (ownerIds.size === 0) return { id:'MT.1063', status:'Skipped', reason:'No user app owners found.', durationMs: ms(start) };
         const reg = await Graph.graphAll('reports/authenticationMethods/userRegistrationDetails?$top=999', { apiVersion: 'v1.0' });
         const map = new Map(reg.map(u => [u.id, u]));
         const noMfa = [];
         for (const id of ownerIds) { const u = map.get(id); if (u && !u.isMfaCapable) noMfa.push(u.userPrincipalName); }
-        if (noMfa.length === 0) return { id:'MT.1020', status:'Passed', reason:`All ${ownerIds.size} application owners have MFA registered.`, actual: 0, durationMs: ms(start) };
-        return { id:'MT.1020', status:'Failed', reason:`${noMfa.length} application owner(s) without MFA: ${noMfa.slice(0,10).join(', ')}`, actual: noMfa.length, durationMs: ms(start) };
-      } catch (e) { return errRow('MT.1020', e, start); }
+        if (noMfa.length === 0) return { id:'MT.1063', status:'Passed', reason:`All ${ownerIds.size} application owners have MFA registered.`, actual: 0, durationMs: ms(start) };
+        return { id:'MT.1063', status:'Failed', reason:`${noMfa.length} application owner(s) without MFA: ${noMfa.slice(0,10).join(', ')}`, actual: noMfa.length, durationMs: ms(start) };
+      } catch (e) { return errRow('MT.1063', e, start); }
     },
   });
 
-  // ---------- MT.1001 At least one Conditional Access policy exists ----------
+  // ---------- SM.1001 At least one Conditional Access policy exists ----------
   tests.push({
-    id: 'MT.1001',
+    id: 'SM.1001',
     title: 'At least one Conditional Access policy is enabled',
     severity: 'High',
     tag: 'Maester',
     category: 'Maester',
-    docUrl: 'https://maester.dev/docs/tests/MT.1001',
+    docUrl: null,
     description: 'A tenant with no enabled CA policies relies entirely on legacy security defaults. Bare minimum is to have at least one CA policy enabled.',
     implemented: true,
     async run() {
@@ -243,20 +245,20 @@
       try {
         const pols = await Graph.graphAll('identity/conditionalAccess/policies?$select=id,displayName,state', { apiVersion: 'v1.0' });
         const enabled = pols.filter(p => p.state === 'enabled');
-        if (enabled.length === 0) return { id:'MT.1001', status:'Failed', reason:`No enabled CA policies found (${pols.length} total, none enabled).`, actual: 0, durationMs: ms(start) };
-        return { id:'MT.1001', status:'Passed', reason:`${enabled.length} of ${pols.length} CA policies are enabled.`, actual: enabled.length, durationMs: ms(start) };
-      } catch (e) { return errRow('MT.1001', e, start); }
+        if (enabled.length === 0) return { id:'SM.1001', status:'Failed', reason:`No enabled CA policies found (${pols.length} total, none enabled).`, actual: 0, durationMs: ms(start) };
+        return { id:'SM.1001', status:'Passed', reason:`${enabled.length} of ${pols.length} CA policies are enabled.`, actual: enabled.length, durationMs: ms(start) };
+      } catch (e) { return errRow('SM.1001', e, start); }
     },
   });
 
-  // ---------- MT.1002 Block legacy authentication ----------
+  // ---------- SM.1002 Block legacy authentication ----------
   tests.push({
-    id: 'MT.1002',
+    id: 'SM.1002',
     title: 'A Conditional Access policy blocks legacy authentication',
     severity: 'Critical',
     tag: 'Maester',
     category: 'Maester',
-    docUrl: 'https://maester.dev/docs/tests/MT.1002',
+    docUrl: null,
     description: 'Looks for an enabled CA policy that targets all users and the "exchangeActiveSync" + "other" client app types and blocks access. This is one of the highest-impact policies you can deploy.',
     implemented: true,
     async run() {
@@ -266,20 +268,20 @@
         const hit = pols.find(p => p.state === 'enabled'
           && p.grantControls?.builtInControls?.includes('block')
           && (p.conditions?.clientAppTypes||[]).some(t => /exchangeActiveSync|other/i.test(t)));
-        if (hit) return { id:'MT.1002', status:'Passed', reason:`Policy "${hit.displayName}" blocks legacy authentication.`, durationMs: ms(start) };
-        return { id:'MT.1002', status:'Failed', reason:'No enabled CA policy was found that blocks legacy authentication client app types.', durationMs: ms(start) };
-      } catch (e) { return errRow('MT.1002', e, start); }
+        if (hit) return { id:'SM.1002', status:'Passed', reason:`Policy "${hit.displayName}" blocks legacy authentication.`, durationMs: ms(start) };
+        return { id:'SM.1002', status:'Failed', reason:'No enabled CA policy was found that blocks legacy authentication client app types.', durationMs: ms(start) };
+      } catch (e) { return errRow('SM.1002', e, start); }
     },
   });
 
-  // ---------- MT.1003 MFA for all admins ----------
+  // ---------- MT.1006 MFA for all admins ----------
   tests.push({
-    id: 'MT.1003',
-    title: 'A Conditional Access policy requires MFA for all administrators',
+    id: 'MT.1006',
+    title: 'At least one Conditional Access policy is configured to require MFA for admins.',
     severity: 'Critical',
     tag: 'Maester',
     category: 'Maester',
-    docUrl: 'https://maester.dev/docs/tests/MT.1003',
+    docUrl: 'https://maester.dev/docs/tests/MT.1006',
     description: 'Looks for an enabled CA policy that targets the privileged Entra roles and requires MFA. Maester checks the broader set of 14 privileged roles - we do the same.',
     implemented: true,
     async run() {
@@ -298,20 +300,20 @@
           for (const r of incRoles) if (target.has(r)) count++;
           return count >= 5;
         });
-        if (hit) return { id:'MT.1003', status:'Passed', reason:`Policy "${hit.displayName}" requires MFA for the privileged role set.`, durationMs: ms(start) };
-        return { id:'MT.1003', status:'Failed', reason:'No enabled CA policy was found that requires MFA for the major privileged Entra roles.', durationMs: ms(start) };
-      } catch (e) { return errRow('MT.1003', e, start); }
+        if (hit) return { id:'MT.1006', status:'Passed', reason:`Policy "${hit.displayName}" requires MFA for the privileged role set.`, durationMs: ms(start) };
+        return { id:'MT.1006', status:'Failed', reason:'No enabled CA policy was found that requires MFA for the major privileged Entra roles.', durationMs: ms(start) };
+      } catch (e) { return errRow('MT.1006', e, start); }
     },
   });
 
-  // ---------- MT.1004 MFA for all users ----------
+  // ---------- SM.1004 MFA for all users ----------
   tests.push({
-    id: 'MT.1004',
+    id: 'SM.1004',
     title: 'A Conditional Access policy requires MFA for all users',
     severity: 'High',
     tag: 'Maester',
     category: 'Maester',
-    docUrl: 'https://maester.dev/docs/tests/MT.1004',
+    docUrl: null,
     description: 'Looks for an enabled CA policy that includes "All users" and requires MFA for all cloud apps.',
     implemented: true,
     async run() {
@@ -322,20 +324,20 @@
           && (p.conditions?.users?.includeUsers||[]).includes('All')
           && (p.conditions?.applications?.includeApplications||[]).includes('All')
           && ((p.grantControls?.builtInControls||[]).includes('mfa') || p.grantControls?.authenticationStrength?.id));
-        if (hit) return { id:'MT.1004', status:'Passed', reason:`Policy "${hit.displayName}" requires MFA for all users on all apps.`, durationMs: ms(start) };
-        return { id:'MT.1004', status:'Failed', reason:'No enabled CA policy was found requiring MFA for All users on All apps.', durationMs: ms(start) };
-      } catch (e) { return errRow('MT.1004', e, start); }
+        if (hit) return { id:'SM.1004', status:'Passed', reason:`Policy "${hit.displayName}" requires MFA for all users on all apps.`, durationMs: ms(start) };
+        return { id:'SM.1004', status:'Failed', reason:'No enabled CA policy was found requiring MFA for All users on All apps.', durationMs: ms(start) };
+      } catch (e) { return errRow('SM.1004', e, start); }
     },
   });
 
-  // ---------- MT.1005 MFA for guest users ----------
+  // ---------- SM.1005 MFA for guest users ----------
   tests.push({
-    id: 'MT.1005',
+    id: 'SM.1005',
     title: 'A Conditional Access policy requires MFA for guest users',
     severity: 'High',
     tag: 'Maester',
     category: 'Maester',
-    docUrl: 'https://maester.dev/docs/tests/MT.1005',
+    docUrl: null,
     description: 'Looks for an enabled CA policy that targets guests/external users and requires MFA.',
     implemented: true,
     async run() {
@@ -345,20 +347,20 @@
         const hit = pols.find(p => p.state === 'enabled'
           && ((p.conditions?.users?.includeGuestsOrExternalUsers?.guestOrExternalUserTypes) || (p.conditions?.users?.includeUsers||[]).some(u => /guest/i.test(u)))
           && ((p.grantControls?.builtInControls||[]).includes('mfa') || p.grantControls?.authenticationStrength?.id));
-        if (hit) return { id:'MT.1005', status:'Passed', reason:`Policy "${hit.displayName}" requires MFA for guest users.`, durationMs: ms(start) };
-        return { id:'MT.1005', status:'Failed', reason:'No enabled CA policy was found requiring MFA for guests/external users.', durationMs: ms(start) };
-      } catch (e) { return errRow('MT.1005', e, start); }
+        if (hit) return { id:'SM.1005', status:'Passed', reason:`Policy "${hit.displayName}" requires MFA for guest users.`, durationMs: ms(start) };
+        return { id:'SM.1005', status:'Failed', reason:'No enabled CA policy was found requiring MFA for guests/external users.', durationMs: ms(start) };
+      } catch (e) { return errRow('SM.1005', e, start); }
     },
   });
 
-  // ---------- MT.1010 Privileged role assignments are eligible (PIM) where possible ----------
+  // ---------- CISA.MS.AAD.7.4 Permanent active role assignments ----------
   tests.push({
-    id: 'MT.1010',
-    title: 'Privileged roles use PIM eligible assignments instead of permanent active assignments',
+    id: 'CISA.MS.AAD.7.4',
+    title: 'Permanent active role assignments SHALL NOT be allowed for highly privileged roles.',
     severity: 'High',
     tag: 'Maester',
     category: 'Maester',
-    docUrl: 'https://maester.dev/docs/tests/MT.1010',
+    docUrl: 'https://maester.dev/docs/tests/CISA.MS.AAD.7.4',
     description: 'Permanent active assignments for privileged roles defeat the purpose of PIM and just-in-time elevation. We list every active (non-eligible) assignment in the privileged roles set.',
     implemented: true,
     async run() {
@@ -366,25 +368,25 @@
       try {
         const active = await Graph.graphAll('roleManagement/directory/roleAssignmentScheduleInstances?$expand=roleDefinition,principal', { apiVersion: 'v1.0' });
         const perm = active.filter(a => (a.assignmentType === 'Assigned' || a.memberType === 'Direct') && PRIV_ROLE_TEMPLATE_IDS.includes(a.roleDefinition?.templateId));
-        if (perm.length === 0) return { id:'MT.1010', status:'Passed', reason:'No permanent active assignments in privileged roles. Good job.', actual: 0, durationMs: ms(start) };
-        return { id:'MT.1010', status:'Failed', actual: perm.length,
+        if (perm.length === 0) return { id:'CISA.MS.AAD.7.4', status:'Passed', reason:'No permanent active assignments in privileged roles. Good job.', actual: 0, durationMs: ms(start) };
+        return { id:'CISA.MS.AAD.7.4', status:'Failed', actual: perm.length,
           reason:`${perm.length} permanent active assignment(s) in privileged roles. Examples: ${perm.slice(0,5).map(p => `${p.principal?.displayName||p.principalId} -> ${p.roleDefinition?.displayName}`).join('; ')}`,
           durationMs: ms(start) };
       } catch (e) {
-        if (e.status === 403) return { id:'MT.1010', status:'Skipped', reason:'PIM not licensed in this tenant or insufficient permissions.', durationMs: ms(start) };
-        return errRow('MT.1010', e, start);
+        if (e.status === 403) return { id:'CISA.MS.AAD.7.4', status:'Skipped', reason:'PIM not licensed in this tenant or insufficient permissions.', durationMs: ms(start) };
+        return errRow('CISA.MS.AAD.7.4', e, start);
       }
     },
   });
 
-  // ---------- MT.1050 Authentication method baseline: insecure methods disabled ----------
+  // ---------- CISA.MS.AAD.3.5 Weak authentication methods ----------
   tests.push({
-    id: 'MT.1050',
-    title: 'Insecure authentication methods (SMS, Voice) are disabled or restricted',
+    id: 'CISA.MS.AAD.3.5',
+    title: 'The authentication methods SMS, Voice Call, and Email One-Time Passcode (OTP) SHALL be disabled.',
     severity: 'High',
     tag: 'Maester',
     category: 'Maester',
-    docUrl: 'https://maester.dev/docs/tests/MT.1050',
+    docUrl: 'https://maester.dev/docs/tests/CISA.MS.AAD.3.5',
     description: 'SMS and Voice are vulnerable to SIM swap and interception attacks. Microsoft and CISA recommend disabling them in favour of phishing-resistant methods.',
     implemented: true,
     async run() {
@@ -396,20 +398,20 @@
         const issues = [];
         if (sms?.state   === 'enabled') issues.push('SMS is enabled');
         if (voice?.state === 'enabled') issues.push('Voice is enabled');
-        if (issues.length === 0) return { id:'MT.1050', status:'Passed', reason:'SMS and Voice authentication methods are disabled.', durationMs: ms(start) };
-        return { id:'MT.1050', status:'Failed', reason: issues.join('; ') + '. Disable these in Authentication methods policy.', durationMs: ms(start) };
-      } catch (e) { return errRow('MT.1050', e, start); }
+        if (issues.length === 0) return { id:'CISA.MS.AAD.3.5', status:'Passed', reason:'SMS and Voice authentication methods are disabled.', durationMs: ms(start) };
+        return { id:'CISA.MS.AAD.3.5', status:'Failed', reason: issues.join('; ') + '. Disable these in Authentication methods policy.', durationMs: ms(start) };
+      } catch (e) { return errRow('CISA.MS.AAD.3.5', e, start); }
     },
   });
 
-  // ---------- MT.1060 Stale guest accounts ----------
+  // ---------- SM.1060 Stale guest accounts ----------
   tests.push({
-    id: 'MT.1060',
+    id: 'SM.1060',
     title: 'No guest accounts have been inactive for more than 90 days',
     severity: 'Medium',
     tag: 'Maester',
     category: 'Maester',
-    docUrl: 'https://maester.dev/docs/tests/MT.1060',
+    docUrl: null,
     description: 'Inactive guests are a needless attack surface. We use signInActivity to find guests that have not signed in within the last 90 days.',
     implemented: true,
     async run() {
@@ -422,20 +424,20 @@
           if (!last) return new Date(g.createdDateTime) < cutoff;
           return new Date(last) < cutoff;
         });
-        if (stale.length === 0) return { id:'MT.1060', status:'Passed', reason:`Checked ${guests.length} guest(s), none inactive >90 days.`, actual: 0, durationMs: ms(start) };
-        return { id:'MT.1060', status:'Failed', reason:`${stale.length} guest(s) inactive for more than 90 days.`, actual: stale.length, durationMs: ms(start) };
-      } catch (e) { return errRow('MT.1060', e, start); }
+        if (stale.length === 0) return { id:'SM.1060', status:'Passed', reason:`Checked ${guests.length} guest(s), none inactive >90 days.`, actual: 0, durationMs: ms(start) };
+        return { id:'SM.1060', status:'Failed', reason:`${stale.length} guest(s) inactive for more than 90 days.`, actual: stale.length, durationMs: ms(start) };
+      } catch (e) { return errRow('SM.1060', e, start); }
     },
   });
 
-  // ---------- MT.1070 Service principals with risky API permissions ----------
+  // ---------- SM.1070 Service principals with risky API permissions ----------
   tests.push({
-    id: 'MT.1070',
+    id: 'SM.1070',
     title: 'No service principal has consented to high-risk application permissions',
     severity: 'High',
     tag: 'Maester',
     category: 'Maester',
-    docUrl: 'https://maester.dev/docs/tests/MT.1070',
+    docUrl: null,
     description: 'Reports any non-Microsoft service principal that has been granted Graph application permissions like Directory.ReadWrite.All, RoleManagement.ReadWrite.Directory, Application.ReadWrite.All, AppRoleAssignment.ReadWrite.All - permissions that effectively give global admin.',
     implemented: true,
     async run() {
@@ -452,14 +454,14 @@
         // Find graph SPN
         const graphSpn = await Graph.graph(`servicePrincipals?$filter=appId eq '00000003-0000-0000-c000-000000000000'&$select=id`, { apiVersion: 'v1.0' });
         const graphSpnId = graphSpn.value?.[0]?.id;
-        if (!graphSpnId) return { id:'MT.1070', status:'Skipped', reason:'Could not resolve Microsoft Graph service principal.', durationMs: ms(start) };
+        if (!graphSpnId) return { id:'SM.1070', status:'Skipped', reason:'Could not resolve Microsoft Graph service principal.', durationMs: ms(start) };
         const grants = await Graph.graphAll(`servicePrincipals/${graphSpnId}/appRoleAssignedTo?$top=999`, { apiVersion: 'v1.0' });
         const risky = grants.filter(g => HIGH.has(g.appRoleId));
-        if (risky.length === 0) return { id:'MT.1070', status:'Passed', reason:'No service principals hold high-risk Graph application permissions.', actual: 0, durationMs: ms(start) };
-        return { id:'MT.1070', status:'Failed', actual: risky.length,
+        if (risky.length === 0) return { id:'SM.1070', status:'Passed', reason:'No service principals hold high-risk Graph application permissions.', actual: 0, durationMs: ms(start) };
+        return { id:'SM.1070', status:'Failed', actual: risky.length,
           reason:`${risky.length} service principal grant(s) with high-risk Graph permissions. Examples: ${risky.slice(0,5).map(r => r.principalDisplayName).join(', ')}`,
           durationMs: ms(start) };
-      } catch (e) { return errRow('MT.1070', e, start); }
+      } catch (e) { return errRow('SM.1070', e, start); }
     },
   });
 
@@ -1466,16 +1468,16 @@
   }
 
   tests.push({
-    id: 'MT.1074',
-    title: 'Sender Policy Framework (SPF) is configured for all accepted domains',
-    severity: 'High', category: 'Exchange', tag: 'Exchange',
-    docUrl: 'https://maester.dev/docs/tests/MT.1074',
+    id: 'CISA.MS.EXO.2.2',
+    title: 'An SPF policy SHALL be published for each domain, designating only these addresses as approved senders.',
+    severity: 'Medium', category: 'Exchange', tag: 'Exchange',
+    docUrl: 'https://maester.dev/docs/tests/CISA.MS.EXO.2.2',
     description: 'All verified domains in the tenant should have a valid SPF TXT record to prevent email spoofing.',
     async run() {
       const start = performance.now();
       try {
         const allDomains = await getVerifiedAcceptedMailDomains();
-        if (!allDomains.length) return { id: 'MT.1074', status: 'Skipped', reason: 'No custom verified domains found.', durationMs: ms(start) };
+        if (!allDomains.length) return { id: 'CISA.MS.EXO.2.2', status: 'Skipped', reason: 'No custom verified domains found.', durationMs: ms(start) };
         const missing = [], found = [];
         for (const domain of allDomains) {
           try {
@@ -1490,25 +1492,25 @@
           } catch { missing.push(`${domain.id} (DNS error)`); }
         }
         if (missing.length) {
-          return { id: 'MT.1074', status: 'Failed', reason: `${missing.length} domain(s) missing SPF record: ${missing.join(', ')}. ${found.length ? `Configured: ${found.join(', ')}.` : ''}`, durationMs: ms(start) };
+          return { id: 'CISA.MS.EXO.2.2', status: 'Failed', reason: `${missing.length} domain(s) missing SPF record: ${missing.join(', ')}. ${found.length ? `Configured: ${found.join(', ')}.` : ''}`, durationMs: ms(start) };
         }
-        return { id: 'MT.1074', status: 'Passed', reason: `All ${found.length} custom domain(s) have SPF configured: ${found.join(', ')}.`, durationMs: ms(start) };
-      } catch (e) { return errRow('MT.1074', e, start); }
+        return { id: 'CISA.MS.EXO.2.2', status: 'Passed', reason: `All ${found.length} custom domain(s) have SPF configured: ${found.join(', ')}.`, durationMs: ms(start) };
+      } catch (e) { return errRow('CISA.MS.EXO.2.2', e, start); }
     },
   });
 
   // ── MT.1076  DMARC configured for all accepted domains ───────────────────────
   tests.push({
-    id: 'MT.1076',
-    title: 'DMARC record is configured for all accepted domains',
+    id: 'CISA.MS.EXO.4.2',
+    title: 'The DMARC message rejection option SHALL be p=reject.',
     severity: 'High', category: 'Exchange', tag: 'Exchange',
-    docUrl: 'https://maester.dev/docs/tests/MT.1076',
+    docUrl: 'https://maester.dev/docs/tests/CISA.MS.EXO.4.2',
     description: 'All verified domains should have a DMARC record published at _dmarc.<domain>.',
     async run() {
       const start = performance.now();
       try {
         const allDomains = await getVerifiedAcceptedMailDomains();
-        if (!allDomains.length) return { id: 'MT.1076', status: 'Skipped', reason: 'No custom verified domains found.', durationMs: ms(start) };
+        if (!allDomains.length) return { id: 'CISA.MS.EXO.4.2', status: 'Skipped', reason: 'No custom verified domains found.', durationMs: ms(start) };
         const missing = [], found = [], weak = [];
         for (const domain of allDomains) {
           try {
@@ -1529,13 +1531,13 @@
           } catch { missing.push(`${domain.id} (DNS error)`); }
         }
         if (missing.length) {
-          return { id: 'MT.1076', status: 'Failed', reason: `${missing.length} domain(s) missing DMARC record: ${missing.join(', ')}.${weak.length ? ` Weak policies: ${weak.join(', ')}.` : ''}`, durationMs: ms(start) };
+          return { id: 'CISA.MS.EXO.4.2', status: 'Failed', reason: `${missing.length} domain(s) missing DMARC record: ${missing.join(', ')}.${weak.length ? ` Weak policies: ${weak.join(', ')}.` : ''}`, durationMs: ms(start) };
         }
         if (weak.length) {
-          return { id: 'MT.1076', status: 'Failed', reason: `All domains have DMARC but ${weak.length} use weak policy (none/quarantine): ${weak.join(', ')}. Upgrade to p=reject.`, durationMs: ms(start) };
+          return { id: 'CISA.MS.EXO.4.2', status: 'Failed', reason: `All domains have DMARC but ${weak.length} use weak policy (none/quarantine): ${weak.join(', ')}. Upgrade to p=reject.`, durationMs: ms(start) };
         }
-        return { id: 'MT.1076', status: 'Passed', reason: `All ${allDomains.length} domain(s) have DMARC with strong policy: ${found.join(', ')}.`, durationMs: ms(start) };
-      } catch (e) { return errRow('MT.1076', e, start); }
+        return { id: 'CISA.MS.EXO.4.2', status: 'Passed', reason: `All ${allDomains.length} domain(s) have DMARC with strong policy: ${found.join(', ')}.`, durationMs: ms(start) };
+      } catch (e) { return errRow('CISA.MS.EXO.4.2', e, start); }
     },
   });
 
@@ -1550,34 +1552,32 @@
   // severity, etc.
   const RUN_CATEGORY = {
     // Conditional Access
-    'MT.1001': 'CA', 'MT.1002': 'CA', 'MT.1003': 'CA', 'MT.1004': 'CA',
-    'MT.1005': 'CA', 'MT.1006': 'CA',
+    'MT.1006': 'CA',
     'MT.1007': 'CA', 'MT.1008': 'CA', 'MT.1009': 'CA', 'MT.1011': 'CA',
     'MT.1012': 'CA', 'MT.1013': 'CA', 'MT.1014': 'CA', 'MT.1016': 'CA',
     'MT.1017': 'CA', 'MT.1018': 'CA', 'MT.1019': 'CA', 'MT.1021': 'CA',
     'MT.1036': 'CA', 'MT.1038': 'CA', 'MT.1049': 'CA', 'MT.1052': 'CA',
     'MT.1066': 'CA', 'MT.1071': 'CA', 'MT.1072': 'CA',
     // Privileged Identity / role hygiene
-    'MT.1010': 'Privileged', 'MT.1030': 'Privileged', 'MT.1035': 'Privileged',
+    'MT.1032': 'Privileged', 'CIS.M365.1.1.1': 'Privileged', 'CISA.MS.AAD.7.4': 'Privileged',
     'MT.1025': 'Privileged', 'MT.1026': 'Privileged', 'MT.1027': 'Privileged',
     'MT.1028': 'Privileged', 'MT.1029': 'Privileged', 'MT.1031': 'Privileged',
     'MT.1081': 'Privileged',
     // Application / service principal hygiene
-    'MT.1015': 'App', 'MT.1020': 'App', 'MT.1070': 'App',
+    'MT.1063': 'App',
     'MT.1055': 'App', 'MT.1057': 'App', 'MT.1058': 'App', 'MT.1077': 'App',
     // Authentication methods
-    'MT.1040': 'Authentication', 'MT.1050': 'Authentication',
+    'CISA.MS.AAD.3.6': 'Authentication', 'CISA.MS.AAD.3.5': 'Authentication',
     // General Entra hygiene
-    'MT.1060': 'Entra', 'SM.0001': 'Entra',
     'MT.1069': 'Entra', 'MT.1073': 'Entra', 'MT.1084': 'Entra',
     // Defender
     'MT.DEF.1001': 'Defender', 'MT.DEF.1002': 'Defender', 'MT.DEF.1003': 'Defender',
     // Exchange / DNS
-    'MT.1074': 'Exchange', 'MT.1076': 'Exchange',
+    'CISA.MS.EXO.2.2': 'Exchange', 'CISA.MS.EXO.4.2': 'Exchange',
   };
 
   function buildCatalog() {
-    return tests.map(t => ({
+    return tests.filter(t => !/^SM\./.test(t.id)).map(t => ({
       id: t.id, title: t.title, severity: t.severity, tag: t.tag, category: t.category, docUrl: t.docUrl,
       runCategory: RUN_CATEGORY[t.id] || 'Entra',
       description: t.description, detailMd: t.detailMd, implemented: true,

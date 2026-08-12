@@ -6,7 +6,7 @@
   <title>SPNRoleMgr - Manage service principal API permissions</title>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🔑</text></svg>">
   <link rel="stylesheet" href="style.css" />
-  <script src="https://cdn.jsdelivr.net/npm/@azure/msal-browser@3.27.0/lib/msal-browser.min.js"
+  <script src="../vendor/msal-browser.3.27.0.min.js"
           onerror="window.__msalLoadFailed=true"></script>
     <!-- Google Analytics (GDPR Compliant) -->
     <script async src="https://www.googletagmanager.com/gtag/js?id=G-20PYJ8S2G7"></script>
@@ -106,7 +106,6 @@
                 <th data-sort="type">Type</th>
                 <th data-sort="appId">AppId</th>
                 <th data-sort="enabled">Enabled</th>
-                <th>Action</th>
               </tr>
             </thead>
             <tbody></tbody>
@@ -128,7 +127,11 @@
             <h2 id="selSpnName" style="margin-bottom:4px"></h2>
             <div class="muted" id="selSpnMeta"></div>
           </div>
-          <button id="refreshPermsBtn" class="ghost-btn">Refresh</button>
+          <div class="row">
+            <button id="manageSitesBtn" class="ghost-btn" disabled>Manage SharePoint site access</button>
+            <button id="revokeAllBtn" class="danger-btn" disabled>Revoke all permissions</button>
+            <button id="refreshPermsBtn" class="ghost-btn">Refresh</button>
+          </div>
         </div>
       </div>
 
@@ -179,7 +182,6 @@
             <input type="search" id="apiSearch" list="apiSuggestions" placeholder="Microsoft Graph, SharePoint Online, ..." style="min-width:280px"/>
             <datalist id="apiSuggestions"></datalist>
           </label>
-          <button id="loadApiBtn" class="ghost-btn" type="button">Load API permissions</button>
           <span id="apiLoadStatus" class="muted"></span>
         </div>
         <div class="row" id="apiKindRow">
@@ -204,6 +206,7 @@
           <span class="grow"><strong id="addSelCount">0</strong> permission(s) selected</span>
           <button id="addPermsBtn" class="primary-btn" disabled>Grant selected</button>
         </div>
+        <div id="addFeedback" class="inline-feedback hidden" role="status" aria-live="polite"></div>
         <ul id="addResults" class="action-result-list hidden"></ul>
       </div>
     </section>
@@ -233,7 +236,9 @@
           <li>Browse every service principal in the tenant with quick filters for type and Microsoft first-party.</li>
           <li>For a chosen SPN, list both application permissions (<code>appRoleAssignments</code>) and delegated grants (<code>oauth2PermissionGrants</code>) it currently has.</li>
           <li>Revoke any single permission (per-permission delete, not per-API).</li>
+          <li>Revoke all permissions for a selected SPN in one action when you need a clean slate.</li>
           <li>Pick any API exposed in the tenant (Microsoft Graph, SharePoint, Exchange, Azure-Storage, third-party APIs you've consented to, etc.) and grant either application or delegated permissions on it.</li>
+          <li>For SPNs that hold <code>Sites.Selected</code> (on Microsoft Graph or SharePoint Online), grant, change or remove their access to individual SharePoint sites through a built-in site picker - a GUI over <code>/sites/{id}/permissions</code>.</li>
         </ul>
 
         <h3>How it works</h3>
@@ -254,11 +259,62 @@
 
         <h3>Required permissions</h3>
         <p>Read-only browsing only needs <code>Application.Read.All</code> + <code>Directory.Read.All</code>. The first time you save a change SPNRoleMgr asks for <code>AppRoleAssignment.ReadWrite.All</code> and <code>DelegatedPermissionGrant.ReadWrite.All</code>. Granting tenant-wide also requires you to hold a privileged Entra role (Privileged Role Admin, Cloud App Admin, Application Admin or Global Admin); without one, Graph returns 403 on the save.</p>
+        <p>Managing SharePoint site access is opt-in: the very first time you open the site manager, SPNRoleMgr asks for <code>Sites.FullControl.All</code> (delegated). That scope is deliberately not requested up front, so tenants that never use SharePoint are never prompted for it. This action also needs you to be a <strong>SharePoint Administrator</strong> (or higher), and it typically requires admin consent.</p>
       </div>
     </section>
   </main>
 
   <div id="toast" class="toast hidden"></div>
+
+  <!-- SharePoint site access manager (Sites.Selected) -->
+  <div id="sitePickerModal" class="modal hidden" role="dialog" aria-modal="true">
+    <div class="modal-backdrop"></div>
+    <div class="modal-panel site-modal">
+      <div class="modal-header">
+        <h3>Grant SharePoint site access <span class="muted" id="siteModalSpn"></span></h3>
+        <button id="siteModalCloseBtn" class="icon-btn">&times;</button>
+      </div>
+      <div class="modal-body">
+        <p class="table-hint">This SPN has <code>Sites.Selected</code>, so it can only reach the specific sites you list here. Search for a site, then grant, change or remove this app's access. Uses <code>/sites/{id}/permissions</code> as the signed-in user (needs <code>Sites.FullControl.All</code> and a SharePoint Administrator role).</p>
+        <div class="row">
+          <input type="search" id="siteSearch" placeholder="Search sites by name or URL..." style="flex:1; min-width:240px" />
+          <span id="siteSearchStatus" class="muted"></span>
+        </div>
+        <div class="site-panes">
+          <div class="site-list-wrap">
+            <ul id="siteResults" class="site-list"></ul>
+          </div>
+          <div class="site-detail hidden" id="siteDetail">
+            <div class="site-detail-head">
+              <strong id="siteDetailName"></strong>
+              <a id="siteDetailUrl" class="muted small" href="#" target="_blank" rel="noopener"></a>
+            </div>
+            <p id="siteScopeNote" class="notice notice-info hidden"></p>
+            <h4>Existing app permissions <span class="muted" id="sitePermsCount"></span></h4>
+            <div class="table-wrap">
+              <table class="data-table" id="sitePermsTable">
+                <thead><tr><th>Application</th><th>AppId</th><th>Roles</th><th></th></tr></thead>
+                <tbody></tbody>
+              </table>
+            </div>
+            <p id="sitePermsEmpty" class="table-hint hidden">No applications have been granted access to this site yet.</p>
+
+            <div class="site-grant" id="siteGrantBox">
+              <h4 id="siteGrantTitle">Grant access to this SPN</h4>
+              <div class="role-picker" id="siteRolePicker"></div>
+              <p class="table-hint">Tip: <code>read</code> and <code>write</code> are universally supported. <code>owner</code>, <code>fullcontrol</code> and <code>manage</code> depend on your SharePoint configuration and may be rejected.</p>
+              <div class="action-bar">
+                <span class="grow" id="siteGrantHint"></span>
+                <button id="siteRemoveBtn" class="ghost-btn danger-text hidden">Remove access</button>
+                <button id="siteGrantBtn" class="primary-btn" disabled>Grant</button>
+              </div>
+              <div id="siteGrantFeedback" class="inline-feedback hidden" role="status" aria-live="polite"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
 
   <!-- Confirmation modal for destructive actions -->
   <div id="confirmModal" class="modal hidden" role="dialog">

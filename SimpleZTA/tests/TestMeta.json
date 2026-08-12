@@ -1,9 +1,11 @@
 {
   "21770": {
     "Category": "Access control",
+    "CompatibleLicense": "AAD_PREMIUM",
     "ImplementationCost": "Low",
     "Pillar": "Identity",
     "RiskLevel": "Medium",
+    "Service": "Graph",
     "SfiPillar": "Protect engineering systems",
     "TenantType": [
       "Workforce",
@@ -16,8 +18,10 @@
   "21771": {
     "Category": "Application management",
     "ImplementationCost": "Low",
+    "MinimumLicense": "P1",
     "Pillar": "Identity",
     "RiskLevel": "High",
+    "Service": "Graph",
     "SfiPillar": "Protect engineering systems",
     "TenantType": [
       "Workforce",
@@ -30,8 +34,10 @@
   "21772": {
     "Category": "Application management",
     "ImplementationCost": "Medium",
+    "MinimumLicense": "Free",
     "Pillar": "Identity",
     "RiskLevel": "High",
+    "Service": "Graph",
     "SfiPillar": "Protect identities and secrets",
     "TenantType": [
       "Workforce",
@@ -44,6 +50,7 @@
   "21773": {
     "Category": "Application management",
     "ImplementationCost": "Medium",
+    "MinimumLicense": "Free",
     "Pillar": "Identity",
     "RiskLevel": "Medium",
     "SfiPillar": "Protect identities and secrets",
@@ -58,6 +65,7 @@
   "21774": {
     "Category": "Application management",
     "ImplementationCost": "Low",
+    "MinimumLicense": "Free",
     "Pillar": "Identity",
     "RiskLevel": "High",
     "SfiPillar": "Protect identities and secrets",
@@ -70,20 +78,24 @@
     "UserImpact": "Low"
   },
   "21775": {
-    "Category": "Access control",
-    "ImplementationCost": "Low",
-    "RiskLevel": "Low",
+    "Category": "Application management",
+    "ImplementationCost": "Medium",
+    "MinimumLicense": "Free",
+    "Pillar": "Identity",
+    "RiskLevel": "Medium",
+    "SfiPillar": "Protect identities and secrets",
     "TenantType": [
       "Workforce",
       "External"
     ],
     "TestId": "21775",
-    "Title": "Tenant app management policy is configured",
-    "UserImpact": "Medium"
+    "Title": "Enforce standards for app secrets and certificates",
+    "UserImpact": "Low"
   },
   "21776": {
     "Category": "Application management",
     "ImplementationCost": "Medium",
+    "MinimumLicense": "Free",
     "Pillar": "Identity",
     "RiskLevel": "High",
     "SfiPillar": "Protect identities and secrets",
@@ -98,6 +110,7 @@
   "21777": {
     "Category": "Access control",
     "ImplementationCost": "Low",
+    "MinimumLicense": "Free",
     "Pillar": "Identity",
     "RiskLevel": "High",
     "SfiPillar": "Protect tenants and isolate production systems",
@@ -113,6 +126,7 @@
     "Category": "Application management",
     "ImplementationCost": "High",
     "RiskLevel": "Medium",
+    "SfiPillar": "",
     "TenantType": [
       "Workforce",
       "External"
@@ -125,6 +139,7 @@
     "Category": "Application management",
     "ImplementationCost": "Medium",
     "RiskLevel": "Medium",
+    "SfiPillar": "",
     "TenantType": [
       "Workforce",
       "External"
@@ -136,7 +151,10 @@
   "21780": {
     "Category": "Application management",
     "ImplementationCost": "High",
+    "MinimumLicense": "Free",
+    "Pillar": "Identity",
     "RiskLevel": "Medium",
+    "SfiPillar": "Protect identities and secrets",
     "TenantType": [
       "Workforce",
       "External"
@@ -148,12 +166,11 @@
   "21781": {
     "Category": "Privileged access",
     "ImplementationCost": "Medium",
+    "MinimumLicense": "P1",
     "Pillar": "Identity",
     "RiskLevel": "High",
     "SfiPillar": "Monitor and detect cyberthreats",
-    "TenantType": [
-      "Workforce"
-    ],
+    "TenantType": "Workforce",
     "TestId": "21781",
     "Title": "Privileged users sign in with phishing-resistant methods",
     "UserImpact": "Low"
@@ -161,12 +178,11 @@
   "21782": {
     "Category": "Privileged access",
     "ImplementationCost": "Medium",
+    "MinimumLicense": "P1",
     "Pillar": "Identity",
     "RiskLevel": "High",
     "SfiPillar": "Protect identities and secrets",
-    "TenantType": [
-      "Workforce"
-    ],
+    "TenantType": "Workforce",
     "TestId": "21782",
     "Title": "Privileged accounts have phishing-resistant methods registered",
     "UserImpact": "Low"
@@ -174,20 +190,22 @@
   "21783": {
     "Category": "Access control",
     "ImplementationCost": "Medium",
+    "MinimumLicense": "P1",
     "Pillar": "Identity",
     "RiskLevel": "High",
     "SfiPillar": "Protect identities and secrets",
-    "TenantType": [
-      "Workforce"
-    ],
+    "TenantType": "Workforce",
     "TestId": "21783",
     "Title": "Privileged Microsoft Entra built-in roles are targeted with Conditional Access policies to enforce phishing-resistant methods",
     "UserImpact": "Low"
   },
   "21784": {
-    "Category": "Access control",
+    "Category": "Access control; Credential management",
     "ImplementationCost": "Medium",
+    "MinimumLicense": "P1",
+    "Pillar": "Identity",
     "RiskLevel": "Medium",
+    "SfiPillar": "Protect identities and secrets",
     "TenantType": [
       "Workforce",
       "External"
@@ -199,6 +217,7 @@
   "21786": {
     "Category": "Access control",
     "ImplementationCost": "Low",
+    "MinimumLicense": "P1",
     "Pillar": "Identity",
     "RiskLevel": "High",
     "SfiPillar": "Protect identities and secrets",
@@ -213,12 +232,11 @@
   "21787": {
     "Category": "Privileged access",
     "ImplementationCost": "Medium",
+    "MinimumLicense": "Free",
     "Pillar": "Identity",
     "RiskLevel": "High",
     "SfiPillar": "Protect tenants and isolate production systems",
-    "TenantType": [
-      "Workforce"
-    ],
+    "TenantType": "Workforce",
     "TestId": "21787",
     "Title": "Permissions to create new tenants are limited to the Tenant Creator role",
     "UserImpact": "Medium"
@@ -226,12 +244,11 @@
   "21788": {
     "Category": "Privileged access",
     "ImplementationCost": "Low",
+    "MinimumLicense": "Free",
     "Pillar": "Identity",
     "RiskLevel": "High",
     "SfiPillar": "Protect engineering systems",
-    "TenantType": [
-      "Workforce"
-    ],
+    "TenantType": "Workforce",
     "TestId": "21788",
     "Title": "Global Administrators don't have standing access to Azure subscriptions",
     "UserImpact": "Low"
@@ -239,10 +256,10 @@
   "21789": {
     "Category": "Monitoring",
     "ImplementationCost": "Low",
+    "Pillar": "Identity",
     "RiskLevel": "Medium",
-    "TenantType": [
-      "Workforce"
-    ],
+    "SfiPillar": "Monitor and detect cyberthreats",
+    "TenantType": "Workforce",
     "TestId": "21789",
     "Title": "Tenant creation events are triaged",
     "UserImpact": "Low"
@@ -250,6 +267,7 @@
   "21790": {
     "Category": "Application management",
     "ImplementationCost": "High",
+    "MinimumLicense": "Free",
     "Pillar": "Identity",
     "RiskLevel": "High",
     "SfiPillar": "Protect tenants and isolate production systems",
@@ -264,12 +282,11 @@
   "21791": {
     "Category": "External collaboration",
     "ImplementationCost": "Low",
+    "MinimumLicense": "Free",
     "Pillar": "Identity",
     "RiskLevel": "Medium",
     "SfiPillar": "Protect tenants and isolate production systems",
-    "TenantType": [
-      "Workforce"
-    ],
+    "TenantType": "Workforce",
     "TestId": "21791",
     "Title": "Guests can’t invite other guests",
     "UserImpact": "Medium"
@@ -277,12 +294,11 @@
   "21792": {
     "Category": "External collaboration",
     "ImplementationCost": "Low",
+    "MinimumLicense": "Free",
     "Pillar": "Identity",
     "RiskLevel": "Medium",
     "SfiPillar": "Protect tenants and isolate production systems",
-    "TenantType": [
-      "Workforce"
-    ],
+    "TenantType": "Workforce",
     "TestId": "21792",
     "Title": "Guests have restricted access to directory objects",
     "UserImpact": "Medium"
@@ -290,6 +306,7 @@
   "21793": {
     "Category": "Application management",
     "ImplementationCost": "Medium",
+    "MinimumLicense": "P1",
     "Pillar": "Identity",
     "RiskLevel": "High",
     "SfiPillar": "Protect networks",
@@ -304,12 +321,11 @@
   "21795": {
     "Category": "Monitoring",
     "ImplementationCost": "Low",
+    "MinimumLicense": "P1",
     "Pillar": "Identity",
     "RiskLevel": "Medium",
     "SfiPillar": "Monitor and detect cyberthreats",
-    "TenantType": [
-      "Workforce"
-    ],
+    "TenantType": "Workforce",
     "TestId": "21795",
     "Title": "No legacy authentication sign-in activity",
     "UserImpact": "High"
@@ -317,12 +333,11 @@
   "21796": {
     "Category": "Access control",
     "ImplementationCost": "Low",
+    "MinimumLicense": "P1",
     "Pillar": "Identity",
     "RiskLevel": "Medium",
     "SfiPillar": "Protect identities and secrets",
-    "TenantType": [
-      "Workforce"
-    ],
+    "TenantType": "Workforce",
     "TestId": "21796",
     "Title": "Block legacy authentication policy is configured",
     "UserImpact": "High"
@@ -330,6 +345,7 @@
   "21797": {
     "Category": "Access control",
     "ImplementationCost": "Medium",
+    "MinimumLicense": "P2",
     "Pillar": "Identity",
     "RiskLevel": "High",
     "SfiPillar": "Accelerate response and remediation",
@@ -344,6 +360,7 @@
   "21798": {
     "Category": "Access control",
     "ImplementationCost": "Low",
+    "MinimumLicense": "P2",
     "Pillar": "Identity",
     "RiskLevel": "High",
     "SfiPillar": "Monitor and detect cyberthreats",
@@ -358,6 +375,7 @@
   "21799": {
     "Category": "Access control",
     "ImplementationCost": "Medium",
+    "MinimumLicense": "P2",
     "Pillar": "Identity",
     "RiskLevel": "High",
     "SfiPillar": "Accelerate response and remediation",
@@ -372,6 +390,7 @@
   "21800": {
     "Category": "Monitoring",
     "ImplementationCost": "Medium",
+    "MinimumLicense": "P1",
     "Pillar": "Identity",
     "RiskLevel": "Medium",
     "SfiPillar": "Monitor and detect cyberthreats",
@@ -386,6 +405,7 @@
   "21801": {
     "Category": "Credential management",
     "ImplementationCost": "Medium",
+    "MinimumLicense": "P1",
     "Pillar": "Identity",
     "RiskLevel": "Medium",
     "SfiPillar": "Protect identities and secrets",
@@ -400,6 +420,7 @@
   "21802": {
     "Category": "Access control",
     "ImplementationCost": "Low",
+    "MinimumLicense": "P1",
     "Pillar": "Identity",
     "RiskLevel": "Medium",
     "SfiPillar": "Protect identities and secrets",
@@ -408,12 +429,13 @@
       "External"
     ],
     "TestId": "21802",
-    "Title": "Authenticator app shows sign-in context",
+    "Title": "Microsoft Authenticator app shows sign-in context",
     "UserImpact": "Low"
   },
   "21803": {
     "Category": "Credential management",
     "ImplementationCost": "Medium",
+    "MinimumLicense": "P1",
     "Pillar": "Identity",
     "RiskLevel": "High",
     "SfiPillar": "Protect identities and secrets",
@@ -428,6 +450,7 @@
   "21804": {
     "Category": "Credential management",
     "ImplementationCost": "Medium",
+    "MinimumLicense": "P1",
     "Pillar": "Identity",
     "RiskLevel": "High",
     "SfiPillar": "Protect identities and secrets",
@@ -442,6 +465,7 @@
   "21806": {
     "Category": "Access control",
     "ImplementationCost": "Medium",
+    "MinimumLicense": "P1",
     "Pillar": "Identity",
     "RiskLevel": "High",
     "SfiPillar": "Protect identities and secrets",
@@ -456,12 +480,11 @@
   "21807": {
     "Category": "Application management",
     "ImplementationCost": "Low",
+    "MinimumLicense": "P1",
     "Pillar": "Identity",
     "RiskLevel": "Medium",
     "SfiPillar": "Protect engineering systems",
-    "TenantType": [
-      "Workforce"
-    ],
+    "TenantType": "Workforce",
     "TestId": "21807",
     "Title": "Creating new applications and service principals is restricted to privileged users",
     "UserImpact": "Low"
@@ -469,6 +492,7 @@
   "21808": {
     "Category": "Access control",
     "ImplementationCost": "Low",
+    "MinimumLicense": "P1",
     "Pillar": "Identity",
     "RiskLevel": "High",
     "SfiPillar": "Protect identities and secrets",
@@ -483,6 +507,7 @@
   "21809": {
     "Category": "Application management",
     "ImplementationCost": "Low",
+    "MinimumLicense": "Free",
     "Pillar": "Identity",
     "RiskLevel": "High",
     "SfiPillar": "Protect identities and secrets",
@@ -497,6 +522,7 @@
   "21810": {
     "Category": "Access control",
     "ImplementationCost": "Medium",
+    "MinimumLicense": "P1",
     "Pillar": "Identity",
     "RiskLevel": "Medium",
     "SfiPillar": "Protect engineering systems",
@@ -511,6 +537,7 @@
   "21811": {
     "Category": "Credential management",
     "ImplementationCost": "Low",
+    "MinimumLicense": "P1",
     "Pillar": "Identity",
     "RiskLevel": "Medium",
     "SfiPillar": "Protect identities and secrets",
@@ -525,25 +552,23 @@
   "21812": {
     "Category": "Privileged access",
     "ImplementationCost": "Low",
+    "MinimumLicense": "P1",
     "Pillar": "Identity",
     "RiskLevel": "Low",
-    "SfiPillar": "Protect identities and secrets",
-    "TenantType": [
-      "Workforce"
-    ],
+    "SfiPillar": "Protect engineering systems",
+    "TenantType": "Workforce",
     "TestId": "21812",
     "Title": "Maximum number of Global Administrators doesn't exceed eight users",
     "UserImpact": "Low"
   },
   "21813": {
     "Category": "Privileged access",
-    "ImplementationCost": "Low",
+    "ImplementationCost": "Medium",
+    "MinimumLicense": "Free",
     "Pillar": "Identity",
-    "RiskLevel": "Low",
+    "RiskLevel": "High",
     "SfiPillar": "Protect identities and secrets",
-    "TenantType": [
-      "Workforce"
-    ],
+    "TenantType": "Workforce",
     "TestId": "21813",
     "Title": "High Global Administrator to privileged user ratio",
     "UserImpact": "Low"
@@ -551,12 +576,11 @@
   "21814": {
     "Category": "Privileged access",
     "ImplementationCost": "Medium",
+    "MinimumLicense": "Free",
     "Pillar": "Identity",
     "RiskLevel": "High",
     "SfiPillar": "Protect identities and secrets",
-    "TenantType": [
-      "Workforce"
-    ],
+    "TenantType": "Workforce",
     "TestId": "21814",
     "Title": "Privileged accounts are cloud native identities",
     "UserImpact": "Low"
@@ -564,38 +588,35 @@
   "21815": {
     "Category": "Privileged access",
     "ImplementationCost": "High",
+    "MinimumLicense": "P2",
     "Pillar": "Identity",
     "RiskLevel": "High",
     "SfiPillar": "Protect identities and secrets",
-    "TenantType": [
-      "Workforce"
-    ],
+    "TenantType": "Workforce",
     "TestId": "21815",
     "Title": "All privileged role assignments are activated just in time and not permanently active",
     "UserImpact": "Low"
   },
   "21816": {
     "Category": "Privileged access",
-    "ImplementationCost": "Low",
+    "ImplementationCost": "Medium",
+    "MinimumLicense": "P2",
     "Pillar": "Identity",
-    "RiskLevel": "Low",
+    "RiskLevel": "High",
     "SfiPillar": "Protect identities and secrets",
-    "TenantType": [
-      "Workforce"
-    ],
+    "TenantType": "Workforce",
     "TestId": "21816",
-    "Title": "All privileged role assignments are managed with PIM",
+    "Title": "All Microsoft Entra privileged role assignments are managed with PIM",
     "UserImpact": "Low"
   },
   "21817": {
     "Category": "Application management",
     "ImplementationCost": "Medium",
+    "MinimumLicense": "P2",
     "Pillar": "Identity",
     "RiskLevel": "High",
     "SfiPillar": "Protect engineering systems",
-    "TenantType": [
-      "Workforce"
-    ],
+    "TenantType": "Workforce",
     "TestId": "21817",
     "Title": "Global Administrator role activation triggers an approval workflow",
     "UserImpact": "Low"
@@ -603,12 +624,11 @@
   "21818": {
     "Category": "Monitoring",
     "ImplementationCost": "Medium",
+    "MinimumLicense": "P2",
     "Pillar": "Identity",
     "RiskLevel": "High",
     "SfiPillar": "Monitor and detect cyberthreats",
-    "TenantType": [
-      "Workforce"
-    ],
+    "TenantType": "Workforce",
     "TestId": "21818",
     "Title": "Privileged role activations have monitoring and alerting configured",
     "UserImpact": "Low"
@@ -616,12 +636,11 @@
   "21819": {
     "Category": "Privileged access",
     "ImplementationCost": "Low",
+    "MinimumLicense": "P2",
     "Pillar": "Identity",
     "RiskLevel": "Medium",
     "SfiPillar": "Protect identities and secrets",
-    "TenantType": [
-      "Workforce"
-    ],
+    "TenantType": "Workforce",
     "TestId": "21819",
     "Title": "Activation alert for Global Administrator role assignments",
     "UserImpact": "Low"
@@ -629,12 +648,11 @@
   "21820": {
     "Category": "Privileged access",
     "ImplementationCost": "Medium",
+    "MinimumLicense": "P2",
     "Pillar": "Identity",
     "RiskLevel": "Low",
     "SfiPillar": "Protect identities and secrets",
-    "TenantType": [
-      "Workforce"
-    ],
+    "TenantType": "Workforce",
     "TestId": "21820",
     "Title": "Activation alert for all privileged role assignments",
     "UserImpact": "Low"
@@ -645,9 +663,7 @@
     "Pillar": "Identity",
     "RiskLevel": "Medium",
     "SfiPillar": "Protect identities and secrets",
-    "TenantType": [
-      "Workforce"
-    ],
+    "TenantType": "Workforce",
     "TestId": "21821",
     "Title": "Guest access is restricted",
     "UserImpact": "Medium"
@@ -655,12 +671,11 @@
   "21822": {
     "Category": "Access control",
     "ImplementationCost": "High",
+    "MinimumLicense": "Free",
     "Pillar": "Identity",
     "RiskLevel": "Medium",
     "SfiPillar": "Protect identities and secrets",
-    "TenantType": [
-      "Workforce"
-    ],
+    "TenantType": "Workforce",
     "TestId": "21822",
     "Title": "Guest access is limited to approved tenants",
     "UserImpact": "Medium"
@@ -668,12 +683,11 @@
   "21823": {
     "Category": "External collaboration",
     "ImplementationCost": "Low",
+    "MinimumLicense": "Free",
     "Pillar": "Identity",
     "RiskLevel": "Medium",
     "SfiPillar": "Protect tenants and isolate production systems",
-    "TenantType": [
-      "Workforce"
-    ],
+    "TenantType": "Workforce",
     "TestId": "21823",
     "Title": "Guest self-service sign-up via user flow is disabled",
     "UserImpact": "Low"
@@ -681,12 +695,11 @@
   "21824": {
     "Category": "External collaboration",
     "ImplementationCost": "Low",
+    "MinimumLicense": "P1",
     "Pillar": "Identity",
     "RiskLevel": "Medium",
     "SfiPillar": "Protect tenants and isolate production systems",
-    "TenantType": [
-      "Workforce"
-    ],
+    "TenantType": "Workforce",
     "TestId": "21824",
     "Title": "Guests don't have long lived sign-in sessions",
     "UserImpact": "Medium"
@@ -694,19 +707,19 @@
   "21825": {
     "Category": "Access control",
     "ImplementationCost": "Low",
+    "MinimumLicense": "P1",
     "Pillar": "Identity",
     "RiskLevel": "Medium",
     "SfiPillar": "Protect identities and secrets",
-    "TenantType": [
-      "Workforce"
-    ],
+    "TenantType": "Workforce",
     "TestId": "21825",
-    "Title": "Privileged user sessions don't have long lived sign-in sessions",
+    "Title": "Privileged users have short-lived sign-in sessions",
     "UserImpact": "Medium"
   },
   "21828": {
     "Category": "Access control",
     "ImplementationCost": "Low",
+    "MinimumLicense": "P1",
     "Pillar": "Identity",
     "RiskLevel": "High",
     "SfiPillar": "Protect identities and secrets",
@@ -715,18 +728,17 @@
       "External"
     ],
     "TestId": "21828",
-    "Title": "Secure the MFA registration (My Security Info) page",
+    "Title": "Authentication transfer is blocked",
     "UserImpact": "Low"
   },
   "21829": {
     "Category": "Access control",
     "ImplementationCost": "High",
+    "MinimumLicense": "P1",
     "Pillar": "Identity",
     "RiskLevel": "High",
     "SfiPillar": "Protect identities and secrets",
-    "TenantType": [
-      "Workforce"
-    ],
+    "TenantType": "Workforce",
     "TestId": "21829",
     "Title": "Use cloud authentication",
     "UserImpact": "High"
@@ -734,38 +746,35 @@
   "21830": {
     "Category": "Application management",
     "ImplementationCost": "High",
+    "MinimumLicense": "P1",
     "Pillar": "Identity",
     "RiskLevel": "High",
     "SfiPillar": "Protect engineering systems",
-    "TenantType": [
-      "Workforce"
-    ],
+    "TenantType": "Workforce",
     "TestId": "21830",
     "Title": "Conditional Access policies for Privileged Access Workstations are configured",
     "UserImpact": "Low"
   },
   "21831": {
-    "Category": "Access control",
+    "Category": "Privileged access",
     "ImplementationCost": "Low",
+    "MinimumLicense": "P1",
     "Pillar": "Identity",
     "RiskLevel": "Medium",
-    "SfiPillar": "Protect identities and secrets",
-    "TenantType": [
-      "Workforce"
-    ],
+    "SfiPillar": "Protect tenants and isolate production systems",
+    "TenantType": "Workforce",
     "TestId": "21831",
-    "Title": "Conditional Access protected actions are enabled",
+    "Title": "Protected actions are enabled for high-impact management tasks",
     "UserImpact": "Low"
   },
   "21832": {
     "Category": "Access control",
     "ImplementationCost": "Low",
+    "MinimumLicense": "P1",
     "Pillar": "Identity",
     "RiskLevel": "Medium",
     "SfiPillar": "Protect identities and secrets",
-    "TenantType": [
-      "Workforce"
-    ],
+    "TenantType": "Workforce",
     "TestId": "21832",
     "Title": "All groups in Conditional Access policies belong to a restricted management administrative unit",
     "UserImpact": "Low"
@@ -776,42 +785,38 @@
     "Pillar": "Identity",
     "RiskLevel": "Low",
     "SfiPillar": "Protect identities and secrets",
-    "TenantType": [
-      "Workforce"
-    ],
+    "TenantType": "Workforce",
     "TestId": "21833",
     "Title": "Directory Sync account credentials haven't been rotated recently",
     "UserImpact": "Low"
   },
   "21834": {
     "Category": "Access control",
-    "ImplementationCost": "Low",
+    "ImplementationCost": "Medium",
     "Pillar": "Identity",
-    "RiskLevel": "Low",
+    "RiskLevel": "High",
     "SfiPillar": "Protect identities and secrets",
-    "TenantType": [
-      "Workforce"
-    ],
+    "TenantType": "Workforce",
     "TestId": "21834",
     "Title": "Directory sync account is locked down to specific named location",
     "UserImpact": "Low"
   },
   "21835": {
     "Category": "Privileged access",
-    "ImplementationCost": "Low",
+    "ImplementationCost": "Medium",
+    "MinimumLicense": "P1",
     "Pillar": "Identity",
-    "RiskLevel": "Low",
-    "SfiPillar": "Protect identities and secrets",
-    "TenantType": [
-      "Workforce"
-    ],
+    "RiskLevel": "High",
+    "SfiPillar": "Protect engineering systems",
+    "TenantType": "Workforce",
     "TestId": "21835",
-    "Title": "Emergency account exists",
+    "Title": "Emergency access accounts are configured appropriately",
     "UserImpact": "Low"
   },
   "21836": {
     "Category": "Application management",
     "ImplementationCost": "Medium",
+    "MinimumLicense": "P1",
     "Pillar": "Identity",
     "RiskLevel": "High",
     "SfiPillar": "Protect engineering systems",
@@ -824,23 +829,23 @@
     "UserImpact": "Low"
   },
   "21837": {
-    "Category": "Device management",
+    "Category": "Devices",
     "ImplementationCost": "Low",
+    "MinimumLicense": "Free",
     "Pillar": "Identity",
-    "RiskLevel": "Low",
-    "SfiPillar": "Protect identities and secrets",
-    "TenantType": [
-      "Workforce"
-    ],
+    "RiskLevel": "High",
+    "SfiPillar": "Protect engineering systems",
+    "TenantType": "Workforce",
     "TestId": "21837",
     "Title": "Limit the maximum number of devices per user to 10",
-    "UserImpact": "Low"
+    "UserImpact": "Medium"
   },
   "21838": {
-    "Category": "Access control",
+    "Category": "Credential management",
     "ImplementationCost": "Low",
+    "MinimumLicense": "Free",
     "Pillar": "Identity",
-    "RiskLevel": "Low",
+    "RiskLevel": "High",
     "SfiPillar": "Protect identities and secrets",
     "TenantType": [
       "Workforce",
@@ -851,10 +856,11 @@
     "UserImpact": "Low"
   },
   "21839": {
-    "Category": "Access control",
-    "ImplementationCost": "Low",
+    "Category": "Credential management",
+    "ImplementationCost": "Medium",
+    "MinimumLicense": "Free",
     "Pillar": "Identity",
-    "RiskLevel": "Low",
+    "RiskLevel": "High",
     "SfiPillar": "Protect identities and secrets",
     "TenantType": [
       "Workforce",
@@ -865,10 +871,11 @@
     "UserImpact": "Low"
   },
   "21840": {
-    "Category": "Access control",
+    "Category": "Credential management",
     "ImplementationCost": "Low",
+    "MinimumLicense": "Free",
     "Pillar": "Identity",
-    "RiskLevel": "Low",
+    "RiskLevel": "High",
     "SfiPillar": "Protect identities and secrets",
     "TenantType": [
       "Workforce",
@@ -879,28 +886,28 @@
     "UserImpact": "Low"
   },
   "21841": {
-    "Category": "Access control",
+    "Category": "Credential management",
     "ImplementationCost": "Low",
+    "MinimumLicense": "P1",
     "Pillar": "Identity",
-    "RiskLevel": "Low",
+    "RiskLevel": "Medium",
     "SfiPillar": "Protect identities and secrets",
     "TenantType": [
       "Workforce",
       "External"
     ],
     "TestId": "21841",
-    "Title": "Authenticator app report suspicious activity is enabled",
+    "Title": "Microsoft Authenticator app report suspicious activity setting is enabled",
     "UserImpact": "Low"
   },
   "21842": {
-    "Category": "Access control",
+    "Category": "Credential management, Privileged access",
     "ImplementationCost": "Low",
+    "MinimumLicense": "P1",
     "Pillar": "Identity",
-    "RiskLevel": "Low",
+    "RiskLevel": "High",
     "SfiPillar": "Protect identities and secrets",
-    "TenantType": [
-      "Workforce"
-    ],
+    "TenantType": "Workforce",
     "TestId": "21842",
     "Title": "Block administrators from using SSPR",
     "UserImpact": "Low"
@@ -911,31 +918,29 @@
     "Pillar": "Identity",
     "RiskLevel": "Low",
     "SfiPillar": "Protect identities and secrets",
-    "TenantType": [
-      "Workforce"
-    ],
+    "TenantType": "Workforce",
     "TestId": "21843",
     "Title": "Block legacy Microsoft Online PowerShell module",
     "UserImpact": "Low"
   },
   "21844": {
     "Category": "Access control",
-    "ImplementationCost": "High",
+    "ImplementationCost": "Medium",
+    "MinimumLicense": "Free",
     "Pillar": "Identity",
-    "RiskLevel": "Low",
+    "RiskLevel": "Medium",
     "SfiPillar": "Protect identities and secrets",
-    "TenantType": [
-      "Workforce"
-    ],
+    "TenantType": "Workforce",
     "TestId": "21844",
     "Title": "Block legacy Azure AD PowerShell module",
     "UserImpact": "Low"
   },
   "21845": {
-    "Category": "Access control",
+    "Category": "Credential management",
     "ImplementationCost": "Low",
+    "MinimumLicense": "P1",
     "Pillar": "Identity",
-    "RiskLevel": "Low",
+    "RiskLevel": "Medium",
     "SfiPillar": "Protect identities and secrets",
     "TenantType": [
       "Workforce",
@@ -946,49 +951,51 @@
     "UserImpact": "Low"
   },
   "21846": {
-    "Category": "Access control",
+    "Category": "Credential management",
     "ImplementationCost": "Low",
+    "MinimumLicense": "P1",
     "Pillar": "Identity",
-    "RiskLevel": "Low",
+    "RiskLevel": "Medium",
     "SfiPillar": "Protect identities and secrets",
     "TenantType": [
       "Workforce",
       "External"
     ],
     "TestId": "21846",
-    "Title": "Temporary access pass restricted to one-time use",
+    "Title": "Restrict Temporary Access Pass to Single Use",
     "UserImpact": "Low"
   },
   "21847": {
-    "Category": "Access control",
-    "ImplementationCost": "Medium",
+    "Category": "Credential management",
+    "ImplementationCost": "Low",
+    "MinimumLicense": "P1",
     "Pillar": "Identity",
     "RiskLevel": "High",
     "SfiPillar": "Protect identities and secrets",
-    "TenantType": [
-      "Workforce"
-    ],
+    "TenantType": "Workforce",
     "TestId": "21847",
     "Title": "Password protection for on-premises is enabled",
     "UserImpact": "Low"
   },
   "21848": {
-    "Category": "Access control",
+    "Category": "Credential management",
     "ImplementationCost": "Low",
+    "MinimumLicense": "P1",
     "Pillar": "Identity",
-    "RiskLevel": "Low",
+    "RiskLevel": "Medium",
     "SfiPillar": "Protect identities and secrets",
     "TenantType": [
       "Workforce",
       "External"
     ],
     "TestId": "21848",
-    "Title": "Enable custom banned passwords",
+    "Title": "Add organizational terms to the banned password list",
     "UserImpact": "Low"
   },
   "21849": {
-    "Category": "Access control",
+    "Category": "Credential management",
     "ImplementationCost": "Low",
+    "MinimumLicense": "P1",
     "Pillar": "Identity",
     "RiskLevel": "Medium",
     "SfiPillar": "Protect identities and secrets",
@@ -1001,8 +1008,9 @@
     "UserImpact": "Low"
   },
   "21850": {
-    "Category": "Access control",
+    "Category": "Credential management",
     "ImplementationCost": "Low",
+    "MinimumLicense": "P1",
     "Pillar": "Identity",
     "RiskLevel": "Medium",
     "SfiPillar": "Protect identities and secrets",
@@ -1011,27 +1019,26 @@
       "External"
     ],
     "TestId": "21850",
-    "Title": "Smart lockout threshold isn't greater than 10",
+    "Title": "Smart lockout threshold set to 10 or less",
     "UserImpact": "Low"
   },
   "21851": {
     "Category": "External collaboration",
     "ImplementationCost": "Medium",
+    "MinimumLicense": "Free",
     "Pillar": "Identity",
     "RiskLevel": "Medium",
     "SfiPillar": "Protect tenants and isolate production systems",
-    "TenantType": [
-      "Workforce"
-    ],
+    "TenantType": "Workforce",
     "TestId": "21851",
     "Title": "Guest access is protected by strong authentication methods",
     "UserImpact": "Medium"
   },
   "21854": {
-    "Category": "Access control",
+    "Category": "Privileged access",
     "ImplementationCost": "Medium",
     "Pillar": "Identity",
-    "RiskLevel": "Medium",
+    "RiskLevel": "High",
     "SfiPillar": "Protect identities and secrets",
     "TenantType": [
       "Workforce",
@@ -1072,6 +1079,7 @@
   "21858": {
     "Category": "External collaboration",
     "ImplementationCost": "Medium",
+    "MinimumLicense": "Free",
     "Pillar": "Identity",
     "RiskLevel": "Medium",
     "SfiPillar": "Protect tenants and isolate production systems",
@@ -1102,6 +1110,7 @@
     "ImplementationCost": "Medium",
     "Pillar": "Identity",
     "RiskLevel": "High",
+    "Service": "Azure",
     "SfiPillar": "Monitor and detect cyberthreats",
     "TenantType": [
       "Workforce",
@@ -1114,6 +1123,7 @@
   "21861": {
     "Category": "Monitoring",
     "ImplementationCost": "High",
+    "MinimumLicense": "P2",
     "Pillar": "Identity",
     "RiskLevel": "High",
     "SfiPillar": "Monitor and detect cyberthreats",
@@ -1126,11 +1136,12 @@
     "UserImpact": "Low"
   },
   "21862": {
-    "Category": "Access control",
+    "Category": "Monitoring",
     "ImplementationCost": "High",
+    "MinimumLicense": "P2",
     "Pillar": "Identity",
-    "RiskLevel": "Medium",
-    "SfiPillar": "Protect identities and secrets",
+    "RiskLevel": "High",
+    "SfiPillar": "Monitor and detect cyberthreats",
     "TenantType": [
       "Workforce",
       "External"
@@ -1142,6 +1153,7 @@
   "21863": {
     "Category": "Monitoring",
     "ImplementationCost": "High",
+    "MinimumLicense": "P2",
     "Pillar": "Identity",
     "RiskLevel": "High",
     "SfiPillar": "Monitor and detect cyberthreats",
@@ -1170,6 +1182,7 @@
   "21865": {
     "Category": "Application management",
     "ImplementationCost": "Low",
+    "MinimumLicense": "P1",
     "Pillar": "Identity",
     "RiskLevel": "Medium",
     "SfiPillar": "Protect networks",
@@ -1184,6 +1197,7 @@
   "21866": {
     "Category": "Monitoring",
     "ImplementationCost": "Medium",
+    "MinimumLicense": "P1",
     "Pillar": "Identity",
     "RiskLevel": "Medium",
     "SfiPillar": "Monitor and detect cyberthreats",
@@ -1196,22 +1210,24 @@
     "UserImpact": "Low"
   },
   "21867": {
-    "Category": "Access control",
+    "Category": "Application management",
     "ImplementationCost": "Medium",
+    "MinimumLicense": "P1",
     "Pillar": "Identity",
-    "RiskLevel": "Low",
-    "SfiPillar": "Protect identities and secrets",
+    "RiskLevel": "High",
+    "SfiPillar": "Monitor and detect cyberthreats",
     "TenantType": [
       "Workforce",
       "External"
     ],
     "TestId": "21867",
-    "Title": "All enterprise applications have owners",
+    "Title": "Enterprise applications with high privilege Microsoft Graph API permissions have owners",
     "UserImpact": "Low"
   },
   "21868": {
     "Category": "External collaboration",
     "ImplementationCost": "Medium",
+    "MinimumLicense": "Free",
     "Pillar": "Identity",
     "RiskLevel": "Medium",
     "SfiPillar": "Protect tenants and isolate production systems",
@@ -1220,12 +1236,13 @@
       "External"
     ],
     "TestId": "21868",
-    "Title": "Guests do not own apps in the tenant",
+    "Title": "Guests don't own apps in the tenant",
     "UserImpact": "Low"
   },
   "21869": {
     "Category": "Application management",
     "ImplementationCost": "Medium",
+    "MinimumLicense": "P1",
     "Pillar": "Identity",
     "RiskLevel": "Medium",
     "SfiPillar": "Protect engineering systems",
@@ -1238,35 +1255,36 @@
     "UserImpact": "Medium"
   },
   "21870": {
-    "Category": "Access control",
+    "Category": "Credential management",
     "ImplementationCost": "Low",
+    "MinimumLicense": "P1",
     "Pillar": "Identity",
-    "RiskLevel": "Low",
+    "RiskLevel": "Medium",
     "SfiPillar": "Protect identities and secrets",
     "TenantType": [
       "Workforce",
       "External"
     ],
     "TestId": "21870",
-    "Title": "Enable SSPR",
+    "Title": "Enable self-service password reset",
     "UserImpact": "Low"
   },
   "21872": {
     "Category": "Access control",
     "ImplementationCost": "Low",
+    "MinimumLicense": "P1",
     "Pillar": "Identity",
     "RiskLevel": "High",
     "SfiPillar": "Protect identities and secrets",
-    "TenantType": [
-      "Workforce"
-    ],
+    "TenantType": "Workforce",
     "TestId": "21872",
     "Title": "Require multifactor authentication for device join and device registration using user action",
     "UserImpact": "Medium"
   },
   "21874": {
     "Category": "External collaboration",
-    "ImplementationCost": "Medium",
+    "ImplementationCost": "High",
+    "MinimumLicense": "Free",
     "Pillar": "Identity",
     "RiskLevel": "Medium",
     "SfiPillar": "Protect tenants and isolate production systems",
@@ -1275,21 +1293,25 @@
       "External"
     ],
     "TestId": "21874",
-    "Title": "Allow/Deny lists of domains to restrict external collaboration are configured",
+    "Title": "Guest access is limited to approved tenants",
     "UserImpact": "Medium"
   },
   "21875": {
-    "Category": "Access control",
+    "Category": "External collaboration",
     "ImplementationCost": "Medium",
+    "MinimumLicense": [
+      "P2",
+      "Governance"
+    ],
     "Pillar": "Identity",
     "RiskLevel": "Medium",
-    "SfiPillar": "Protect identities and secrets",
+    "SfiPillar": "Protect tenants and isolate production systems",
     "TenantType": [
       "Workforce",
       "External"
     ],
     "TestId": "21875",
-    "Title": "Tenant has all External organizations allowed to collaborate as Connected Organization",
+    "Title": "All entitlement management assignment policies that apply to external users require connected organizations",
     "UserImpact": "Medium"
   },
   "21876": {
@@ -1309,6 +1331,7 @@
   "21877": {
     "Category": "Application management",
     "ImplementationCost": "Medium",
+    "MinimumLicense": "Free",
     "Pillar": "Identity",
     "RiskLevel": "Medium",
     "SfiPillar": "Protect tenants and isolate production systems",
@@ -1321,11 +1344,15 @@
     "UserImpact": "Medium"
   },
   "21878": {
-    "Category": "Access control",
+    "Category": "Identity governance",
     "ImplementationCost": "Medium",
+    "MinimumLicense": [
+      "P2",
+      "Governance"
+    ],
     "Pillar": "Identity",
     "RiskLevel": "Medium",
-    "SfiPillar": "Protect identities and secrets",
+    "SfiPillar": "Protect tenants and isolate production systems",
     "TenantType": [
       "Workforce",
       "External"
@@ -1335,8 +1362,9 @@
     "UserImpact": "Medium"
   },
   "21879": {
-    "Category": "Access control",
+    "Category": "External collaboration",
     "ImplementationCost": "Medium",
+    "MinimumLicense": "P2",
     "Pillar": "Identity",
     "RiskLevel": "Medium",
     "SfiPillar": "Protect identities and secrets",
@@ -1345,7 +1373,7 @@
       "External"
     ],
     "TestId": "21879",
-    "Title": "All entitlement management policies that apply to External users require approval",
+    "Title": "All entitlement management assignment policies that apply to external users require approval",
     "UserImpact": "Medium"
   },
   "21881": {
@@ -1379,6 +1407,7 @@
   "21883": {
     "Category": "Access control",
     "ImplementationCost": "Low",
+    "MinimumLicense": "Workload",
     "Pillar": "Identity",
     "RiskLevel": "Medium",
     "SfiPillar": "Accelerate response and remediation",
@@ -1391,22 +1420,24 @@
     "UserImpact": "High"
   },
   "21884": {
-    "Category": "Access control",
+    "Category": "External collaboration",
     "ImplementationCost": "Medium",
+    "MinimumLicense": "P1",
     "Pillar": "Identity",
-    "RiskLevel": "Medium",
-    "SfiPillar": "Protect identities and secrets",
+    "RiskLevel": "High",
+    "SfiPillar": "Protect tenants and production systems",
     "TenantType": [
       "Workforce",
       "External"
     ],
     "TestId": "21884",
-    "Title": "Workload identities based on known networks are configured",
+    "Title": "Conditional Access policies for workload identities based on known networks are configured",
     "UserImpact": "Low"
   },
   "21885": {
     "Category": "Application management",
     "ImplementationCost": "High",
+    "MinimumLicense": "P1",
     "Pillar": "Identity",
     "RiskLevel": "High",
     "SfiPillar": "Protect engineering systems",
@@ -1419,17 +1450,18 @@
     "UserImpact": "Low"
   },
   "21886": {
-    "Category": "Access control",
+    "Category": "Applications management",
     "ImplementationCost": "Medium",
+    "MinimumLicense": "P1",
     "Pillar": "Identity",
     "RiskLevel": "Medium",
-    "SfiPillar": "Protect engineering systems",
+    "SfiPillar": "Protect identities and secrets",
     "TenantType": [
       "Workforce",
       "External"
     ],
     "TestId": "21886",
-    "Title": "Applications that use Microsoft Entra for authentication and support provisioning are configured",
+    "Title": "Applications are configured for automatic user provisioning",
     "UserImpact": "Low"
   },
   "21887": {
@@ -1449,6 +1481,7 @@
   "21888": {
     "Category": "Application management",
     "ImplementationCost": "Low",
+    "MinimumLicense": "P1",
     "Pillar": "Identity",
     "RiskLevel": "High",
     "SfiPillar": "Protect engineering systems",
@@ -1461,9 +1494,12 @@
     "UserImpact": "Low"
   },
   "21889": {
-    "Category": "Access control",
+    "Category": "Authentication",
     "ImplementationCost": "Medium",
-    "RiskLevel": "Low",
+    "MinimumLicense": "P1",
+    "Pillar": "Identity",
+    "RiskLevel": "High",
+    "SfiPillar": "Protect identities and secrets",
     "TenantType": [
       "Workforce",
       "External"
@@ -1489,6 +1525,7 @@
   "21891": {
     "Category": "Access control",
     "ImplementationCost": "Low",
+    "MinimumLicense": "P1",
     "Pillar": "Identity",
     "RiskLevel": "High",
     "SfiPillar": "Protect identities and secrets",
@@ -1503,8 +1540,9 @@
   "21892": {
     "Category": "Access control",
     "ImplementationCost": "High",
+    "MinimumLicense": "P1",
     "Pillar": "Identity",
-    "RiskLevel": "Medium",
+    "RiskLevel": "High",
     "SfiPillar": "Protect identities and secrets",
     "TenantType": [
       "Workforce",
@@ -1517,6 +1555,7 @@
   "21893": {
     "Category": "Access control",
     "ImplementationCost": "Medium",
+    "MinimumLicense": "P2",
     "Pillar": "Identity",
     "RiskLevel": "Low",
     "SfiPillar": "Protect identities and secrets",
@@ -1525,7 +1564,7 @@
       "External"
     ],
     "TestId": "21893",
-    "Title": "Enable Microsoft Entra ID Protection policy to enforce multifactor authentication registration",
+    "Title": "All users are required to register for MFA",
     "UserImpact": "Medium"
   },
   "21894": {
@@ -1557,8 +1596,9 @@
     "UserImpact": "Low"
   },
   "21896": {
-    "Category": "Access control",
+    "Category": "Application management",
     "ImplementationCost": "Medium",
+    "MinimumLicense": "Free",
     "Pillar": "Identity",
     "RiskLevel": "Medium",
     "SfiPillar": "Protect identities and secrets",
@@ -1627,11 +1667,15 @@
     "UserImpact": "Low"
   },
   "21929": {
-    "Category": "Access control",
+    "Category": "Identity governance",
     "ImplementationCost": "Medium",
+    "MinimumLicense": [
+      "P2",
+      "Governance"
+    ],
     "Pillar": "Identity",
     "RiskLevel": "Medium",
-    "SfiPillar": "Protect identities and secrets",
+    "SfiPillar": "Protect tenants and isolate production systems",
     "TenantType": [
       "Workforce",
       "External"
@@ -1643,6 +1687,7 @@
   "21941": {
     "Category": "Access control",
     "ImplementationCost": "Medium",
+    "MinimumLicense": "P1",
     "Pillar": "Identity",
     "RiskLevel": "Medium",
     "SfiPillar": "Protect identities and secrets",
@@ -1655,10 +1700,11 @@
     "UserImpact": "Low"
   },
   "21953": {
-    "Category": "Access control",
-    "ImplementationCost": "Low",
+    "Category": "Devices",
+    "ImplementationCost": "Medium",
+    "MinimumLicense": "P1",
     "Pillar": "Identity",
-    "RiskLevel": "Low",
+    "RiskLevel": "High",
     "SfiPillar": "Protect identities and secrets",
     "TenantType": [
       "Workforce",
@@ -1669,11 +1715,12 @@
     "UserImpact": "Low"
   },
   "21954": {
-    "Category": "Access control",
+    "Category": "Devices",
     "ImplementationCost": "Low",
+    "MinimumLicense": "Free",
     "Pillar": "Identity",
-    "RiskLevel": "Low",
-    "SfiPillar": "Protect identities and secrets",
+    "RiskLevel": "High",
+    "SfiPillar": "Protect tenants and isolate production systems",
     "TenantType": [
       "Workforce",
       "External"
@@ -1683,11 +1730,12 @@
     "UserImpact": "Low"
   },
   "21955": {
-    "Category": "Access control",
+    "Category": "Devices",
     "ImplementationCost": "Low",
+    "MinimumLicense": "P1",
     "Pillar": "Identity",
-    "RiskLevel": "Low",
-    "SfiPillar": "Protect identities and secrets",
+    "RiskLevel": "High",
+    "SfiPillar": "Protect tenants and isolate production systems",
     "TenantType": [
       "Workforce",
       "External"
@@ -1699,9 +1747,10 @@
   "21964": {
     "Category": "Access control",
     "ImplementationCost": "Low",
+    "MinimumLicense": "P1",
     "Pillar": "Identity",
-    "RiskLevel": "Low",
-    "SfiPillar": "Protect identities and secrets",
+    "RiskLevel": "High",
+    "SfiPillar": "Protect tenants and isolate production systems",
     "TenantType": [
       "Workforce",
       "External"
@@ -1741,6 +1790,7 @@
   "21985": {
     "Category": "Credential management",
     "ImplementationCost": "Low",
+    "MinimumLicense": "P1",
     "Pillar": "Identity",
     "RiskLevel": "Medium",
     "SfiPillar": "Protect identities and secrets",
@@ -1755,6 +1805,7 @@
   "21992": {
     "Category": "Application management",
     "ImplementationCost": "High",
+    "MinimumLicense": "Free",
     "Pillar": "Identity",
     "RiskLevel": "High",
     "SfiPillar": "Protect identities and secrets",
@@ -1767,8 +1818,9 @@
     "UserImpact": "Low"
   },
   "22072": {
-    "Category": "Access control",
+    "Category": "Credential management",
     "ImplementationCost": "Medium",
+    "MinimumLicense": "P1",
     "Pillar": "Identity",
     "RiskLevel": "Medium",
     "SfiPillar": "Protect identities and secrets",
@@ -1777,77 +1829,13 @@
       "External"
     ],
     "TestId": "22072",
-    "Title": "Self-Service Password Reset does not use Q & A",
+    "Title": "Self-service password reset doesn't use security questions",
     "UserImpact": "Medium"
-  },
-  "22098": {
-    "Category": "Access control",
-    "ImplementationCost": "Low",
-    "Pillar": "Identity",
-    "RiskLevel": "Medium",
-    "SfiPillar": "Protect identities and secrets",
-    "TenantType": [
-      "External"
-    ],
-    "TestId": "22098",
-    "Title": "Integrate Entra Audit logs with Azure Monitor",
-    "UserImpact": "Low"
-  },
-  "22099": {
-    "Category": "Access control",
-    "ImplementationCost": "Low",
-    "Pillar": "Identity",
-    "RiskLevel": "Medium",
-    "SfiPillar": "Protect identities and secrets",
-    "TenantType": [
-      "External"
-    ],
-    "TestId": "22099",
-    "Title": "Integrate Entra Sign-In logs with Azure Monitor",
-    "UserImpact": "Low"
-  },
-  "22100": {
-    "Category": "Access control",
-    "ImplementationCost": "Medium",
-    "Pillar": "Identity",
-    "RiskLevel": "High",
-    "SfiPillar": "Protect identities and secrets",
-    "TenantType": [
-      "External"
-    ],
-    "TestId": "22100",
-    "Title": "Enable WAF for ciamlogin endpoints",
-    "UserImpact": "Low"
-  },
-  "22101": {
-    "Category": "Access control",
-    "ImplementationCost": "Medium",
-    "Pillar": "Identity",
-    "RiskLevel": "High",
-    "SfiPillar": "Protect identities and secrets",
-    "TenantType": [
-      "External"
-    ],
-    "TestId": "22101",
-    "Title": "Disable ciamlogin endpoints when custom domain enabled",
-    "UserImpact": "Low"
-  },
-  "22102": {
-    "Category": "Access control",
-    "ImplementationCost": "Medium",
-    "Pillar": "Identity",
-    "RiskLevel": "High",
-    "SfiPillar": "Protect identities and secrets",
-    "TenantType": [
-      "External"
-    ],
-    "TestId": "22102",
-    "Title": "Enable custom domain",
-    "UserImpact": "Low"
   },
   "22124": {
     "Category": "Monitoring",
     "ImplementationCost": "Medium",
+    "MinimumLicense": "P1",
     "Pillar": "Identity",
     "RiskLevel": "High",
     "SfiPillar": "Monitor and detect cyberthreats",
@@ -1862,6 +1850,7 @@
   "22128": {
     "Category": "Application management",
     "ImplementationCost": "Medium",
+    "MinimumLicense": "Free",
     "Pillar": "Identity",
     "RiskLevel": "High",
     "SfiPillar": "Protect tenants and isolate production systems",
@@ -1874,8 +1863,9 @@
     "UserImpact": "Low"
   },
   "22659": {
-    "Category": "Access control",
+    "Category": "Monitoring",
     "ImplementationCost": "High",
+    "MinimumLicense": "P2",
     "Pillar": "Identity",
     "RiskLevel": "High",
     "SfiPillar": "Protect identities and secrets",
@@ -1884,12 +1874,13 @@
       "External"
     ],
     "TestId": "22659",
-    "Title": "All risky workload identity sign ins are triaged",
+    "Title": "All risky workload identity sign-ins are triaged",
     "UserImpact": "Low"
   },
   "23183": {
     "Category": "Application management",
     "ImplementationCost": "High",
+    "MinimumLicense": "P1",
     "Pillar": "Identity",
     "RiskLevel": "High",
     "SfiPillar": "Protect engineering systems",
@@ -1901,355 +1892,2608 @@
     "Title": "Service principals use safe redirect URIs",
     "UserImpact": "Low"
   },
+  "24518": {
+    "Category": "Application management",
+    "ImplementationCost": "Medium",
+    "MinimumLicense": "Free",
+    "Pillar": "Identity",
+    "RiskLevel": "Medium",
+    "SfiPillar": "Protect engineering systems",
+    "TenantType": "Workforce",
+    "TestId": "24518",
+    "Title": "Enterprise applications have owners",
+    "UserImpact": "Low"
+  },
   "24540": {
-    "Category": "Device management",
+    "Category": "Devices",
     "ImplementationCost": "Low",
+    "MinimumLicense": "Intune",
     "Pillar": "Devices",
     "RiskLevel": "High",
-    "SfiPillar": "Protect engineering systems",
-    "TenantType": [
-      "Workforce"
-    ],
+    "SfiPillar": "Protect networks",
+    "TenantType": "Workforce",
     "TestId": "24540",
-    "Title": "Windows Firewall policy is created and assigned",
-    "UserImpact": "Low"
+    "Title": "Windows Firewall policies protect against unauthorized network access",
+    "UserImpact": "Medium"
   },
   "24541": {
-    "Category": "Device management",
+    "Category": "Tenant",
     "ImplementationCost": "Low",
+    "MinimumLicense": "Intune",
     "Pillar": "Devices",
     "RiskLevel": "High",
-    "SfiPillar": "Protect engineering systems",
-    "TenantType": [
-      "Workforce"
-    ],
+    "SfiPillar": "Protect tenants and isolate production systems",
+    "TenantType": "Workforce",
     "TestId": "24541",
-    "Title": "A compliance policy for Windows devices exists ",
-    "UserImpact": "Low"
+    "Title": "Compliance policies protect Windows devices",
+    "UserImpact": "Medium"
   },
   "24542": {
-    "Category": "Device management",
+    "Category": "Tenant",
     "ImplementationCost": "Low",
+    "MinimumLicense": "Intune",
     "Pillar": "Devices",
     "RiskLevel": "High",
-    "SfiPillar": "Protect engineering systems",
-    "TenantType": [
-      "Workforce"
-    ],
+    "SfiPillar": "Protect tenants and isolate production systems",
+    "TenantType": "Workforce",
     "TestId": "24542",
-    "Title": "macOS Compliance policy is created and assigned",
+    "Title": "Compliance policies protect macOS devices",
     "UserImpact": "Medium"
   },
   "24543": {
-    "Category": "Device management",
+    "Category": "Tenant",
     "ImplementationCost": "Low",
+    "MinimumLicense": "Intune",
     "Pillar": "Devices",
     "RiskLevel": "High",
-    "SfiPillar": "Protect engineering systems",
-    "TenantType": [
-      "Workforce"
-    ],
+    "SfiPillar": "Protect tenants and isolate production systems",
+    "TenantType": "Workforce",
     "TestId": "24543",
-    "Title": "Compliance policy assignment for iOS/iPadOS devices",
-    "UserImpact": "Low"
+    "Title": "Compliance policies protect iOS/iPadOS devices",
+    "UserImpact": "Medium"
   },
   "24545": {
-    "Category": "Device management",
+    "Category": "Tenant",
     "ImplementationCost": "Low",
+    "MinimumLicense": "Intune",
     "Pillar": "Devices",
     "RiskLevel": "High",
-    "SfiPillar": "Protect engineering systems",
-    "TenantType": [
-      "Workforce"
-    ],
+    "SfiPillar": "Protect tenants and isolate production systems",
+    "TenantType": "Workforce",
     "TestId": "24545",
-    "Title": "Compliance policy assignment for Android Enterprise Fully managed device is configured and assigned",
+    "Title": "Compliance policies protect fully managed and corporate-owned Android devices",
+    "UserImpact": "Medium"
+  },
+  "24546": {
+    "Category": "Tenant",
+    "ImplementationCost": "Low",
+    "MinimumLicense": "P1",
+    "Pillar": "Devices",
+    "RiskLevel": "High",
+    "SfiPillar": "Protect tenants and isolate production systems",
+    "TenantType": "Workforce",
+    "TestId": "24546",
+    "Title": "Windows automatic device enrollment is enforced to eliminate risks from unmanaged endpoints",
     "UserImpact": "Low"
   },
   "24547": {
-    "Category": "Device management",
+    "Category": "Tenant",
     "ImplementationCost": "Low",
+    "MinimumLicense": "Intune",
     "Pillar": "Devices",
     "RiskLevel": "High",
-    "SfiPillar": "Protect engineering systems",
-    "TenantType": [
-      "Workforce"
-    ],
+    "SfiPillar": "Protect tenants and isolate production systems",
+    "TenantType": "Workforce",
     "TestId": "24547",
-    "Title": "Compliance Policy for Android Enterprise Personally-Owned Work Profile is configured and assigned",
-    "UserImpact": "Low"
-  },
-  "24548": {
-    "Category": "Device management",
-    "ImplementationCost": "Low",
-    "Pillar": "Devices",
-    "RiskLevel": "High",
-    "SfiPillar": "Protect engineering systems",
-    "TenantType": [
-      "Workforce"
-    ],
-    "TestId": "24548",
-    "Title": "App Protection Policy assigned on iOS/iPad devices",
-    "UserImpact": "Low"
-  },
-  "24549": {
-    "Category": "Device management",
-    "ImplementationCost": "Low",
-    "Pillar": "Devices",
-    "RiskLevel": "High",
-    "SfiPillar": "Protect engineering systems",
-    "TenantType": [
-      "Workforce"
-    ],
-    "TestId": "24549",
-    "Title": "An App protection policy for Android platform exists in Intune",
+    "Title": "Compliance policies protect personally owned Android devices",
     "UserImpact": "Medium"
   },
+  "24548": {
+    "Category": "Data",
+    "ImplementationCost": "Low",
+    "MinimumLicense": "Intune",
+    "Pillar": "Devices",
+    "RiskLevel": "High",
+    "SfiPillar": "Protect identities and secrets",
+    "TenantType": "Workforce",
+    "TestId": "24548",
+    "Title": "Data on iOS/iPadOS is protected by app protection policies",
+    "UserImpact": "High"
+  },
+  "24549": {
+    "Category": "Data",
+    "ImplementationCost": "Low",
+    "MinimumLicense": "Intune",
+    "Pillar": "Devices",
+    "RiskLevel": "High",
+    "SfiPillar": "Protect identities and secrets",
+    "TenantType": "Workforce",
+    "TestId": "24549",
+    "Title": "Data on Android is protected by app protection policies",
+    "UserImpact": "High"
+  },
   "24550": {
-    "Category": "Device management",
-    "ImplementationCost": "High",
+    "Category": "Devices",
+    "CompatibleLicense": "INTUNE_A",
+    "ImplementationCost": "Low",
     "Pillar": "Devices",
     "RiskLevel": "High",
     "SfiPillar": "Protect engineering systems",
-    "TenantType": [
-      "Workforce"
-    ],
+    "TenantType": "Workforce",
     "TestId": "24550",
-    "Title": "Windows - BitLocker Policy is created and assigned",
+    "Title": "Data on Windows is protected by BitLocker encryption",
     "UserImpact": "Low"
   },
   "24551": {
-    "Category": "Device management",
+    "Category": "Devices",
     "ImplementationCost": "Medium",
+    "MinimumLicense": "Intune",
     "Pillar": "Devices",
     "RiskLevel": "High",
-    "SfiPillar": "Protect engineering systems",
-    "TenantType": [
-      "Workforce"
-    ],
+    "SfiPillar": "Protect identities and secrets",
+    "TenantType": "Workforce",
     "TestId": "24551",
-    "Title": "Windows Hello for Business Policy is Configured and Assigned",
+    "Title": "Authentication on Windows uses Windows Hello for Business",
     "UserImpact": "Medium"
   },
   "24552": {
-    "Category": "Device management",
-    "ImplementationCost": "High",
+    "Category": "Devices",
+    "ImplementationCost": "Low",
+    "MinimumLicense": "Intune",
     "Pillar": "Devices",
     "RiskLevel": "Medium",
     "SfiPillar": "Protect engineering systems",
-    "TenantType": [
-      "Workforce"
-    ],
+    "TenantType": "Workforce",
     "TestId": "24552",
-    "Title": "macOS - Firewall policy is created and assigned",
+    "Title": "macOS Firewall policies protect against unauthorized network access",
     "UserImpact": "High"
   },
   "24553": {
-    "Category": "Device management",
+    "Category": "Devices",
+    "ImplementationCost": "Medium",
+    "MinimumLicense": "Intune",
+    "Pillar": "Devices",
+    "RiskLevel": "High",
+    "SfiPillar": "Protect tenants and isolate production systems",
+    "TenantType": "Workforce",
+    "TestId": "24553",
+    "Title": "Windows Update policies are enforced to reduce risk from unpatched vulnerabilities",
+    "UserImpact": "Medium"
+  },
+  "24554": {
+    "Category": "Devices",
+    "ImplementationCost": "Low",
+    "MinimumLicense": "Intune",
+    "Pillar": "Devices",
+    "RiskLevel": "High",
+    "SfiPillar": "Protect tenants and isolate production systems",
+    "TenantType": "Workforce",
+    "TestId": "24554",
+    "Title": "Update policies for iOS/iPadOS are enforced to reduce risk from unpatched vulnerabilities",
+    "UserImpact": "Medium"
+  },
+  "24555": {
+    "Category": "Tenant",
+    "ImplementationCost": "Low",
+    "MinimumLicense": "Intune",
+    "Pillar": "Devices",
+    "RiskLevel": "Medium",
+    "SfiPillar": "Protect tenants and isolate production systems",
+    "TenantType": "Workforce",
+    "TestId": "24555",
+    "Title": "Scope tag configuration is enforced to support delegated administration and least-privilege access",
+    "UserImpact": "Low"
+  },
+  "24560": {
+    "Category": "Devices",
+    "ImplementationCost": "Low",
+    "MinimumLicense": "Intune",
+    "Pillar": "Devices",
+    "RiskLevel": "High",
+    "SfiPillar": "Protect identities and secrets",
+    "TenantType": "Workforce",
+    "TestId": "24560",
+    "Title": "Local administrator credentials on Windows are protected by Windows LAPS",
+    "UserImpact": "Low"
+  },
+  "24561": {
+    "Category": "Devices",
+    "ImplementationCost": "Low",
+    "MinimumLicense": "Intune",
+    "Pillar": "Devices",
+    "RiskLevel": "High",
+    "SfiPillar": "Protect identities and secrets",
+    "TenantType": "Workforce",
+    "TestId": "24561",
+    "Title": "Local administrator credentials on macOS are protected during enrollment by macOS LAPS",
+    "UserImpact": "Low"
+  },
+  "24564": {
+    "Category": "Devices",
+    "ImplementationCost": "Low",
+    "MinimumLicense": "Intune",
+    "Pillar": "Devices",
+    "RiskLevel": "High",
+    "SfiPillar": "Protect identities and secrets",
+    "TenantType": "Workforce",
+    "TestId": "24564",
+    "Title": "Local account usage on Windows is restricted to reduce unauthorized access",
+    "UserImpact": "Low"
+  },
+  "24568": {
+    "Category": "Tenant",
+    "ImplementationCost": "Medium",
+    "MinimumLicense": "Intune",
+    "Pillar": "Devices",
+    "RiskLevel": "Medium",
+    "SfiPillar": "Protect tenants and isolate production systems",
+    "TenantType": "Workforce",
+    "TestId": "24568",
+    "Title": "Platform SSO is configured to strengthen authentication on macOS devices",
+    "UserImpact": "Medium"
+  },
+  "24569": {
+    "Category": "Devices",
+    "ImplementationCost": "Low",
+    "MinimumLicense": "Intune",
+    "Pillar": "Devices",
+    "RiskLevel": "High",
+    "SfiPillar": "Protect identities and secrets",
+    "TenantType": "Workforce",
+    "TestId": "24569",
+    "Title": "FileVault encryption protects data on macOS devices",
+    "UserImpact": "Medium"
+  },
+  "24570": {
+    "Category": "Hybrid infrastructure",
+    "ImplementationCost": "Medium",
+    "MinimumLicense": "Free",
+    "Pillar": "Identity",
+    "RiskLevel": "High",
+    "SfiPillar": "Protect identities and secrets",
+    "TenantType": "Workforce",
+    "TestId": "24570",
+    "Title": "Entra Connect Sync is configured with Service Principal Credentials",
+    "UserImpact": "Low"
+  },
+  "24572": {
+    "Category": "Tenant",
+    "ImplementationCost": "Low",
+    "MinimumLicense": "Intune",
+    "Pillar": "Devices",
+    "RiskLevel": "Medium",
+    "SfiPillar": "Protect tenants and isolate production systems",
+    "TenantType": "Workforce",
+    "TestId": "24572",
+    "Title": "Device enrollment notifications are enforced to ensure user awareness and secure onboarding",
+    "UserImpact": "Medium"
+  },
+  "24573": {
+    "Category": "Tenant",
+    "ImplementationCost": "Medium",
+    "MinimumLicense": "Intune",
+    "Pillar": "Devices",
+    "RiskLevel": "High",
+    "SfiPillar": "Protect tenants and isolate production systems",
+    "TenantType": "Workforce",
+    "TestId": "24573",
+    "Title": "Security baselines are applied to Windows devices to strengthen security posture",
+    "UserImpact": "Medium"
+  },
+  "24574": {
+    "Category": "Devices",
+    "ImplementationCost": "Medium",
+    "MinimumLicense": "Intune",
+    "Pillar": "Devices",
+    "RiskLevel": "High",
+    "SfiPillar": "Protect networks",
+    "TenantType": "Workforce",
+    "TestId": "24574",
+    "Title": "Attack Surface Reduction rules are applied to Windows devices to prevent exploitation of vulnerable system components",
+    "UserImpact": "Medium"
+  },
+  "24575": {
+    "Category": "Devices",
+    "ImplementationCost": "Medium",
+    "MinimumLicense": "Intune",
+    "Pillar": "Devices",
+    "RiskLevel": "High",
+    "SfiPillar": "Protect networks",
+    "TenantType": "Workforce",
+    "TestId": "24575",
+    "Title": "Defender Antivirus policies protect Windows devices from malware",
+    "UserImpact": "Low"
+  },
+  "24576": {
+    "Category": "Tenant",
+    "ImplementationCost": "Low",
+    "MinimumLicense": "Intune",
+    "Pillar": "Devices",
+    "RiskLevel": "Low",
+    "SfiPillar": "Protect tenants and isolate production systems",
+    "TenantType": "Workforce",
+    "TestId": "24576",
+    "Title": "Endpoint Analytics is enabled to help identify risks on Windows devices",
+    "UserImpact": "Low"
+  },
+  "24690": {
+    "Category": "Devices",
+    "ImplementationCost": "Low",
+    "MinimumLicense": "Intune",
+    "Pillar": "Devices",
+    "RiskLevel": "High",
+    "SfiPillar": "Protect tenants and isolate production systems",
+    "TenantType": "Workforce",
+    "TestId": "24690",
+    "Title": "Update policies for macOS are enforced to reduce risk from unpatched vulnerabilities",
+    "UserImpact": "Medium"
+  },
+  "24784": {
+    "Category": "Devices",
+    "ImplementationCost": "Low",
+    "MinimumLicense": "Intune",
+    "Pillar": "Devices",
+    "RiskLevel": "High",
+    "SfiPillar": "Protect networks",
+    "TenantType": "Workforce",
+    "TestId": "24784",
+    "Title": "Defender Antivirus policies protect macOS devices from malware",
+    "UserImpact": "Low"
+  },
+  "24794": {
+    "Category": "Tenant",
+    "ImplementationCost": "Low",
+    "MinimumLicense": "Intune",
+    "Pillar": "Devices",
+    "RiskLevel": "Medium",
+    "SfiPillar": "Protect tenants and isolate production systems",
+    "TenantType": "Workforce",
+    "TestId": "24794",
+    "Title": "Terms and Conditions policies protect access to sensitive data",
+    "UserImpact": "Low"
+  },
+  "24802": {
+    "Category": "Tenant",
+    "ImplementationCost": "Low",
+    "MinimumLicense": "Intune",
+    "Pillar": "Devices",
+    "RiskLevel": "Low",
+    "SfiPillar": "Protect tenants and isolate production",
+    "TenantType": "Workforce",
+    "TestId": "24802",
+    "Title": "Device cleanup rules maintain tenant hygiene by hiding inactive devices",
+    "UserImpact": "Low"
+  },
+  "24823": {
+    "Category": "Tenant",
+    "ImplementationCost": "Low",
+    "MinimumLicense": "Intune",
+    "Pillar": "Devices",
+    "RiskLevel": "Medium",
+    "SfiPillar": "Protect tenants and isolate production systems",
+    "TenantType": "Workforce",
+    "TestId": "24823",
+    "Title": "Company Portal branding and support settings enhance user experience and trust",
+    "UserImpact": "Low"
+  },
+  "24824": {
+    "Category": "Data",
+    "ImplementationCost": "Low",
+    "MinimumLicense": "Intune",
+    "Pillar": "Devices",
+    "RiskLevel": "High",
+    "SfiPillar": "Protect tenants and isolate production systems",
+    "TenantType": "Workforce",
+    "TestId": "24824",
+    "Title": "Conditional Access policies block access from noncompliant devices",
+    "UserImpact": "Medium"
+  },
+  "24827": {
+    "Category": "Data",
+    "ImplementationCost": "Low",
+    "MinimumLicense": "Intune",
+    "Pillar": "Devices",
+    "RiskLevel": "High",
+    "SfiPillar": "Protect tenants and isolate production systems",
+    "TenantType": "Workforce",
+    "TestId": "24827",
+    "Title": "Conditional Access policies block access from unmanaged apps",
+    "UserImpact": "Medium"
+  },
+  "24839": {
+    "Category": "Data",
+    "ImplementationCost": "Medium",
+    "MinimumLicense": "Intune",
+    "Pillar": "Devices",
+    "RiskLevel": "High",
+    "SfiPillar": "Protect networks",
+    "TenantType": "Workforce",
+    "TestId": "24839",
+    "Title": "Secure Wi-Fi profiles protect iOS devices from unauthorized network access",
+    "UserImpact": "Low"
+  },
+  "24840": {
+    "Category": "Data",
+    "ImplementationCost": "Low",
+    "MinimumLicense": "Intune",
+    "Pillar": "Devices",
+    "RiskLevel": "High",
+    "SfiPillar": "Protect networks",
+    "TenantType": "Workforce",
+    "TestId": "24840",
+    "Title": "Secure Wi-Fi profiles protect Android devices from unauthorized network access",
+    "UserImpact": "Low"
+  },
+  "24870": {
+    "Category": "Data",
+    "ImplementationCost": "Low",
+    "MinimumLicense": "Intune",
+    "Pillar": "Devices",
+    "RiskLevel": "High",
+    "SfiPillar": "Protect tenants and isolate production systems",
+    "TenantType": "Workforce",
+    "TestId": "24870",
+    "Title": "Secure Wi-Fi profiles protect macOS devices from unauthorized network access",
+    "UserImpact": "Low"
+  },
+  "24871": {
+    "Category": "Tenant",
+    "ImplementationCost": "Low",
+    "MinimumLicense": "Intune",
+    "Pillar": "Devices",
+    "RiskLevel": "High",
+    "SfiPillar": "Protect tenants and isolate production systems",
+    "TenantType": "Workforce",
+    "TestId": "24871",
+    "Title": "Defender for Endpoint automatic enrollment is enforced to reduce risk from unmanaged Android threats",
+    "UserImpact": "Low"
+  },
+  "25370": {
+    "Category": "Network",
+    "CompatibleLicense": [
+      "Entra_Premium_Private_Access",
+      "Entra_Premium_Internet_Access"
+    ],
+    "ImplementationCost": "Low",
+    "Pillar": "Network",
+    "RiskLevel": "Medium",
+    "Service": "Graph",
+    "SfiPillar": "Protect networks",
+    "TenantType": [
+      "Workforce",
+      "External"
+    ],
+    "TestId": "25370",
+    "Title": "Source IP restoration is enabled",
+    "UserImpact": "Low"
+  },
+  "25371": {
+    "Category": "Global Secure Access",
+    "CompatibleLicense": [
+      "Entra_Premium_Private_Access",
+      "Entra_Premium_Internet_Access"
+    ],
+    "ImplementationCost": "Low",
+    "MinimumLicense": "AAD_PREMIUM",
+    "Pillar": "Network",
+    "RiskLevel": "High",
+    "Service": "Graph",
+    "SfiPillar": "Protect networks",
+    "TenantType": "Workforce",
+    "TestId": "25371",
+    "Title": "Network validation is configured through Universal Continuous Access Evaluation",
+    "UserImpact": "Low"
+  },
+  "25372": {
+    "Category": "Global Secure Access",
+    "CompatibleLicense": [
+      "Entra_Premium_Private_Access",
+      "Entra_Premium_Internet_Access"
+    ],
+    "ImplementationCost": "Medium",
+    "MinimumLicense": [
+      "AAD_PREMIUM",
+      "Entra_Premium_Internet_Access",
+      "Entra_Premium_Private_Access"
+    ],
+    "Pillar": "Network",
+    "RiskLevel": "High",
+    "Service": "Graph",
+    "SfiPillar": "Protect networks",
+    "TenantType": "Workforce",
+    "TestId": "25372",
+    "Title": "Global Secure Access client is deployed on all managed endpoints",
+    "UserImpact": "Low"
+  },
+  "25375": {
+    "Category": "Global Secure Access",
+    "CompatibleLicense": [
+      "Entra_Premium_Internet_Access",
+      "Entra_Premium_Private_Access"
+    ],
+    "ImplementationCost": "Low",
+    "MinimumLicense": [
+      "Entra_Premium_Internet_Access",
+      "Entra_Premium_Private_Access"
+    ],
+    "Pillar": "Network",
+    "RiskLevel": "High",
+    "Service": "Graph",
+    "SfiPillar": "Protect networks",
+    "TenantType": "Workforce",
+    "TestId": "25375",
+    "Title": "Global Secure Access licenses are available in the tenant and assigned to users",
+    "UserImpact": "Low"
+  },
+  "25376": {
+    "Category": "Network security",
+    "CompatibleLicense": [
+      "Entra_Premium_Private_Access",
+      "Entra_Premium_Internet_Access"
+    ],
+    "ImplementationCost": "Medium",
+    "MinimumLicense": "Entra_Suite",
+    "Pillar": "Network",
+    "RiskLevel": "High",
+    "Service": "Graph",
+    "SfiPillar": "Protect networks",
+    "TenantType": "Workforce",
+    "TestId": "25376",
+    "Title": "Microsoft 365 traffic is actively flowing through Global Secure Access",
+    "UserImpact": "Low"
+  },
+  "25377": {
+    "Category": "Global Secure Access",
+    "CompatibleLicense": "Entra_Premium_Internet_Access",
+    "ImplementationCost": "Medium",
+    "MinimumLicense": [
+      "AAD_PREMIUM",
+      "Entra_Premium_Internet_Access"
+    ],
+    "Pillar": "Network",
+    "RiskLevel": "High",
+    "Service": "Graph",
+    "SfiPillar": "Protect networks",
+    "TenantType": [
+      "Workforce",
+      "External"
+    ],
+    "TestId": "25377",
+    "Title": "Universal tenant restrictions block unauthorized external tenant access",
+    "UserImpact": "Low"
+  },
+  "25379": {
+    "Category": "Global Secure Access",
+    "CompatibleLicense": [
+      "AAD_PREMIUM",
+      "AAD_PREMIUM_P2"
+    ],
+    "ImplementationCost": "Medium",
+    "MinimumLicense": "AAD_PREMIUM",
+    "Pillar": "Network",
+    "RiskLevel": "Medium",
+    "Service": "Graph",
+    "SfiPillar": "Protect networks",
+    "TenantType": [
+      "Workforce",
+      "External"
+    ],
+    "TestId": "25379",
+    "Title": "Conditional Access policies use compliant network controls",
+    "UserImpact": "Medium"
+  },
+  "25380": {
+    "Category": "Global Secure Access",
+    "ImplementationCost": "Low",
+    "MinimumLicense": [
+      "AAD_PREMIUM",
+      "Entra_Premium_Internet_Access"
+    ],
+    "Pillar": "Network",
+    "RiskLevel": "Medium",
+    "Service": "Graph",
+    "SfiPillar": "Protect networks",
+    "TenantType": "Workforce",
+    "TestId": "25380",
+    "Title": "Global Secure Access signaling for Conditional Access is enabled",
+    "UserImpact": "High"
+  },
+  "25381": {
+    "Category": "Global Secure Access",
+    "CompatibleLicense": [
+      "Entra_Premium_Private_Access",
+      "Entra_Premium_Internet_Access"
+    ],
+    "ImplementationCost": "Medium",
+    "MinimumLicense": [
+      "Entra_Suite",
+      "Entra_Premium_Private_Access",
+      "Entra_Premium_Internet_Access",
+      "P2"
+    ],
+    "Pillar": "Network",
+    "RiskLevel": "High",
+    "Service": "Graph",
+    "SfiPillar": "Protect networks",
+    "TenantType": "Workforce",
+    "TestId": "25381",
+    "Title": "Network traffic is routed through Global Secure Access for security policy enforcement",
+    "UserImpact": "Low"
+  },
+  "25382": {
+    "Category": "Global Secure Access",
+    "CompatibleLicense": [
+      "Entra_Premium_Internet_Access",
+      "Entra_Premium_Private_Access"
+    ],
+    "ImplementationCost": "Low",
+    "MinimumLicense": [
+      "Entra_Premium_Private_Access",
+      "Entra_Premium_Internet_Access"
+    ],
+    "Pillar": "Network",
+    "RiskLevel": "High",
+    "Service": "Graph",
+    "SfiPillar": "Protect networks",
+    "TenantType": "Workforce",
+    "TestId": "25382",
+    "Title": "Traffic forwarding profiles are scoped to appropriate users and groups for controlled deployment",
+    "UserImpact": "Low"
+  },
+  "25383": {
+    "Category": "Global Secure Access",
+    "CompatibleLicense": [
+      "AAD_PREMIUM",
+      "AAD_PREMIUM_P2"
+    ],
+    "ImplementationCost": "Low",
+    "MinimumLicense": "AAD_PREMIUM",
+    "Pillar": "Network",
+    "RiskLevel": "High",
+    "Service": "Graph",
+    "SfiPillar": "Protect identities and secrets",
+    "TenantType": "Workforce",
+    "TestId": "25383",
+    "Title": "Administrative privileges are tightly limited to prevent compromise",
+    "UserImpact": "Low"
+  },
+  "25384": {
+    "Category": "Role management",
+    "CompatibleLicense": [
+      "Entra_Premium_Private_Access",
+      "Entra_Premium_Internet_Access"
+    ],
+    "ImplementationCost": "Low",
+    "MinimumLicense": "P1",
+    "Pillar": "Network",
+    "RiskLevel": "High",
+    "Service": "Graph",
+    "SfiPillar": "Protect identities and secrets",
+    "TenantType": "Workforce",
+    "TestId": "25384",
+    "Title": "Application admin rights are constrained to specific Private Access apps",
+    "UserImpact": "Low"
+  },
+  "25391": {
+    "Category": "Global Secure Access",
+    "CompatibleLicense": "Entra_Premium_Private_Access",
+    "ImplementationCost": "Low",
+    "MinimumLicense": "Entra_Premium_Private_Access",
+    "Pillar": "Network",
+    "RiskLevel": "Medium",
+    "Service": "Graph",
+    "SfiPillar": "Protect networks",
+    "TenantType": "Workforce",
+    "TestId": "25391",
+    "Title": "Private network connectors are active and healthy to maintain Zero Trust access to internal resources",
+    "UserImpact": "Medium"
+  },
+  "25392": {
+    "Category": "Private Access",
+    "CompatibleLicense": "Entra_Premium_Private_Access",
+    "ImplementationCost": "Low",
+    "MinimumLicense": "Entra_Premium_Private_Access",
+    "Pillar": "Network",
+    "RiskLevel": "Medium",
+    "Service": "Graph",
+    "SfiPillar": "Protect networks",
+    "TenantType": "Workforce",
+    "TestId": "25392",
+    "Title": "Private network connectors are running the latest version",
+    "UserImpact": "Low"
+  },
+  "25393": {
+    "Category": "Global Secure Access",
+    "ImplementationCost": "Medium",
+    "MinimumLicense": [
+      "AAD_PREMIUM",
+      "Entra_Premium_Private_Access"
+    ],
+    "Pillar": "Network",
+    "RiskLevel": "High",
+    "Service": "Graph",
+    "SfiPillar": "Protect networks",
+    "TenantType": "Workforce",
+    "TestId": "25393",
+    "Title": "Quick Access is enabled and bound to a connector",
+    "UserImpact": "Medium"
+  },
+  "25394": {
+    "Category": "Global Secure Access",
+    "CompatibleLicense": "Entra_Premium_Private_Access",
+    "ImplementationCost": "Low",
+    "MinimumLicense": [
+      "Entra_Premium_Private_Access",
+      "AAD_PREMIUM"
+    ],
+    "Pillar": "Network",
+    "RiskLevel": "High",
+    "Service": "Graph",
+    "SfiPillar": "Protect networks",
+    "TenantType": [
+      "Workforce",
+      "External"
+    ],
+    "TestId": "25394",
+    "Title": "Quick Access is bound to a Conditional Access policy",
+    "UserImpact": "Medium"
+  },
+  "25395": {
+    "Category": "Global Secure Access",
+    "CompatibleLicense": "Entra_Premium_Private_Access",
+    "ImplementationCost": "High",
+    "MinimumLicense": "Entra_Premium_Private_Access",
+    "Pillar": "Network",
+    "RiskLevel": "High",
+    "Service": "Graph",
+    "SfiPillar": "Protect networks",
+    "TenantType": "Workforce",
+    "TestId": "25395",
+    "Title": "Entra Private Access Application segments are defined to enforce least-privilege access",
+    "UserImpact": "Medium"
+  },
+  "25396": {
+    "Category": "Global Secure Access",
+    "CompatibleLicense": "Entra_Premium_Private_Access",
+    "ImplementationCost": "Medium",
+    "MinimumLicense": [
+      "Entra_Premium_Private_Access",
+      "AAD_PREMIUM"
+    ],
+    "Pillar": "Network",
+    "RiskLevel": "High",
+    "Service": "Graph",
+    "SfiPillar": "Protect identities and secrets",
+    "TenantType": "Workforce",
+    "TestId": "25396",
+    "Title": "Conditional Access policies enforce strong authentication for private apps",
+    "UserImpact": "Medium"
+  },
+  "25398": {
+    "Category": "Global Secure Access",
+    "CompatibleLicense": "Entra_Premium_Private_Access",
+    "ImplementationCost": "Medium",
+    "MinimumLicense": [
+      "AAD_PREMIUM",
+      "Entra_Premium_Private_Access"
+    ],
+    "Pillar": "Network",
+    "RiskLevel": "High",
+    "Service": "Graph",
+    "SfiPillar": "Protect networks",
+    "TenantType": [
+      "Workforce",
+      "External"
+    ],
+    "TestId": "25398",
+    "Title": "Domain controller RDP access is protected by phishing-resistant authentication through Global Secure Access",
+    "UserImpact": "Low"
+  },
+  "25399": {
+    "Category": "Global Secure Access",
+    "CompatibleLicense": "Entra_Premium_Private_Access",
+    "ImplementationCost": "Medium",
+    "MinimumLicense": "Entra_Premium_Private_Access",
+    "Pillar": "Network",
+    "RiskLevel": "Medium",
+    "Service": "Graph",
+    "SfiPillar": "Protect networks",
+    "TenantType": [
+      "Workforce",
+      "External"
+    ],
+    "TestId": "25399",
+    "Title": "Private DNS is configured for internal name resolution",
+    "UserImpact": "Low"
+  },
+  "25400": {
+    "Category": "Private Access",
+    "ImplementationCost": "Low",
+    "MinimumLicense": [
+      "AAD_PREMIUM",
+      "Entra_Premium_Private_Access"
+    ],
+    "Pillar": "Network",
+    "RiskLevel": "Low",
+    "Service": "Graph",
+    "SfiPillar": "Protect networks",
+    "TenantType": "Workforce",
+    "TestId": "25400",
+    "Title": "DNS traffic for internal domains is routed through Private Access",
+    "UserImpact": "Low"
+  },
+  "25401": {
+    "Category": "Application Proxy",
+    "CompatibleLicense": [
+      "AAD_PREMIUM",
+      "AAD_PREMIUM_P2"
+    ],
+    "ImplementationCost": "Medium",
+    "MinimumLicense": "AAD_PREMIUM",
+    "Pillar": "Network",
+    "RiskLevel": "High",
+    "Service": "Graph",
+    "SfiPillar": "Protect identities and secrets",
+    "TenantType": "Workforce",
+    "TestId": "25401",
+    "Title": "Application Proxy applications require preauthentication to block anonymous access",
+    "UserImpact": "Medium"
+  },
+  "25403": {
+    "Category": "Global Secure Access",
+    "CompatibleLicense": "Entra_Premium_Private_Access",
+    "ImplementationCost": "Medium",
+    "MinimumLicense": [
+      "Entra_Suite",
+      "Entra_Premium_Private_Access"
+    ],
+    "Pillar": "Network",
+    "RiskLevel": "High",
+    "Service": "Graph",
+    "SfiPillar": "Protect networks",
+    "TenantType": "Workforce",
+    "TestId": "25403",
+    "Title": "Private Access sensors are enforcing strong authentication policies on domain controllers",
+    "UserImpact": "Medium"
+  },
+  "25405": {
+    "Category": "Global Secure Access",
+    "ImplementationCost": "Medium",
+    "MinimumLicense": "P1",
+    "Pillar": "Network",
+    "RiskLevel": "Medium",
+    "Service": "Graph",
+    "SfiPillar": "Protect networks",
+    "TenantType": "Workforce",
+    "TestId": "25405",
+    "Title": "Intelligent Local Access is enabled and configured",
+    "UserImpact": "Medium"
+  },
+  "25406": {
+    "Category": "Global Secure Access",
+    "CompatibleLicense": "Entra_Premium_Internet_Access",
+    "ImplementationCost": "Low",
+    "MinimumLicense": "Entra_Premium_Global_Secure_Access",
+    "Pillar": "Network",
+    "RiskLevel": "High",
+    "Service": "Graph",
+    "SfiPillar": "Protect networks",
+    "TenantType": "Workforce",
+    "TestId": "25406",
+    "Title": "Internet access forwarding profile is enabled",
+    "UserImpact": "Medium"
+  },
+  "25407": {
+    "Category": "Global Secure Access",
+    "CompatibleLicense": "Entra_Premium_Internet_Access",
+    "ImplementationCost": "Medium",
+    "MinimumLicense": "Entra_Premium_Internet_Access",
+    "Pillar": "Network",
+    "RiskLevel": "High",
+    "Service": "Graph",
+    "SfiPillar": "Protect networks",
+    "TenantType": [
+      "Workforce",
+      "External"
+    ],
+    "TestId": "25407",
+    "Title": "Web content filtering integrates with Conditional Access",
+    "UserImpact": "Low"
+  },
+  "25408": {
+    "Category": "Global Secure Access",
+    "CompatibleLicense": "Entra_Premium_Internet_Access",
+    "ImplementationCost": "Medium",
+    "MinimumLicense": "Entra_Premium_Internet_Access",
+    "Pillar": "Network",
+    "RiskLevel": "Medium",
+    "Service": "Graph",
+    "SfiPillar": "Protect networks",
+    "TenantType": [
+      "Workforce",
+      "External"
+    ],
+    "TestId": "25408",
+    "Title": "Web content filtering policies are configured",
+    "UserImpact": "Medium"
+  },
+  "25409": {
+    "Category": "Global Secure Access",
+    "CompatibleLicense": "Entra_Premium_Internet_Access",
+    "ImplementationCost": "Medium",
+    "MinimumLicense": "Entra_Premium_Internet_Access",
+    "Pillar": "Network",
+    "RiskLevel": "Medium",
+    "Service": "Graph",
+    "SfiPillar": "Protect networks",
+    "TenantType": [
+      "Workforce",
+      "External"
+    ],
+    "TestId": "25409",
+    "Title": "Web content filtering uses category-based rules",
+    "UserImpact": "Medium"
+  },
+  "25410": {
+    "Category": "Global Secure Access",
+    "CompatibleLicense": "Entra_Premium_Internet_Access",
+    "ImplementationCost": "Medium",
+    "MinimumLicense": "Entra_Premium_Internet_Access",
+    "Pillar": "Network",
+    "RiskLevel": "Medium",
+    "Service": "Graph",
+    "SfiPillar": "Protect networks",
+    "TenantType": [
+      "Workforce",
+      "External"
+    ],
+    "TestId": "25410",
+    "Title": "Web content filtering policies are linked to security profiles",
+    "UserImpact": "Low"
+  },
+  "25411": {
+    "Category": "Global Secure Access",
+    "CompatibleLicense": "Entra_Premium_Internet_Access",
+    "ImplementationCost": "High",
+    "MinimumLicense": "Entra_Premium_Internet_Access",
+    "Pillar": "Network",
+    "RiskLevel": "High",
+    "Service": "Graph",
+    "SfiPillar": "Protect networks",
+    "TenantType": "Workforce",
+    "TestId": "25411",
+    "Title": "TLS inspection is enabled and correctly configured for outbound traffic",
+    "UserImpact": "Medium"
+  },
+  "25413": {
+    "Category": "Global Secure Access",
+    "ImplementationCost": "High",
+    "MinimumLicense": "Entra_Premium_Internet_Access",
+    "Pillar": "Network",
+    "RiskLevel": "High",
+    "Service": "Graph",
+    "SfiPillar": "Protect networks",
+    "TenantType": "Workforce",
+    "TestId": "25413",
+    "Title": "File transfer policies are configured to prevent data exfiltration",
+    "UserImpact": "Medium"
+  },
+  "25415": {
+    "Category": "Global Secure Access",
+    "CompatibleLicense": "Entra_Premium_Internet_Access",
+    "ImplementationCost": "Medium",
+    "MinimumLicense": "Entra_Premium_Internet_Access",
+    "Pillar": [
+      "Network",
+      "AI"
+    ],
+    "RiskLevel": "High",
+    "Service": "Graph",
+    "SfiPillar": "Protect networks",
+    "TenantType": "Workforce",
+    "TestId": "25415",
+    "Title": "AI Gateway protects enterprise generative AI applications from prompt injection attacks",
+    "UserImpact": "Low"
+  },
+  "25416": {
+    "Category": "Global Secure Access",
+    "CompatibleLicense": "Entra_Premium_Internet_Access",
+    "ImplementationCost": "Medium",
+    "MinimumLicense": "Entra_Premium_Internet_Access",
+    "Pillar": "Network",
+    "RiskLevel": "High",
+    "Service": "Graph",
+    "SfiPillar": "Protect networks",
+    "TenantType": [
+      "Workforce",
+      "External"
+    ],
+    "TestId": "25416",
+    "Title": "Global Secure Access cloud firewall protects branch office internet traffic",
+    "UserImpact": "Low"
+  },
+  "25419": {
+    "Category": "Global Secure Access",
+    "CompatibleLicense": [
+      "Entra_Premium_Private_Access",
+      "Entra_Premium_Internet_Access"
+    ],
+    "ImplementationCost": "Low",
+    "MinimumLicense": [
+      "AAD_PREMIUM",
+      "Entra_Premium_Internet_Access",
+      "Entra_Premium_Private_Access"
+    ],
+    "Pillar": "Network",
+    "RiskLevel": "Medium",
+    "Service": "Azure",
+    "SfiPillar": "Monitor and detect cyberthreats",
+    "TenantType": "Workforce",
+    "TestId": "25419",
+    "Title": "Network access activity is visible to security operations for threat detection and response",
+    "UserImpact": "Low"
+  },
+  "25420": {
+    "Category": "Global Secure Access",
+    "CompatibleLicense": [
+      "Entra_Premium_Private_Access",
+      "Entra_Premium_Internet_Access"
+    ],
+    "ImplementationCost": "Low",
+    "MinimumLicense": [
+      "AAD_PREMIUM",
+      "Entra_Premium_Internet_Access",
+      "Entra_Premium_Private_Access"
+    ],
+    "Pillar": "Network",
+    "RiskLevel": "High",
+    "Service": "Azure",
+    "SfiPillar": "Monitor and detect cyberthreats",
+    "TenantType": "Workforce",
+    "TestId": "25420",
+    "Title": "Network access logs are retained for security analysis and compliance requirements",
+    "UserImpact": "Low"
+  },
+  "25422": {
+    "Category": "Global Secure Access",
+    "CompatibleLicense": [
+      "Entra_Premium_Internet_Access",
+      "Entra_Premium_Private_Access"
+    ],
+    "ImplementationCost": "Low",
+    "MinimumLicense": [
+      "Entra_Premium_Internet_Access",
+      "Entra_Premium_Private_Access"
+    ],
+    "Pillar": "Network",
+    "RiskLevel": "Medium",
+    "Service": "Graph",
+    "SfiPillar": "Monitor and detect cyberthreats",
+    "TenantType": [
+      "Workforce",
+      "External"
+    ],
+    "TestId": "25422",
+    "Title": "Global Secure Access deployment logs are populated and reviewed",
+    "UserImpact": "Low"
+  },
+  "25466": {
+    "Category": "Private Access",
+    "ImplementationCost": "Low",
+    "MinimumLicense": "Entra_Premium_Private_Access",
+    "Pillar": "Network",
+    "RiskLevel": "High",
+    "Service": "Graph",
+    "SfiPillar": "Protect networks",
+    "TenantType": "Workforce",
+    "TestId": "25466",
+    "Title": "At least two Private Access connectors are active and healthy per connector group",
+    "UserImpact": "Medium"
+  },
+  "25480": {
+    "Category": "Global Secure Access",
+    "CompatibleLicense": "Entra_Premium_Private_Access",
+    "ImplementationCost": "Low",
+    "MinimumLicense": "Entra_Private_Access",
+    "Pillar": "Network",
+    "RiskLevel": "Medium",
+    "Service": "Graph",
+    "SfiPillar": "Protect networks",
+    "TenantType": [
+      "Workforce",
+      "External"
+    ],
+    "TestId": "25480",
+    "Title": "Quick Access has user or group assignments",
+    "UserImpact": "Low"
+  },
+  "25481": {
+    "Category": "Global Secure Access",
+    "CompatibleLicense": "Entra_Premium_Private_Access",
+    "ImplementationCost": "Low",
+    "MinimumLicense": "Entra_Private_Access",
+    "Pillar": "Network",
+    "RiskLevel": "High",
+    "Service": "Graph",
+    "SfiPillar": "Protect networks",
+    "TenantType": [
+      "Workforce",
+      "External"
+    ],
+    "TestId": "25481",
+    "Title": "All Private Access apps have user or group assignments",
+    "UserImpact": "Medium"
+  },
+  "25533": {
+    "Category": "Azure Network Security",
+    "ImplementationCost": "Low",
+    "MinimumLicense": [
+      "DDoS_Network_Protection",
+      "DDoS_IP_Protection"
+    ],
+    "Pillar": "Network",
+    "RiskLevel": "High",
+    "Service": "Azure",
+    "SfiPillar": "Protect networks",
+    "TenantType": [
+      "Workforce",
+      "External"
+    ],
+    "TestId": "25533",
+    "Title": "DDoS Protection is enabled for all Public IP Addresses in VNETs",
+    "UserImpact": "Low"
+  },
+  "25535": {
+    "Category": "Azure Network Security",
+    "ImplementationCost": "Medium",
+    "MinimumLicense": [
+      "Azure_Firewall_Basic",
+      "Azure_Firewall_Standard",
+      "Azure_Firewall_Premium"
+    ],
+    "Pillar": "Network",
+    "RiskLevel": "High",
+    "Service": "Azure",
+    "SfiPillar": "Protect networks",
+    "TenantType": [
+      "Workforce",
+      "External"
+    ],
+    "TestId": "25535",
+    "Title": "Outbound traffic from VNET integrated workloads is routed through Azure Firewall",
+    "UserImpact": "Low"
+  },
+  "25537": {
+    "Category": "Azure Network Security",
+    "ImplementationCost": "Low",
+    "MinimumLicense": [
+      "Azure_Firewall_Standard",
+      "Azure_Firewall_Premium"
+    ],
+    "Pillar": "Network",
+    "RiskLevel": "High",
+    "Service": "Azure",
+    "SfiPillar": "Protect networks",
+    "TenantType": "Workforce",
+    "TestId": "25537",
+    "Title": "Threat intelligence is Enabled in Deny Mode on Azure Firewall",
+    "UserImpact": "Low"
+  },
+  "25539": {
+    "Category": "Azure Network Security",
+    "ImplementationCost": "Low",
+    "MinimumLicense": "Azure_Firewall_Premium",
+    "Pillar": "Network",
+    "RiskLevel": "High",
+    "Service": "Azure",
+    "SfiPillar": "Protect networks",
+    "TenantType": [
+      "Workforce",
+      "External"
+    ],
+    "TestId": "25539",
+    "Title": "IDPS Inspection is Enabled in Deny Mode on Azure Firewall",
+    "UserImpact": "Low"
+  },
+  "25541": {
+    "Category": "Azure Network Security",
+    "ImplementationCost": "Low",
+    "MinimumLicense": [
+      "Azure WAF",
+      "Azure Application Gateway Standard SKU"
+    ],
+    "Pillar": "Network",
+    "RiskLevel": "High",
+    "Service": "Azure",
+    "SfiPillar": "Protect networks",
+    "TenantType": "Workforce",
+    "TestId": "25541",
+    "Title": "Application Gateway WAF is Enabled in Prevention mode",
+    "UserImpact": "Low"
+  },
+  "25543": {
+    "Category": "Azure Network Security",
+    "ImplementationCost": "Low",
+    "MinimumLicense": [
+      "Azure WAF on Azure Front Door Premium SKU",
+      "Azure Standard SKU"
+    ],
+    "Pillar": "Network",
+    "RiskLevel": "High",
+    "Service": "Azure",
+    "SfiPillar": "Protect networks",
+    "TenantType": "Workforce",
+    "TestId": "25543",
+    "Title": "Azure Front Door WAF is Enabled in Prevention Mode",
+    "UserImpact": "Low"
+  },
+  "25550": {
+    "Category": "Azure Network Security",
+    "ImplementationCost": "Low",
+    "MinimumLicense": "Azure_Firewall_Premium",
+    "Pillar": "Network",
+    "RiskLevel": "High",
+    "Service": "Azure",
+    "SfiPillar": "Protect networks",
+    "TenantType": [
+      "Workforce",
+      "External"
+    ],
+    "TestId": "25550",
+    "Title": "Inspection of Outbound TLS Traffic is Enabled on Azure Firewall",
+    "UserImpact": "Low"
+  },
+  "26879": {
+    "Category": "Azure Network Security",
+    "ImplementationCost": "Low",
+    "MinimumLicense": "Azure WAF",
+    "Pillar": "Network",
+    "RiskLevel": "High",
+    "Service": "Azure",
+    "SfiPillar": "Protect networks",
+    "TenantType": "Workforce",
+    "TestId": "26879",
+    "Title": "Request Body Inspection is enabled in Application Gateway WAF",
+    "UserImpact": "Low"
+  },
+  "26880": {
+    "Category": "Azure Network Security",
+    "ImplementationCost": "Low",
+    "MinimumLicense": "Azure WAF",
+    "Pillar": "Network",
+    "RiskLevel": "High",
+    "Service": "Azure",
+    "SfiPillar": "Protect networks",
+    "TenantType": "Workforce",
+    "TestId": "26880",
+    "Title": "Request Body Inspection is enabled in Azure Front Door WAF",
+    "UserImpact": "Low"
+  },
+  "26881": {
+    "Category": "Azure Network Security",
+    "ImplementationCost": "Low",
+    "MinimumLicense": "Azure WAF",
+    "Pillar": "Network",
+    "RiskLevel": "High",
+    "Service": "Azure",
+    "SfiPillar": "Protect networks",
+    "TenantType": "Workforce",
+    "TestId": "26881",
+    "Title": "Default Ruleset is enabled in Application Gateway WAF",
+    "UserImpact": "Low"
+  },
+  "26882": {
+    "Category": "Azure Network Security",
+    "ImplementationCost": "Low",
+    "MinimumLicense": "Azure WAF",
+    "Pillar": "Network",
+    "RiskLevel": "High",
+    "Service": "Azure",
+    "SfiPillar": "Protect networks",
+    "TenantType": "Workforce",
+    "TestId": "26882",
+    "Title": "Bot protection ruleset is enabled and assigned in Application Gateway WAF",
+    "UserImpact": "Low"
+  },
+  "26883": {
+    "Category": "Azure Network Security",
+    "ImplementationCost": "Low",
+    "MinimumLicense": "Azure WAF",
+    "Pillar": "Network",
+    "RiskLevel": "High",
+    "Service": "Azure",
+    "SfiPillar": "Protect networks",
+    "TenantType": "Workforce",
+    "TestId": "26883",
+    "Title": "Default rule set is assigned in Azure Front Door WAF",
+    "UserImpact": "Low"
+  },
+  "26884": {
+    "Category": "Azure Network Security",
+    "ImplementationCost": "Low",
+    "MinimumLicense": "Azure_Front_Door_Premium",
+    "Pillar": "Network",
+    "RiskLevel": "High",
+    "Service": "Azure",
+    "SfiPillar": "Protect networks",
+    "TenantType": "Workforce",
+    "TestId": "26884",
+    "Title": "Bot protection rule set is enabled and assigned in Azure Front Door WAF",
+    "UserImpact": "Low"
+  },
+  "26885": {
+    "Category": "Azure Network Security",
+    "ImplementationCost": "Low",
+    "MinimumLicense": [
+      "DDoS_Network_Protection",
+      "DDoS_IP_Protection"
+    ],
+    "Pillar": "Network",
+    "RiskLevel": "Medium",
+    "Service": "Azure",
+    "SfiPillar": "Monitor and detect cyberthreats",
+    "TenantType": "Workforce",
+    "TestId": "26885",
+    "Title": "Metrics are enabled for DDoS-protected public IPs",
+    "UserImpact": "Low"
+  },
+  "26886": {
+    "Category": "Azure Network Security",
+    "ImplementationCost": "Low",
+    "MinimumLicense": [
+      "DDoS_Network_Protection",
+      "DDoS_IP_Protection"
+    ],
+    "Pillar": "Network",
+    "RiskLevel": "Medium",
+    "Service": "Azure",
+    "SfiPillar": "Protect networks",
+    "TenantType": "Workforce",
+    "TestId": "26886",
+    "Title": "Diagnostic logging is enabled for DDoS-protected public IPs",
+    "UserImpact": "Low"
+  },
+  "26887": {
+    "Category": "Azure Network Security",
+    "ImplementationCost": "Low",
+    "MinimumLicense": [
+      "Azure_Firewall_Standard",
+      "Azure_Firewall_Premium"
+    ],
+    "Pillar": "Network",
+    "RiskLevel": "High",
+    "Service": "Azure",
+    "SfiPillar": "Monitor and detect cyberthreats",
+    "TenantType": "Workforce",
+    "TestId": "26887",
+    "Title": "Diagnostic logging is enabled in Azure Firewall",
+    "UserImpact": "Low"
+  },
+  "26888": {
+    "Category": "Azure Network Security",
+    "ImplementationCost": "Low",
+    "MinimumLicense": "Azure_Application_Gateway_WAF",
+    "Pillar": "Network",
+    "RiskLevel": "High",
+    "Service": "Azure",
+    "SfiPillar": "Monitor and detect cyberthreats",
+    "TenantType": "Workforce",
+    "TestId": "26888",
+    "Title": "Diagnostic logging is enabled in Application Gateway WAF",
+    "UserImpact": "Low"
+  },
+  "26889": {
+    "Category": "Azure Network Security",
+    "ImplementationCost": "Low",
+    "MinimumLicense": [
+      "Azure_FrontDoor_Standard",
+      "Azure_FrontDoor_Premium"
+    ],
+    "Pillar": "Network",
+    "RiskLevel": "High",
+    "Service": "Azure",
+    "SfiPillar": "Monitor and detect cyberthreats",
+    "TenantType": "Workforce",
+    "TestId": "26889",
+    "Title": "Diagnostic logging is enabled in Azure Front Door WAF",
+    "UserImpact": "Low"
+  },
+  "27000": {
+    "Category": "Global Secure Access",
+    "ImplementationCost": "Low",
+    "MinimumLicense": "Entra_Premium_Internet_Access",
+    "Pillar": "Network",
+    "RiskLevel": "High",
+    "Service": "Graph",
+    "SfiPillar": "Protect networks",
+    "TenantType": "Workforce",
+    "TestId": "27000",
+    "Title": "Web content filtering blocks high-risk categories",
+    "UserImpact": "Low"
+  },
+  "27001": {
+    "Category": "Global Secure Access",
+    "CompatibleLicense": "Entra_Premium_Internet_Access",
+    "ImplementationCost": "Medium",
+    "MinimumLicense": "Entra_Premium_Internet_Access",
+    "Pillar": "Network",
+    "RiskLevel": "Medium",
+    "Service": "Graph",
+    "SfiPillar": "Protect networks",
+    "TenantType": "Workforce",
+    "TestId": "27001",
+    "Title": "TLS inspection bypass rules are regularly reviewed",
+    "UserImpact": "Low"
+  },
+  "27002": {
+    "Category": "Global Secure Access",
+    "ImplementationCost": "Low",
+    "MinimumLicense": "Entra_Premium_Internet_Access",
+    "Pillar": "Network",
+    "RiskLevel": "High",
+    "Service": "Graph",
+    "SfiPillar": "Protect networks",
+    "TenantType": [
+      "Workforce",
+      "External"
+    ],
+    "TestId": "27002",
+    "Title": "TLS inspection certificates have a sufficient validity period",
+    "UserImpact": "High"
+  },
+  "27003": {
+    "Category": "Global Secure Access",
+    "CompatibleLicense": "Entra_Premium_Internet_Access",
+    "ImplementationCost": "Medium",
+    "MinimumLicense": "Entra_Premium_Internet_Access",
+    "Pillar": "Network",
+    "RiskLevel": "High",
+    "Service": [
+      "Graph",
+      "Azure"
+    ],
+    "SfiPillar": "Protect networks",
+    "TenantType": "Workforce",
+    "TestId": "27003",
+    "Title": "TLS inspection failure rate is below 1%",
+    "UserImpact": "Medium"
+  },
+  "27004": {
+    "Category": "Global Secure Access",
+    "CompatibleLicense": "Entra_Premium_Internet_Access",
+    "ImplementationCost": "Low",
+    "MinimumLicense": "Entra_Premium_Internet_Access",
+    "Pillar": "Network",
+    "RiskLevel": "Low",
+    "Service": "Graph",
+    "SfiPillar": "Protect networks",
+    "TenantType": "Workforce",
+    "TestId": "27004",
+    "Title": "TLS inspection custom bypass rules don't duplicate system bypass destinations",
+    "UserImpact": "Low"
+  },
+  "27015": {
+    "Category": "Azure Network Security",
+    "ImplementationCost": "Low",
+    "MinimumLicense": "Azure WAF",
+    "Pillar": "Network",
+    "RiskLevel": "High",
+    "Service": "Azure",
+    "SfiPillar": "Protect networks",
+    "TenantType": "Workforce",
+    "TestId": "27015",
+    "Title": "HTTP DDoS Protection Ruleset is Enabled in Application Gateway WAF",
+    "UserImpact": "Low"
+  },
+  "27016": {
+    "Category": "Azure Network Security",
+    "ImplementationCost": "Medium",
+    "MinimumLicense": "Azure WAF",
+    "Pillar": "Network",
+    "RiskLevel": "High",
+    "Service": "Azure",
+    "SfiPillar": "Protect networks",
+    "TenantType": "Workforce",
+    "TestId": "27016",
+    "Title": "Rate Limiting is Enabled in Application Gateway WAF",
+    "UserImpact": "Low"
+  },
+  "27017": {
+    "Category": "Azure Network Security",
+    "ImplementationCost": "Low",
+    "MinimumLicense": "Azure WAF",
+    "Pillar": "Network",
+    "RiskLevel": "Medium",
+    "Service": "Azure",
+    "SfiPillar": "Protect networks",
+    "TenantType": "Workforce",
+    "TestId": "27017",
+    "Title": "JavaScript Challenge is Enabled in Application Gateway WAF",
+    "UserImpact": "Low"
+  },
+  "27018": {
+    "Category": "Azure Network Security",
+    "ImplementationCost": "Medium",
+    "MinimumLicense": "Azure_WAF",
+    "Pillar": "Network",
+    "RiskLevel": "High",
+    "Service": "Azure",
+    "SfiPillar": "Protect networks",
+    "TenantType": "Workforce",
+    "TestId": "27018",
+    "Title": "Rate Limiting is Enabled in Azure Front Door WAF",
+    "UserImpact": "Low"
+  },
+  "27019": {
+    "Category": "Azure Network Security",
+    "ImplementationCost": "Low",
+    "MinimumLicense": "Azure WAF",
+    "Pillar": "Network",
+    "RiskLevel": "Medium",
+    "Service": "Azure",
+    "SfiPillar": "Protect networks",
+    "TenantType": "Workforce",
+    "TestId": "27019",
+    "Title": "JavaScript Challenge is Enabled in Azure Front Door WAF",
+    "UserImpact": "Low"
+  },
+  "27020": {
+    "Category": "Azure Network Security",
+    "ImplementationCost": "Low",
+    "MinimumLicense": "Azure WAF",
+    "Pillar": "Network",
+    "RiskLevel": "Medium",
+    "Service": "Azure",
+    "SfiPillar": "Protect networks",
+    "TenantType": "Workforce",
+    "TestId": "27020",
+    "Title": "CAPTCHA challenge is enabled in Azure Front Door WAF",
+    "UserImpact": "Medium"
+  },
+  "35001": {
+    "Category": "Entra",
+    "CompatibleLicense": "RMS_S_PREMIUM2",
+    "ImplementationCost": "Low",
+    "MinimumLicense": "Microsoft 365 E5",
+    "Pillar": "Data",
+    "RiskLevel": "High",
+    "Service": "Graph",
+    "SfiPillar": "",
+    "TenantType": [
+      "Workforce",
+      "External"
+    ],
+    "TestId": "35001",
+    "Title": "Conditional Access policies don't exclude Rights Management workloads",
+    "UserImpact": "Low"
+  },
+  "35003": {
+    "Category": "sensitivity-labels",
+    "CompatibleLicense": "RMS_S_PREMIUM",
+    "ImplementationCost": "Medium",
+    "MinimumLicense": "Microsoft 365 E3",
+    "Pillar": [
+      "Data",
+      "AI"
+    ],
+    "RiskLevel": "High",
+    "Service": "SecurityCompliance",
+    "SfiPillar": "Protect tenants and production systems",
+    "TenantType": "Workforce",
+    "TestId": "35003",
+    "Title": "Sensitivity labels are configured",
+    "UserImpact": "Low"
+  },
+  "35004": {
+    "Category": "Sensitivity Labels",
+    "CompatibleLicense": "RMS_S_PREMIUM",
+    "ImplementationCost": "Low",
+    "MinimumLicense": "Microsoft 365 E3",
+    "Pillar": [
+      "Data",
+      "AI"
+    ],
+    "RiskLevel": "Low",
+    "Service": "SecurityCompliance",
+    "SfiPillar": "Protect tenants and production systems",
+    "TenantType": "Workforce",
+    "TestId": "35004",
+    "Title": "Sensitivity label policies are published to users",
+    "UserImpact": "Medium"
+  },
+  "35005": {
+    "Category": "SharePoint Online",
+    "CompatibleLicense": "RMS_S_PREMIUM",
+    "ImplementationCost": "Low",
+    "MinimumLicense": "MIP_P1",
+    "Pillar": [
+      "Data",
+      "AI"
+    ],
+    "RiskLevel": "High",
+    "Service": "SharePointOnline",
+    "SfiPillar": "Protect tenants and production systems",
+    "TenantType": "Workforce",
+    "TestId": "35005",
+    "Title": "Sensitivity labels are enabled for SharePoint and OneDrive",
+    "UserImpact": "Low"
+  },
+  "35006": {
+    "Category": "SharePoint Online",
+    "CompatibleLicense": "RMS_S_PREMIUM",
+    "ImplementationCost": "Low",
+    "MinimumLicense": "MIP_P1",
+    "Pillar": [
+      "Data",
+      "AI"
+    ],
+    "RiskLevel": "Medium",
+    "Service": "SharePointOnline",
+    "SfiPillar": "Protect tenants and production systems",
+    "TenantType": "Workforce",
+    "TestId": "35006",
+    "Title": "PDF labeling is enabled in SharePoint",
+    "UserImpact": "Low"
+  },
+  "35007": {
+    "Category": "SharePoint Online",
+    "CompatibleLicense": "RMS_S_PREMIUM",
+    "ImplementationCost": "Low",
+    "MinimumLicense": "Microsoft 365 E3",
+    "Pillar": [
+      "Data",
+      "AI"
+    ],
+    "RiskLevel": "Low",
+    "Service": "SharePointOnline",
+    "SfiPillar": "",
+    "TenantType": "Workforce",
+    "TestId": "35007",
+    "Title": "Information Rights Management is enabled in SharePoint Online",
+    "UserImpact": "Low"
+  },
+  "35008": {
+    "Category": "SharePoint Online",
+    "CompatibleLicense": "RMS_S_PREMIUM2",
+    "ImplementationCost": "Low",
+    "MinimumLicense": "Microsoft 365 E5",
+    "Pillar": [
+      "Data",
+      "AI"
+    ],
+    "RiskLevel": "Medium",
+    "Service": "SharePointOnline",
+    "SfiPillar": "Protect tenants and production systems",
+    "TenantType": "Workforce",
+    "TestId": "35008",
+    "Title": "Default sensitivity labels are configured for SharePoint document libraries",
+    "UserImpact": "Low"
+  },
+  "35009": {
+    "Category": "Sensitivity Labels",
+    "CompatibleLicense": "RMS_S_PREMIUM2",
+    "ImplementationCost": "Low",
+    "MinimumLicense": "Microsoft 365 E5",
+    "Pillar": "Data",
+    "RiskLevel": "Low",
+    "Service": "SecurityCompliance",
+    "SfiPillar": "Protect tenants and production systems",
+    "TenantType": "Workforce",
+    "TestId": "35009",
+    "Title": "Co-authoring is enabled for files encrypted with sensitivity labels",
+    "UserImpact": "High"
+  },
+  "35010": {
+    "Category": "Encryption",
+    "CompatibleLicense": "RMS_S_PREMIUM2",
+    "ImplementationCost": "Medium",
+    "MinimumLicense": "Microsoft 365 E5",
+    "Pillar": [
+      "Data",
+      "AI"
+    ],
+    "RiskLevel": "Low",
+    "Service": "SecurityCompliance",
+    "SfiPillar": "Protect tenants and production systems",
+    "TenantType": "Workforce",
+    "TestId": "35010",
+    "Title": "Double Key Encryption labels are configured",
+    "UserImpact": "High"
+  },
+  "35011": {
+    "Category": "Advanced Label Features",
+    "CompatibleLicense": "RMS_S_PREMIUM2",
+    "ImplementationCost": "Medium",
+    "MinimumLicense": "Microsoft 365 E5",
+    "Pillar": [
+      "Data",
+      "AI"
+    ],
+    "RiskLevel": "Medium",
+    "Service": [
+      "AipService",
+      "Graph"
+    ],
+    "SfiPillar": "Protect tenants and production systems",
+    "TenantType": [
+      "Workforce",
+      "External"
+    ],
+    "TestId": "35011",
+    "Title": "Super user membership is configured for Microsoft Purview Information Protection",
+    "UserImpact": "Low"
+  },
+  "35012": {
+    "Category": "Sensitivity Labels Configuration",
+    "CompatibleLicense": "RMS_S_PREMIUM2",
+    "ImplementationCost": "Medium",
+    "MinimumLicense": "Microsoft 365 E5",
+    "Pillar": [
+      "Data",
+      "AI"
+    ],
+    "RiskLevel": "Medium",
+    "Service": "SecurityCompliance",
+    "SfiPillar": "Protect tenants and production systems",
+    "TenantType": "Workforce",
+    "TestId": "35012",
+    "Title": "Container labels are configured for collaborative workspaces",
+    "UserImpact": "High"
+  },
+  "35013": {
+    "Category": "Sensitivity Labels Configuration",
+    "CompatibleLicense": "RMS_S_PREMIUM",
+    "ImplementationCost": "Medium",
+    "MinimumLicense": "Microsoft 365 E3",
+    "Pillar": [
+      "Data",
+      "AI"
+    ],
+    "RiskLevel": "High",
+    "Service": "SecurityCompliance",
+    "SfiPillar": "Protect tenants and production systems",
+    "TenantType": [
+      "Workforce",
+      "External"
+    ],
+    "TestId": "35013",
+    "Title": "Sensitivity labels with encryption are configured",
+    "UserImpact": "High"
+  },
+  "35014": {
+    "Category": "Label Policy Configuration",
+    "CompatibleLicense": "RMS_S_PREMIUM",
+    "ImplementationCost": "Low",
+    "MinimumLicense": "Microsoft 365 E3",
+    "Pillar": [
+      "Data",
+      "AI"
+    ],
+    "RiskLevel": "Medium",
+    "Service": "SecurityCompliance",
+    "SfiPillar": "Protect tenants and production systems",
+    "TenantType": "Workforce",
+    "TestId": "35014",
+    "Title": "Email label policies inherit sensitivity from attachments",
+    "UserImpact": "High"
+  },
+  "35015": {
+    "Category": "sensitivity-labels",
+    "CompatibleLicense": "RMS_S_PREMIUM",
+    "ImplementationCost": "Medium",
+    "MinimumLicense": "Microsoft 365 E3",
+    "Pillar": [
+      "Data",
+      "AI"
+    ],
+    "RiskLevel": "Medium",
+    "Service": "SecurityCompliance",
+    "SfiPillar": "Protect tenants and production systems",
+    "TenantType": "Workforce",
+    "TestId": "35015",
+    "Title": "Globally published sensitivity labels don't exceed the recommended maximum",
+    "UserImpact": "High"
+  },
+  "35016": {
+    "Category": "Information Protection",
+    "CompatibleLicense": "RMS_S_PREMIUM",
+    "ImplementationCost": "Medium",
+    "MinimumLicense": "Microsoft 365 E3",
+    "Pillar": [
+      "Data",
+      "AI"
+    ],
+    "RiskLevel": "High",
+    "Service": "SecurityCompliance",
+    "SfiPillar": "Protect tenants and production systems",
+    "TenantType": [
+      "Workforce",
+      "External"
+    ],
+    "TestId": "35016",
+    "Title": "Mandatory labeling is enabled in sensitivity label policies",
+    "UserImpact": "High"
+  },
+  "35017": {
+    "Category": "Information Protection",
+    "CompatibleLicense": "RMS_S_PREMIUM",
+    "ImplementationCost": "Low",
+    "MinimumLicense": "Microsoft 365 E3",
+    "Pillar": [
+      "Data",
+      "AI"
+    ],
+    "RiskLevel": "Medium",
+    "Service": "SecurityCompliance",
+    "SfiPillar": "Protect tenants and production systems",
+    "TenantType": "Workforce",
+    "TestId": "35017",
+    "Title": "A default sensitivity label is configured in label policies",
+    "UserImpact": "Medium"
+  },
+  "35018": {
+    "Category": "Information Protection",
+    "CompatibleLicense": "RMS_S_PREMIUM",
+    "ImplementationCost": "Low",
+    "MinimumLicense": "Microsoft 365 E3",
+    "Pillar": "Data",
+    "RiskLevel": "Medium",
+    "Service": "SecurityCompliance",
+    "SfiPillar": "Protect tenants and production systems",
+    "TenantType": "Workforce",
+    "TestId": "35018",
+    "Title": "Users must provide justification to downgrade sensitivity labels",
+    "UserImpact": "Medium"
+  },
+  "35019": {
+    "Category": "Information Protection",
+    "CompatibleLicense": "EXCHANGE_S_ENTERPRISE",
+    "ImplementationCost": "Medium",
+    "Pillar": [
+      "Data",
+      "AI"
+    ],
+    "RiskLevel": "High",
+    "Service": "SecurityCompliance",
+    "SfiPillar": "Protect tenants and production systems",
+    "TenantType": "Workforce",
+    "TestId": "35019",
+    "Title": "Auto-labeling policies are configured for all Microsoft 365 workloads",
+    "UserImpact": "Low"
+  },
+  "35020": {
+    "Category": "Information Protection",
+    "CompatibleLicense": "EXCHANGE_S_ENTERPRISE",
+    "ImplementationCost": "Low",
+    "Pillar": [
+      "Data",
+      "AI"
+    ],
+    "RiskLevel": "High",
+    "Service": "SecurityCompliance",
+    "SfiPillar": "Protect tenants and production systems",
+    "TenantType": [
+      "Workforce",
+      "External"
+    ],
+    "TestId": "35020",
+    "Title": "Auto-labeling policies are in enforcement mode",
+    "UserImpact": "Low"
+  },
+  "35021": {
+    "Category": "Information Protection",
+    "CompatibleLicense": "EXCHANGE_S_ENTERPRISE",
+    "ImplementationCost": "Medium",
+    "Pillar": [
+      "Data",
+      "AI"
+    ],
+    "RiskLevel": "High",
+    "Service": "SecurityCompliance",
+    "SfiPillar": "Protect tenants and production systems",
+    "TenantType": "Workforce",
+    "TestId": "35021",
+    "Title": "Auto-labeling policies are enabled for SharePoint and OneDrive",
+    "UserImpact": "Low"
+  },
+  "35022": {
+    "Category": "Information Protection",
+    "CompatibleLicense": "EXCHANGE_S_ENTERPRISE",
+    "ImplementationCost": "Medium",
+    "Pillar": [
+      "Data",
+      "AI"
+    ],
+    "RiskLevel": "Medium",
+    "Service": "SecurityCompliance",
+    "SfiPillar": "Protect tenants and production systems",
+    "TenantType": "Workforce",
+    "TestId": "35022",
+    "Title": "On-demand scans are configured for sensitive information discovery",
+    "UserImpact": "Low"
+  },
+  "35023": {
+    "Category": "Information Protection",
+    "CompatibleLicense": "EXCHANGE_S_ENTERPRISE",
+    "ImplementationCost": "Medium",
+    "Pillar": [
+      "Data",
+      "AI"
+    ],
+    "RiskLevel": "Medium",
+    "Service": "SecurityCompliance",
+    "SfiPillar": "Protect tenants and production systems",
+    "TenantType": "Workforce",
+    "TestId": "35023",
+    "Title": "OCR is enabled for sensitive information detection",
+    "UserImpact": "Low"
+  },
+  "35024": {
+    "Category": "Rights Management Service",
+    "CompatibleLicense": "RMS_S_PREMIUM",
+    "ImplementationCost": "Low",
+    "MinimumLicense": "Microsoft 365 E3",
+    "Pillar": [
+      "Data",
+      "AI"
+    ],
+    "RiskLevel": "High",
+    "Service": "ExchangeOnline",
+    "SfiPillar": "Protect tenants and production systems",
+    "TenantType": "Workforce",
+    "TestId": "35024",
+    "Title": "Azure Rights Management service is activated",
+    "UserImpact": "High"
+  },
+  "35025": {
+    "Category": "Rights Management Service (RMS)",
+    "CompatibleLicense": "RMS_S_PREMIUM",
+    "ImplementationCost": "Low",
+    "MinimumLicense": "Microsoft 365 E3",
+    "Pillar": [
+      "Data",
+      "AI"
+    ],
+    "RiskLevel": "High",
+    "Service": "ExchangeOnline",
+    "SfiPillar": "Protect tenants and production systems",
+    "TenantType": "Workforce",
+    "TestId": "35025",
+    "Title": "Internal Rights Management licensing is enabled",
+    "UserImpact": "High"
+  },
+  "35026": {
+    "Category": "Microsoft Purview Message Encryption",
+    "CompatibleLicense": "RMS_S_PREMIUM",
+    "ImplementationCost": "Low",
+    "MinimumLicense": "Microsoft 365 E3",
+    "Pillar": "Data",
+    "RiskLevel": "Medium",
+    "Service": "ExchangeOnline",
+    "SfiPillar": "Protect tenants and production systems",
+    "TenantType": [
+      "Workforce",
+      "External"
+    ],
+    "TestId": "35026",
+    "Title": "Microsoft Purview Message Encryption is configured with simplified client access",
+    "UserImpact": "Medium"
+  },
+  "35027": {
+    "Category": "Information Protection",
+    "CompatibleLicense": "RMS_S_PREMIUM",
+    "ImplementationCost": "Low",
+    "MinimumLicense": [
+      "Microsoft 365 E3",
+      "Microsoft 365 E5",
+      "Advanced Message Encryption add-on"
+    ],
+    "Pillar": "Data",
+    "RiskLevel": "Low",
+    "Service": "ExchangeOnline",
+    "SfiPillar": "Protect tenants and production systems",
+    "TenantType": "Workforce",
+    "TestId": "35027",
+    "Title": "Custom branding templates are configured for Microsoft Purview Message Encryption",
+    "UserImpact": "Low"
+  },
+  "35028": {
+    "Category": "Information Protection",
+    "CompatibleLicense": "RMS_S_PREMIUM",
+    "ImplementationCost": "Medium",
+    "MinimumLicense": "Microsoft 365 E3",
+    "Pillar": "Data",
+    "RiskLevel": "Medium",
+    "Service": "SecurityCompliance",
+    "SfiPillar": "Protect tenants and production systems",
+    "TenantType": [
+      "Workforce",
+      "External"
+    ],
+    "TestId": "35028",
+    "Title": "Email retention policies are configured",
+    "UserImpact": "Medium"
+  },
+  "35029": {
+    "Category": "Information Protection",
+    "CompatibleLicense": "RMS_S_PREMIUM2",
+    "ImplementationCost": "Medium",
+    "MinimumLicense": "Microsoft 365 E5",
+    "Pillar": "Data",
+    "RiskLevel": "Medium",
+    "Service": "ExchangeOnline",
+    "SfiPillar": "Protect tenants and production systems",
+    "TenantType": "Workforce",
+    "TestId": "35029",
+    "Title": "Mail flow rules apply rights protection to sensitive messages",
+    "UserImpact": "Medium"
+  },
+  "35030": {
+    "Category": "Data Loss Prevention (DLP)",
+    "CompatibleLicense": "EXCHANGE_S_ENTERPRISE",
+    "ImplementationCost": "Medium",
+    "Pillar": [
+      "Data",
+      "AI"
+    ],
+    "RiskLevel": "High",
+    "Service": "SecurityCompliance",
+    "SfiPillar": "Protect tenants and production systems",
+    "TenantType": "Workforce",
+    "TestId": "35030",
+    "Title": "Data loss prevention policies are enabled",
+    "UserImpact": "Medium"
+  },
+  "35032": {
+    "Category": "Data Loss Prevention (DLP)",
+    "CompatibleLicense": "EXCHANGE_S_ENTERPRISE",
+    "ImplementationCost": "Low",
+    "Pillar": [
+      "Data",
+      "AI"
+    ],
+    "RiskLevel": "Medium",
+    "Service": "SecurityCompliance",
+    "SfiPillar": "Protect tenants and production systems",
+    "TenantType": "Workforce",
+    "TestId": "35032",
+    "Title": "Adaptive Protection is enabled in data loss prevention policies",
+    "UserImpact": "Medium"
+  },
+  "35033": {
+    "Category": "Advanced Classification",
+    "CompatibleLicense": "EXCHANGE_S_ENTERPRISE",
+    "ImplementationCost": "High",
+    "Pillar": [
+      "Data",
+      "AI"
+    ],
+    "RiskLevel": "High",
+    "Service": "SecurityCompliance",
+    "SfiPillar": "Protect tenants and production systems",
+    "TenantType": "Workforce",
+    "TestId": "35033",
+    "Title": "Custom sensitive information types are configured",
+    "UserImpact": "Medium"
+  },
+  "35034": {
+    "Category": "Advanced Classification",
+    "CompatibleLicense": "EXCHANGE_S_ENTERPRISE",
+    "ImplementationCost": "Medium",
+    "Pillar": [
+      "Data",
+      "AI"
+    ],
+    "RiskLevel": "High",
+    "Service": "SecurityCompliance",
+    "SfiPillar": "Protect tenants and production systems",
+    "TenantType": [
+      "Workforce",
+      "External"
+    ],
+    "TestId": "35034",
+    "Title": "Exact Data Match is configured for sensitive information detection",
+    "UserImpact": "Medium"
+  },
+  "35035": {
+    "Category": "Advanced Classification",
+    "CompatibleLicense": "EXCHANGE_S_ENTERPRISE",
+    "ImplementationCost": "Low",
+    "Pillar": [
+      "Data",
+      "AI"
+    ],
+    "RiskLevel": "High",
+    "Service": "SecurityCompliance",
+    "SfiPillar": "Protect tenants and production systems",
+    "TenantType": "Workforce",
+    "TestId": "35035",
+    "Title": "Named entity sensitive information types are used in auto-labeling and data loss prevention policies",
+    "UserImpact": "Medium"
+  },
+  "35036": {
+    "Category": "Advanced Classification",
+    "CompatibleLicense": "EXCHANGE_S_ENTERPRISE",
+    "ImplementationCost": "High",
+    "Pillar": [
+      "Data",
+      "AI"
+    ],
+    "RiskLevel": "Medium",
+    "Service": "SecurityCompliance",
+    "SfiPillar": "Protect tenants and production systems",
+    "TenantType": [
+      "Workforce",
+      "External"
+    ],
+    "TestId": "35036",
+    "Title": "Trainable classifiers are used in data loss prevention and auto-labeling policies",
+    "UserImpact": "Medium"
+  },
+  "35037": {
+    "Category": "Data Security Posture Management",
+    "CompatibleLicense": "RMS_S_PREMIUM",
+    "ImplementationCost": "Low",
+    "MinimumLicense": "Microsoft 365 E3",
+    "Pillar": [
+      "Data",
+      "AI"
+    ],
+    "RiskLevel": "High",
+    "Service": "ExchangeOnline",
+    "SfiPillar": "Protect tenants and production systems",
+    "TenantType": [
+      "Workforce",
+      "External"
+    ],
+    "TestId": "35037",
+    "Title": "Microsoft 365 audit logging is enabled",
+    "UserImpact": "Low"
+  },
+  "35038": {
+    "Category": "Data Security Posture Management",
+    "CompatibleLicense": "EXCHANGE_S_ENTERPRISE",
+    "ImplementationCost": "Medium",
+    "Pillar": [
+      "Data",
+      "AI"
+    ],
+    "RiskLevel": "High",
+    "Service": "SecurityCompliance",
+    "SfiPillar": "Protect tenants and production systems",
+    "TenantType": "Workforce",
+    "TestId": "35038",
+    "Title": "Insider Risk Management policies are enabled for risky AI usage",
+    "UserImpact": "Medium"
+  },
+  "35039": {
+    "Category": "Data Security Posture Management",
+    "CompatibleLicense": "EXCHANGE_S_ENTERPRISE",
+    "ImplementationCost": "Medium",
+    "Pillar": [
+      "Data",
+      "AI"
+    ],
+    "RiskLevel": "High",
+    "Service": "SecurityCompliance",
+    "SfiPillar": "Protect tenants and production systems",
+    "TenantType": "Workforce",
+    "TestId": "35039",
+    "Title": "Communication compliance monitoring is configured for Microsoft Copilot",
+    "UserImpact": "Medium"
+  },
+  "35040": {
+    "Category": "Data Security Posture Management",
+    "CompatibleLicense": "EXCHANGE_S_ENTERPRISE",
+    "ImplementationCost": "Medium",
+    "Pillar": [
+      "Data",
+      "AI"
+    ],
+    "RiskLevel": "High",
+    "Service": "SecurityCompliance",
+    "SfiPillar": "Protect tenants and production systems",
+    "TenantType": "Workforce",
+    "TestId": "35040",
+    "Title": "Communication compliance monitoring is configured for enterprise AI tools",
+    "UserImpact": "Medium"
+  },
+  "35041": {
+    "Category": "Data Security Posture Management",
+    "CompatibleLicense": "RMS_S_PREMIUM2",
+    "ImplementationCost": "High",
+    "MinimumLicense": [
+      "Microsoft 365 E5",
+      "Microsoft Purview PAYG"
+    ],
+    "Pillar": [
+      "Data",
+      "AI"
+    ],
+    "RiskLevel": "Medium",
+    "Service": "SecurityCompliance",
+    "SfiPillar": "Protect tenants and production systems",
+    "TenantType": "Workforce",
+    "TestId": "35041",
+    "Title": "Browser data loss prevention is enabled for AI apps via Edge for Business",
+    "UserImpact": "Medium"
+  },
+  "41003": {
+    "Category": "Identity threat protection",
+    "CompatibleLicense": "ATA",
+    "ImplementationCost": "Medium",
+    "Pillar": "SecOps",
+    "RiskLevel": "High",
+    "SfiPillar": "Monitor and detect cyberthreats",
+    "TenantType": "Workforce",
+    "TestId": "41003",
+    "Title": "Microsoft Defender for Identity sensors are installed and healthy on AD FS, AD CS, and Microsoft Entra Connect servers",
+    "UserImpact": "Low"
+  },
+  "41018": {
+    "Category": "Identity threat protection",
+    "CompatibleLicense": "ATA",
+    "ImplementationCost": "Low",
+    "Pillar": "SecOps",
+    "RiskLevel": "High",
+    "Service": "Graph",
+    "SfiPillar": "Monitor and detect cyberthreats",
+    "TenantType": "Workforce",
+    "TestId": "41018",
+    "Title": "No open Microsoft Defender for Identity health issues are present in the tenant",
+    "UserImpact": "Low"
+  },
+  "41207": {
+    "Category": "Security information and event management",
+    "ImplementationCost": "Medium",
+    "MinimumLicense": "Consumption-based: Microsoft Sentinel",
+    "Pillar": "SecOps",
+    "RiskLevel": "High",
+    "Service": "Azure",
+    "SfiPillar": "Monitor and detect cyberthreats",
+    "TenantType": "Workforce",
+    "TestId": "41207",
+    "Title": "Active analytics rules are configured in Microsoft Sentinel to detect threats",
+    "UserImpact": "Low"
+  },
+  "50001": {
+    "Category": "Microsoft Defender for Cloud",
+    "MinimumLicense": "N/A",
+    "Pillar": "Infrastructure",
+    "RiskLevel": "High",
+    "Service": "Azure",
+    "SfiPillar": "Protect tenants and isolate production systems",
+    "TenantType": "Workforce",
+    "TestId": "50001",
+    "Title": "Microsoft Defender for Cloud Recommendations"
+  },
+  "51001": {
+    "Category": "Devices",
+    "ImplementationCost": "Medium",
+    "Pillar": "Devices",
+    "RiskLevel": "High",
+    "Service": "Graph",
+    "SfiPillar": "Protect engineering systems",
+    "TenantType": "Workforce",
+    "TestId": "51001",
+    "Title": "Windows Endpoint Privilege Management is configured and assigned",
+    "UserImpact": "Medium"
+  },
+  "51013": {
+    "Category": "Devices",
+    "CompatibleLicense": "INTUNE_A",
+    "ImplementationCost": "Low",
+    "Pillar": "Devices",
+    "RiskLevel": "High",
+    "SfiPillar": "Protect identities and secrets",
+    "TenantType": "Workforce",
+    "TestId": "51013",
+    "Title": "App Protection Policies block managed-app access when user re-authentication fails (disabled Entra ID accounts, blocked sign-ins, expired tokens)",
+    "UserImpact": "Low"
+  },
+  "51014": {
+    "Category": "Devices",
+    "CompatibleLicense": "INTUNE_A",
+    "ImplementationCost": "Low",
+    "Pillar": "Devices",
+    "RiskLevel": "High",
+    "Service": "Graph",
+    "SfiPillar": "Protect identities and secrets",
+    "TenantType": "Workforce",
+    "TestId": "51014",
+    "Title": "App Protection Policies block managed-app access on jailbroken or rooted mobile devices",
+    "UserImpact": "Low"
+  },
+  "51015": {
+    "Category": "Devices",
+    "CompatibleLicense": "INTUNE_A",
+    "ImplementationCost": "Medium",
+    "Pillar": "Devices",
+    "RiskLevel": "High",
+    "SfiPillar": "Protect identities and secrets",
+    "TenantType": "Workforce",
+    "TestId": "51015",
+    "Title": "Multi Admin Approval is enabled in Intune to require a second admin to approve sensitive tenant changes",
+    "UserImpact": "Low"
+  },
+  "51018": {
+    "Category": "Devices",
+    "CompatibleLicense": "INTUNE_A",
     "ImplementationCost": "Medium",
     "Pillar": "Devices",
     "RiskLevel": "High",
     "SfiPillar": "Protect engineering systems",
-    "TenantType": [
-      "Workforce"
-    ],
-    "TestId": "24553",
-    "Title": "Windows Update policy is assigned and enforced.",
+    "TenantType": "Workforce",
+    "TestId": "51018",
+    "Title": "Windows App Control for Business (WDAC) is configured and assigned via Intune",
     "UserImpact": "Medium"
   },
-  "24554": {
-    "Category": "Device management",
-    "ImplementationCost": "High",
-    "Pillar": "Devices",
-    "RiskLevel": "High",
-    "SfiPillar": "Protect engineering systems",
-    "TenantType": [
-      "Workforce"
-    ],
-    "TestId": "24554",
-    "Title": "iOS - Update policy is configured and assigned",
-    "UserImpact": "Low"
-  },
-  "24560": {
-    "Category": "Device management",
+  "51019": {
+    "Category": "Devices",
+    "CompatibleLicense": "INTUNE_A",
     "ImplementationCost": "Low",
     "Pillar": "Devices",
+    "RiskLevel": "Medium",
+    "SfiPillar": "Protect identities and secrets",
+    "TenantType": "Workforce",
+    "TestId": "51019",
+    "Title": "MAM app access timeout and re-authentication are enforced after idle period",
+    "UserImpact": "Medium"
+  },
+  "61002": {
+    "Category": "AI Threat Detection",
+    "ImplementationCost": "Medium",
+    "MinimumLicense": "Microsoft_Sentinel",
+    "Pillar": "AI",
     "RiskLevel": "High",
-    "SfiPillar": "Protect engineering systems",
-    "TenantType": [
-      "Workforce"
-    ],
-    "TestId": "24560",
-    "Title": "Windows Cloud LAPS policy is created and assigned ",
+    "Service": "Azure",
+    "SfiPillar": "Monitor and detect cyberthreats",
+    "TenantType": "Workforce",
+    "TestId": "61002",
+    "Title": "Microsoft Sentinel is onboarded on at least one Log Analytics workspace",
     "UserImpact": "Low"
   },
-    "24555": {
-    "Category": "Device management",
-    "ImplementationCost": "High",
-    "Pillar": "Devices",
+  "61004": {
+    "Category": "AI Cloud Posture",
+    "ImplementationCost": "Medium",
+    "MinimumLicense": "Microsoft_Defender_for_Cloud",
+    "Pillar": "AI",
     "RiskLevel": "High",
-    "SfiPillar": "Protect engineering systems",
-    "TenantType": [
-      "Workforce"
-    ],
-    "TestId": "24555",
-    "Title": "Intune Scope Tags are Configured for Delegated Administration",
+    "Service": "Azure",
+    "SfiPillar": "Protect tenants and production systems",
+    "TenantType": "Workforce",
+    "TestId": "61004",
+    "Title": "Microsoft Defender for Cloud CSPM plan is enabled on all Azure subscriptions",
     "UserImpact": "Low"
   },
-      "24794": {
-    "Category": "Device management",
-    "ImplementationCost": "High",
-    "Pillar": "Devices",
-    "RiskLevel": "High",
-    "SfiPillar": "Protect engineering systems",
-    "TenantType": [
-      "Workforce"
+  "61005": {
+    "Category": "AI Inventory & Lifecycle",
+    "CompatibleLicense": [
+      "Microsoft_365_Copilot",
+      "AGENT_365"
     ],
-    "TestId": "24794",
-    "Title": "Intune Terms and Conditions Policy is configured and assigned",
-    "UserImpact": "Low"
-  },
-  "24564": {
-    "Category": "Device management",
-    "ImplementationCost": "High",
-    "Pillar": "Devices",
-    "RiskLevel": "High",
-    "SfiPillar": "Protect engineering systems",
-    "TenantType": [
-      "Workforce"
-    ],
-    "TestId": "24564",
-    "Title": "Windows - Local Account Protection policy is configured and assigned",
-    "UserImpact": "Low"
-  },
-  "24568": {
-    "Category": "Device management",
-    "ImplementationCost": "High",
-    "Pillar": "Devices",
-    "RiskLevel": "High",
-    "SfiPillar": "Protect engineering systems",
-    "TenantType": [
-      "Workforce"
-    ],
-    "TestId": "24568",
-    "Title": "macOS - Platform SSO is configured and assigned",
-    "UserImpact": "Low"
-  },
-  "24802": {
-    "Category": "Device management",
-    "ImplementationCost": "High",
-    "Pillar": "Devices",
-    "RiskLevel": "High",
-    "SfiPillar": "Protect engineering systems",
-    "TenantType": [
-      "Workforce"
-    ],
-    "TestId": "24802",
-    "Title": "Device Clean-up Rule is Created",
-    "UserImpact": "Low"
-  },
-  "24569": {
-    "Category": "Device management",
     "ImplementationCost": "Low",
-    "Pillar": "Devices",
+    "Pillar": "AI",
     "RiskLevel": "High",
-    "SfiPillar": "Protect engineering systems",
-    "TenantType": [
-      "Workforce"
-    ],
-    "TestId": "24569",
-    "Title": "Intune macOS FileVault policy is created and Assigned",
+    "Service": "Graph",
+    "SfiPillar": "Protect tenants and production systems",
+    "TenantType": "Workforce",
+    "TestId": "61005",
+    "Title": "Agents deployed to Microsoft 365 Copilot are discoverable in the Agent Registry",
     "UserImpact": "Low"
   },
-  "24572": {
-    "Category": "Device management",
-    "ImplementationCost": "High",
-    "Pillar": "Devices",
-    "RiskLevel": "High",
-    "SfiPillar": "Protect engineering systems",
-    "TenantType": [
-      "Workforce"
+  "61006": {
+    "Category": "AI Authentication & Access",
+    "CompatibleLicense": [
+      "AAD_BASIC",
+      "AAD_PREMIUM"
     ],
-    "TestId": "24572",
-    "Title": "Device enrollment notification is configured and assigned",
-    "UserImpact": "Low"
-  },
-  "24573": {
-    "Category": "Device management",
-    "ImplementationCost": "High",
-    "Pillar": "Devices",
-    "RiskLevel": "High",
-    "SfiPillar": "Protect engineering systems",
-    "TenantType": [
-      "Workforce"
-    ],
-    "TestId": "24573",
-    "Title": "Windows - A security baseline is configured and assigned",
-    "UserImpact": "Low"
-  },
-  "24574": {
-    "Category": "Device management",
     "ImplementationCost": "Low",
-    "Pillar": "Devices",
+    "Pillar": "AI",
     "RiskLevel": "High",
-    "SfiPillar": "Protect engineering systems",
-    "TenantType": [
-      "Workforce"
-    ],
-    "TestId": "24574",
-    "Title": "Deploy Attack Surface Reduction Policies (ASR) policies for Windows devices",
+    "Service": "Graph",
+    "SfiPillar": "Protect identities and secrets",
+    "TenantType": "Workforce",
+    "TestId": "61006",
+    "Title": "AI administrative roles have assigned principals",
     "UserImpact": "Low"
   },
-  "24575": {
-    "Category": "Device management",
+  "61008": {
+    "Category": "Secure AI Authentication and Access",
+    "ImplementationCost": "Medium",
+    "Pillar": "AI",
+    "RiskLevel": "Medium",
+    "Service": "Graph",
+    "SfiPillar": "Protect identities and secrets",
+    "TenantType": "Workforce",
+    "TestId": "61008",
+    "Title": "Agent identity lifecycle tagging (customSecurityAttributes present)",
+    "UserImpact": "Low"
+  },
+  "61009": {
+    "Category": "AI Identity & Access",
+    "CompatibleLicense": [
+      "AAD_PREMIUM&AGENT_365",
+      "AAD_PREMIUM_P2&AGENT_365"
+    ],
     "ImplementationCost": "Low",
-    "Pillar": "Devices",
-    "RiskLevel": "High",
-    "SfiPillar": "Protect engineering systems",
-    "TenantType": [
-      "Workforce"
+    "MinimumLicense": [
+      "AAD_PREMIUM",
+      "AGENT_365"
     ],
-    "TestId": "24575",
-    "Title": "A Windows Defender Antivirus policy is created and assigned",
+    "Pillar": "AI",
+    "RiskLevel": "High",
+    "Service": "Graph",
+    "SfiPillar": "Protect identities and secrets",
+    "TenantType": "Workforce",
+    "TestId": "61009",
+    "Title": "Conditional Access policies cover both agent identities and agent users",
     "UserImpact": "Low"
   },
-  "24576": {
-    "Category": "Device management",
+  "61011": {
+    "Category": "AI Authentication & Access",
+    "CompatibleLicense": "AAD_PREMIUM",
+    "ImplementationCost": "Medium",
+    "Pillar": "AI",
+    "RiskLevel": "High",
+    "Service": "Graph",
+    "SfiPillar": "Protect identities and secrets",
+    "TenantType": "Workforce",
+    "TestId": "61011",
+    "Title": "Require users to use Microsoft Entra ID auth to interact with agents",
+    "UserImpact": "Medium"
+  },
+  "61012": {
+    "Category": "AI Authentication & Access",
+    "CompatibleLicense": "AAD_PREMIUM_P2&AGENT_365",
     "ImplementationCost": "Low",
-    "Pillar": "Devices",
-    "RiskLevel": "Low",
-    "SfiPillar": "Protect engineering systems",
-    "TenantType": [
-      "Workforce"
+    "MinimumLicense": [
+      "AAD_PREMIUM_P2",
+      "AGENT_365"
     ],
-    "TestId": "24576",
-    "Title": "Intune Endpoint Analytics policy is created and Assigned ",
-    "UserImpact": "Low"
-  },
-  "24690": {
-    "Category": "Device management",
-    "ImplementationCost": "High",
-    "Pillar": "Devices",
+    "Pillar": "AI",
     "RiskLevel": "High",
-    "SfiPillar": "Protect engineering systems",
-    "TenantType": [
-      "Workforce"
-    ],
-    "TestId": "24690",
-    "Title": "macOS - Update policy is configured and assigned",
+    "Service": "Graph",
+    "SfiPillar": "Protect identities and secrets",
+    "TenantType": "Workforce",
+    "TestId": "61012",
+    "Title": "Risk-based Conditional Access blocks risky agent identities",
     "UserImpact": "Low"
   },
-  "24784": {
-    "Category": "Device management",
+  "61013": {
+    "Category": "AI Authentication & Access",
+    "CompatibleLicense": "AAD_PREMIUM&AGENT_365",
     "ImplementationCost": "Low",
-    "Pillar": "Devices",
+    "Pillar": "AI",
+    "RiskLevel": "Medium",
+    "Service": "Graph",
+    "SfiPillar": "Protect identities and secrets",
+    "TenantType": "Workforce",
+    "TestId": "61013",
+    "Title": "Identity governance for agents — sponsors assigned, entitlement-management channel exists, and lifecycle automation in place",
+    "UserImpact": "Low"
+  },
+  "61014": {
+    "Category": "Agent Lifecycle",
+    "CompatibleLicense": "AAD_PREMIUM",
+    "ImplementationCost": "Medium",
+    "Pillar": "AI",
     "RiskLevel": "High",
-    "SfiPillar": "Protect engineering systems",
-    "TenantType": [
-      "Workforce"
+    "Service": "Graph",
+    "SfiPillar": "Protect identities and secrets",
+    "TenantType": "Workforce",
+    "TestId": "61014",
+    "Title": "Agent identities and blueprint principals have assigned technical owners and no disabled agents remain in the directory",
+    "UserImpact": "Medium"
+  },
+  "61016": {
+    "Category": "AI Threat Detection",
+    "CompatibleLicense": "AAD_PREMIUM_P2&AGENT_365",
+    "ImplementationCost": "Low",
+    "MinimumLicense": [
+      "AAD_PREMIUM_P2",
+      "AGENT_365"
     ],
-    "TestId": "24784",
-    "Title": "A Microsoft Defender Antivirus policy is created and assigned in Intune for macOS",
+    "Pillar": "AI",
+    "RiskLevel": "High",
+    "Service": "Azure",
+    "SfiPillar": "Monitor and detect cyberthreats",
+    "TenantType": "Workforce",
+    "TestId": "61016",
+    "Title": "Microsoft Entra ID Protection risk events are flowing to the Microsoft Sentinel workspace",
+    "UserImpact": "Low"
+  },
+  "61018": {
+    "Category": "AI Threat Detection",
+    "CompatibleLicense": "MIP_S_CLP1",
+    "ImplementationCost": "Low",
+    "MinimumLicense": [
+      "MIP_S_CLP1",
+      "Consumption-based: Microsoft Sentinel"
+    ],
+    "Pillar": "AI",
+    "RiskLevel": "Medium",
+    "Service": "Azure",
+    "SfiPillar": "Monitor and detect cyberthreats",
+    "TenantType": "Workforce",
+    "TestId": "61018",
+    "Title": "Microsoft Purview Information Protection data connector is enabled on the Microsoft Sentinel workspace",
+    "UserImpact": "Low"
+  },
+  "61021": {
+    "Category": "AI Threat Detection",
+    "CompatibleLicense": "Microsoft_365_Copilot",
+    "ImplementationCost": "Low",
+    "Pillar": "AI",
+    "RiskLevel": "High",
+    "Service": "Azure",
+    "SfiPillar": "Monitor and detect cyberthreats",
+    "TenantType": "Workforce",
+    "TestId": "61021",
+    "Title": "Microsoft 365 Copilot data connector is enabled on the Microsoft Sentinel workspace",
+    "UserImpact": "Low"
+  },
+  "61022": {
+    "Category": "AI Threat Detection",
+    "ImplementationCost": "Low",
+    "MinimumLicense": "Microsoft_Defender_for_AI_Services",
+    "Pillar": "AI",
+    "RiskLevel": "High",
+    "Service": "Azure",
+    "SfiPillar": "Monitor and detect cyberthreats",
+    "TenantType": "Workforce",
+    "TestId": "61022",
+    "Title": "Microsoft Defender for AI Services is enabled on every Azure subscription that hosts Azure OpenAI or Azure AI Services accounts",
+    "UserImpact": "Low"
+  },
+  "61023": {
+    "Category": "AI Threat Detection",
+    "CompatibleLicense": "AGENT_365",
+    "ImplementationCost": "Low",
+    "MinimumLicense": [
+      "AGENT_365",
+      "Consumption-based: Microsoft Sentinel"
+    ],
+    "Pillar": "AI",
+    "RiskLevel": "High",
+    "Service": "Azure",
+    "SfiPillar": "Monitor and detect cyberthreats",
+    "TenantType": "Workforce",
+    "TestId": "61023",
+    "Title": "Agent 365 data connector is enabled on the Microsoft Sentinel workspace",
+    "UserImpact": "Low"
+  },
+  "61024": {
+    "Category": "AI Threat Detection",
+    "CompatibleLicense": [
+      "WIN_DEF_ATP",
+      "MDATP_XPLAT",
+      "ATA",
+      "ADALLOM_STANDALONE",
+      "THREAT_INTELLIGENCE",
+      "IDENTITY_THREAT_PROTECTION",
+      "IDENTITY_THREAT_PROTECTION_FOR_EMS_E5",
+      "SPE_E5"
+    ],
+    "ImplementationCost": "Low",
+    "MinimumLicense": [
+      "WIN_DEF_ATP",
+      "MDATP_XPLAT",
+      "ATA",
+      "ADALLOM_STANDALONE",
+      "THREAT_INTELLIGENCE",
+      "IDENTITY_THREAT_PROTECTION",
+      "IDENTITY_THREAT_PROTECTION_FOR_EMS_E5",
+      "SPE_E5",
+      "Consumption-based: Microsoft Sentinel"
+    ],
+    "Pillar": "AI",
+    "RiskLevel": "High",
+    "Service": "Azure",
+    "SfiPillar": "Monitor and detect cyberthreats",
+    "TenantType": "Workforce",
+    "TestId": "61024",
+    "Title": "Microsoft Defender XDR (unified) data connector is enabled on the Microsoft Sentinel workspace",
     "UserImpact": "Low"
   }
 }

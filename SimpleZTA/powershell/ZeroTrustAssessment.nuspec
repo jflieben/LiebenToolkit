@@ -1,0 +1,19 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<package xmlns="http://schemas.microsoft.com/packaging/2013/05/nuspec.xsd">
+  <metadata>
+    <id>ZeroTrustAssessment</id>
+    <version>2.4.26-preview</version>
+    <authors>Microsoft</authors>
+    <owners>Microsoft</owners>
+    <requireLicenseAcceptance>false</requireLicenseAcceptance>
+    <licenseUrl>https://github.com/microsoft/zerotrustassessment/blob/main/LICENSE</licenseUrl>
+    <projectUrl>https://github.com/microsoft/zerotrustassessment</projectUrl>
+    <description>Perform a Zero Trust Assessment of your Microsoft 365 environment.</description>
+    <releaseNotes></releaseNotes>
+    <copyright>(c) Microsoft. All rights reserved.</copyright>
+    <tags>Microsoft Security ZeroTrust Entra Intune PSModule PSIncludes_Function PSFunction_Clear-ZtRequiredModule PSFunction_Connect-ZtAssessment PSFunction_Disconnect-ZtAssessment PSFunction_Get-ZtCurrentLicense PSFunction_Get-ZtExportStatistics PSFunction_Get-ZtGraphScope PSFunction_Get-ZtTest PSFunction_Get-ZtTestStatistics PSFunction_Invoke-ZtAssessment PSFunction_Invoke-ZtAzureRequest PSFunction_Invoke-ZtAzureResourceGraphRequest PSFunction_Invoke-ZtGraphRequest PSCommand_Clear-ZtRequiredModule PSCommand_Connect-ZtAssessment PSCommand_Disconnect-ZtAssessment PSCommand_Get-ZtCurrentLicense PSCommand_Get-ZtExportStatistics PSCommand_Get-ZtGraphScope PSCommand_Get-ZtTest PSCommand_Get-ZtTestStatistics PSCommand_Invoke-ZtAssessment PSCommand_Invoke-ZtAzureRequest PSCommand_Invoke-ZtAzureResourceGraphRequest PSCommand_Invoke-ZtGraphRequest PSCommand_Invoke-ZeroTrustAssessment</tags>
+    <dependencies>
+      <dependency id="PSFramework" version="1.13.419" />
+    </dependencies>
+  </metadata>
+</package>

@@ -220,41 +220,7 @@
           operator: 'OR',
           builtInControls: ['block'],
         },
-      },
-      {
-        displayName: 'Baseline - Require MFA for Microsoft admin portals',
-        state: 'enabledForReportingButNotEnforced',
-        conditions: {
-          users: {
-            includeUsers: ['All'],
-            excludeUsers: [],
-          },
-          applications: { includeApplications: ['MicrosoftAdminPortals'], excludeApplications: [] },
-          clientAppTypes: ['all'],
-        },
-        grantControls: {
-          operator: 'OR',
-          builtInControls: ['mfa'],
-        },
-      },
-      {
-        displayName: 'Baseline - Protect security info registration with MFA',
-        state: 'enabledForReportingButNotEnforced',
-        conditions: {
-          users: {
-            includeUsers: ['All'],
-            excludeUsers: [],
-          },
-          applications: {
-            includeUserActions: ['urn:user:registersecurityinfo'],
-          },
-          clientAppTypes: ['all'],
-        },
-        grantControls: {
-          operator: 'OR',
-          builtInControls: ['mfa'],
-        },
-      },
+      }
     ];
   }
 

@@ -5,8 +5,14 @@
 (() => {
   const BASE = 'https://graph.microsoft.com/v1.0';
 
-  async function callRaw(url, { method = 'GET', body, headers = {}, attempt = 0, write = false } = {}) {
-    const token = write ? await Auth.getWriteToken() : await Auth.getReadToken();
+  async function _tokenFor({ write = false, sites = false } = {}) {
+    if (sites) return Auth.getSitesToken();
+    if (write) return Auth.getWriteToken();
+    return Auth.getReadToken();
+  }
+
+  async function callRaw(url, { method = 'GET', body, headers = {}, attempt = 0, write = false, sites = false } = {}) {
+    const token = await _tokenFor({ write, sites });
     const opts = {
       method,
       headers: {
@@ -25,7 +31,7 @@
       if (attempt >= 5) throw new Error(`Graph ${res.status} after retries: ${url}`);
       Log.warn(`Graph ${res.status}, backing off ${wait}ms (attempt ${attempt + 1})`);
       await Concurrency.sleep(wait);
-      return callRaw(url, { method, body, headers, attempt: attempt + 1, write });
+      return callRaw(url, { method, body, headers, attempt: attempt + 1, write, sites });
     }
     return res;
   }
@@ -66,7 +72,7 @@
     const select = [
       'id','appId','displayName','servicePrincipalType','accountEnabled','tags',
       'appOwnerOrganizationId','homepage','publisherName','signInAudience',
-      'appDisplayName','createdDateTime',
+      'appDisplayName','createdDateTime','appRoles','oauth2PermissionScopes',
     ].join(',');
     const path = `/servicePrincipals?$top=999&$select=${select}`;
     const out = [];
@@ -150,10 +156,55 @@
     return call(`/oauth2PermissionGrants/${grantId}`, { method: 'DELETE', write: true });
   }
 
+  // ---------- SharePoint site permissions (Sites.Selected) ----------
+  // All of these need the delegated Sites.FullControl.All scope (sites: true) and a
+  // signed-in user who is SharePoint Administrator or higher.
+
+  /**
+   * Find sites in the tenant. `query` is a free-text search; pass '*' to match everything.
+   * Returns the first page (search-as-you-type); large tenants would choke on a full crawl.
+   */
+  async function searchSites(query, top = 100) {
+    const q = String(query == null ? '' : query).trim() || '*';
+    const select = ['id', 'displayName', 'name', 'webUrl'].join(',');
+    const path = `/sites?search=${encodeURIComponent(q)}&$top=${top}&$select=${select}`;
+    const data = await call(path, { sites: true });
+    return (data && Array.isArray(data.value)) ? data.value : [];
+  }
+
+  /** List the application permissions currently granted on a site. */
+  function getSitePermissions(siteId) {
+    return pageAll(`/sites/${siteId}/permissions`, { sites: true });
+  }
+
+  /** Grant an application (by appId / client id) access to a site with the given roles. */
+  function addSitePermission(siteId, { appId, displayName, roles }) {
+    return call(`/sites/${siteId}/permissions`, {
+      method: 'POST',
+      body: { roles, grantedToIdentities: [{ application: { id: appId, displayName } }] },
+      sites: true,
+    });
+  }
+
+  /** Change the roles of an existing site permission. */
+  function updateSitePermission(siteId, permissionId, { roles }) {
+    return call(`/sites/${siteId}/permissions/${permissionId}`, {
+      method: 'PATCH',
+      body: { roles },
+      sites: true,
+    });
+  }
+
+  /** Remove a site permission entirely. */
+  function deleteSitePermission(siteId, permissionId) {
+    return call(`/sites/${siteId}/permissions/${permissionId}`, { method: 'DELETE', sites: true });
+  }
+
   window.Graph = {
     call, pageAll,
     listAllServicePrincipals, getServicePrincipal, getServicePrincipalByAppId,
     listAppRoleAssignments, addAppRoleAssignment, removeAppRoleAssignment,
     listOAuth2Grants, createOAuth2Grant, updateOAuth2Grant, deleteOAuth2Grant,
+    searchSites, getSitePermissions, addSitePermission, updateSitePermission, deleteSitePermission,
   };
 })();

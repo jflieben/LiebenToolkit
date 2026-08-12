@@ -49,6 +49,13 @@
     exchange: ['https://outlook.office365.com/.default'],
   };
 
+  function _shouldClosePopupAfterAuth(resp) {
+    if (!window.opener || window.opener.closed) return false;
+    if (resp && resp.account) return true;
+    const authBits = `${window.location.hash || ''}&${window.location.search || ''}`;
+    return /(?:^|[?&#])(code|error|id_token|access_token|state)=/i.test(authBits);
+  }
+
   async function loadAuthConfig() {
     const res = await fetch('./.auth', { cache: 'no-store' });
     if (!res.ok) throw new Error(`Could not load .auth (HTTP ${res.status}). Make sure SimpleMaester is being served over HTTP and the .auth file exists.`);
@@ -97,6 +104,12 @@
         await msal.initialize();
       }
       const resp = await msal.handleRedirectPromise().catch(e => { Log.err('Redirect handler:', e); return null; });
+      if (_shouldClosePopupAfterAuth(resp)) {
+        Log.info('Auth popup callback completed. Closing popup window.');
+        try { window.close(); } catch {}
+        if (!window.closed) window.location.replace('about:blank');
+        return null;
+      }
       if (resp && resp.account) account = resp.account;
       else { const accs = msal.getAllAccounts(); if (accs.length) account = accs[0]; }
       return account;
@@ -123,7 +136,7 @@
 
   async function signOut() {
     if (!account) return;
-    try { await msal.logoutPopup({ account }); } catch (e) { Log.warn('Logout popup failed:', e.message); }
+    await msal.logoutRedirect({ account });
     account = null;
   }
 
@@ -141,21 +154,8 @@
         return r.accessToken;
       } catch (e) {
         Log.warn(`Silent token failed for [${effectiveScopes.join(',')}], escalating to interactive`);
-        // Never call acquireTokenRedirect mid-scan: it navigates away from the
-        // page and kills the entire scan in progress. Instead throw an error so
-        // the test can catch it and return Skipped.
-        try {
-          const r = await msal.acquireTokenPopup({ scopes: effectiveScopes, account });
-          return r.accessToken;
-        } catch (popupErr) {
-          // Popup was blocked or user dismissed. Throw a descriptive error that
-          // errRow() will turn into a Skipped result for this one test.
-          const msg = popupErr.message || String(popupErr);
-          Log.warn('Interactive token failed (popup blocked or dismissed):', msg);
-          const err = new Error(`Could not get token (consent needed or popup blocked): ${msg}`);
-          err.status = 401;
-          throw err;
-        }
+        await msal.acquireTokenRedirect({ scopes: effectiveScopes, account, prompt: 'consent' });
+        return new Promise(() => {});
       }
     })();
     _tokenInflight.set(key, p);
@@ -244,20 +244,9 @@
         return r.accessToken;
       } catch (e) {
         Log.warn(`Silent Exchange token failed, escalating to interactive: ${e.message}`);
-        const useRedirect = !!(navigator.webdriver) || /HeadlessChrome|Playwright/i.test(navigator.userAgent);
         const req = { scopes, account, authority };
-        if (useRedirect) {
-          await msal.acquireTokenRedirect(req);
-          return new Promise(() => {});
-        }
-        try {
-          const r = await msal.acquireTokenPopup(req);
-          return r.accessToken;
-        } catch (popupErr) {
-          Log.warn('Exchange popup blocked, falling back to redirect:', popupErr.message);
-          await msal.acquireTokenRedirect(req);
-          return new Promise(() => {});
-        }
+            await msal.acquireTokenRedirect(req);
+            return new Promise(() => {});
       }
     })();
     _tokenInflight.set(key, p);
@@ -271,19 +260,8 @@
     const tenantId = account.tenantId;
     const authority = `https://login.microsoftonline.com/${tenantId}`;
     const req = { scopes: SCOPES.exchange, account, authority, prompt: 'consent' };
-    const useRedirect = !!(navigator.webdriver) || /HeadlessChrome|Playwright/i.test(navigator.userAgent);
-    if (useRedirect) {
-      await msal.acquireTokenRedirect(req);
-      return new Promise(() => {});
-    }
-    try {
-      const r = await msal.acquireTokenPopup(req);
-      return r.accessToken;
-    } catch (e) {
-      Log.warn('Exchange consent popup blocked, falling back to redirect:', e.message);
-      await msal.acquireTokenRedirect(req);
-      return new Promise(() => {});
-    }
+    await msal.acquireTokenRedirect(req);
+    return new Promise(() => {});
   }
   function getAccount()    { return account; }
   function getUserPrincipalName() { return account?.username || null; }

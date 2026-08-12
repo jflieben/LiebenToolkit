@@ -1,0 +1,362 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>SPOTrim - Tests</title>
+  <style>
+    body { font-family: -apple-system, "Segoe UI", sans-serif; background: #f6f8fb; padding: 20px; }
+    .test { padding: 8px 12px; margin: 4px 0; border-radius: 6px; font-family: monospace; font-size: 13px; }
+    .pass { background: #d6f3e3; color: #128d4f; }
+    .fail { background: #fde2e1; color: #c0392b; }
+    h1 { font-size: 18px; }
+    summary { font-weight: 600; cursor: pointer; }
+    pre { background: #fff; padding: 10px; border-radius: 6px; border: 1px solid #e3e8f0; overflow: auto; }
+  </style>
+</head>
+<body>
+  <h1>SPOTrim - Unit Tests</h1>
+  <p>These tests cover pure logic that does not require a Microsoft 365 sign-in (auth-file parsing, redirect-URI selection, CSV parsing of the usage report, staleness scoring, exporter row building). Open this file via <code>pwsh ../serve.ps1</code> then navigate to <code>/tests/test.html</code>.</p>
+  <div id="results"></div>
+
+  <!-- Stub Log so the modules can load without the full DOM. -->
+  <script>
+    window.Log = { dbg(){}, info(){}, warn(){}, err(){}, setVerbose(){}, getEntries(){return[]}, clear(){} };
+    // MSAL stub so auth.js can load without erroring.
+    window.msal = { PublicClientApplication: function(){} };
+  </script>
+
+  <script src="../src/log.js"></script>
+  <script src="../src/concurrency.js"></script>
+  <script src="../src/auth.js"></script>
+  <script src="../src/graph.js"></script>
+  <script src="../src/sharepoint.js"></script>
+  <script src="../src/analysis.js"></script>
+  <script src="../src/export.js"></script>
+
+  <script>
+    const results = document.getElementById('results');
+    let pass = 0, fail = 0;
+    function record(name, ok, detail) {
+      const div = document.createElement('div');
+      div.className = 'test ' + (ok ? 'pass' : 'fail');
+      div.textContent = (ok ? '✓ ' : '✗ ') + name + (detail ? '  - ' + detail : '');
+      results.appendChild(div);
+      if (ok) pass++; else fail++;
+    }
+    function eq(name, actual, expected) {
+      const ok = JSON.stringify(actual) === JSON.stringify(expected);
+      record(name, ok, ok ? '' : `expected ${JSON.stringify(expected)} got ${JSON.stringify(actual)}`);
+    }
+    function ok(name, cond, detail) { record(name, !!cond, detail); }
+
+    // ---------- Auth tests ----------
+    (function testAuthParse() {
+      const text = `# comment\nclientId: 271bf19c-6935-42dc-be52-67cb3bd93962\nredirect-url-local: http://localhost:8080\nredirect-url-web: https://lieben.nu/tools/SPOTrim\n\n`;
+      const cfg = Auth._parseAuthFile(text);
+      eq('parse .auth: clientId',        cfg.clientId,             '271bf19c-6935-42dc-be52-67cb3bd93962');
+      eq('parse .auth: local URI',       cfg['redirect-url-local'],'http://localhost:8080');
+      eq('parse .auth: web URI',         cfg['redirect-url-web'],  'https://lieben.nu/tools/SPOTrim');
+    })();
+
+    (function testRedirectPick() {
+      const cfg = { 'redirect-url-local': 'http://localhost:8080', 'redirect-url-web': 'https://lieben.nu/x' };
+      eq('pickRedirect localhost', Auth._pickRedirectUriForOrigin(cfg, 'http://localhost:8080'),     'http://localhost:8080');
+      eq('pickRedirect 127.0.0.1', Auth._pickRedirectUriForOrigin(cfg, 'http://127.0.0.1:9000'),     'http://localhost:8080');
+      eq('pickRedirect prod',       Auth._pickRedirectUriForOrigin(cfg, 'https://lieben.nu/x/'),     'https://lieben.nu/x');
+      eq('pickRedirect any host',   Auth._pickRedirectUriForOrigin(cfg, 'https://contoso.com/spo/'), 'https://lieben.nu/x');
+    })();
+
+    // ---------- Analysis: classify (Exporter) ----------
+    (function testClassify() {
+      eq('classify SharePoint',         Exporter.classify({ webUrl: 'https://x.sharepoint.com/sites/foo' }), 'SharePoint');
+      eq('classify OneDrive (URL)',     Exporter.classify({ webUrl: 'https://x-my.sharepoint.com/personal/u_x_com' }), 'OneDrive');
+      eq('classify OneDrive (flag)',    Exporter.classify({ webUrl: 'https://x.sharepoint.com/whatever', isPersonalSite: true }), 'OneDrive');
+
+      // Detailed classifyType
+      eq('classifyType OneDrive', Exporter.classifyType({ webUrl: 'https://x-my.sharepoint.com/personal/u' }), 'OneDrive');
+      eq('classifyType Group/Teams', Exporter.classifyType({ root: { '@odata.type': 'GROUP#0' } }), 'Group / Teams site');
+      eq('classifyType Teams private channel', Exporter.classifyType({ root: { '@odata.type': 'TEAMCHANNEL#0' } }), 'Teams private channel');
+      eq('classifyType Teams shared channel', Exporter.classifyType({ root: { '@odata.type': 'TEAMCHANNEL#1' } }), 'Teams shared channel');
+      eq('classifyType Communication site', Exporter.classifyType({ root: { '@odata.type': 'SITEPAGEPUBLISHING#0' } }), 'Communication site');
+      eq('classifyType Modern team site', Exporter.classifyType({ root: { '@odata.type': 'STS#3' } }), 'Modern team site');
+      eq('classifyType Classic team site', Exporter.classifyType({ root: { '@odata.type': 'STS#0' } }), 'Classic team site');
+      eq('classifyType App catalog', Exporter.classifyType({ root: { '@odata.type': 'APPCATALOG#0' } }), 'App catalog');
+      eq('classifyType fallback to template', Exporter.classifyType({ root: { '@odata.type': 'WEIRDTEMPLATE#9' } }), 'WEIRDTEMPLATE#9');
+      eq('classifyType blank → SharePoint', Exporter.classifyType({ webUrl: 'https://x.sharepoint.com/sites/foo' }), 'SharePoint');
+    })();
+
+    // ---------- Analysis: scoring ----------
+    (async function testAnalysisScoring() {
+      // Stub SharePoint REST + Graph engagement so analyzeSite is fully deterministic.
+      const realWeb  = SharePoint.getWebInfo;
+      const realLibs = SharePoint.getDocLibsLastModified;
+      const realOwners = SharePoint.getSiteOwners;
+      const realEng  = Graph.getSiteEngagement;
+      SharePoint.getSiteOwners = async () => ([]);
+      const emptyEng = {
+        allTimeViews: 0, allTimeActors: 0, allTimeStart: null, allTimeEnd: null,
+        recentViews: 0, recentActors: 0, recentStart: null, recentEnd: null,
+        last30Views: 0, last30Actors: 0, last30LastDay: null,
+        lastPageEdit: null, quotaUsedBytes: null,
+      };
+      try {
+        // Site 1: modified recently → Keep
+        SharePoint.getWebInfo = async () => ({
+          Title: 'A', Url: 'x', Created: '2020-01-01T00:00:00Z',
+          LastItemUserModifiedDate: new Date(Date.now() - 30 * 86400000).toISOString(),
+          LastItemModifiedDate:     new Date(Date.now() - 30 * 86400000).toISOString(),
+        });
+        SharePoint.getDocLibsLastModified = async () => ([]);
+        Graph.getSiteEngagement = async () => ({ ...emptyEng });
+        let r = await Analysis.analyzeSite({ webUrl: 'https://x.sharepoint.com/sites/a', lastModifiedDateTime: null }, { staleDays: 365 });
+        eq('Recent → Keep', r.advice, 'Keep');
+
+        // Site 2: stale + 0 page views → Clean up
+        SharePoint.getWebInfo = async () => ({
+          LastItemUserModifiedDate: new Date(Date.now() - 800 * 86400000).toISOString(),
+        });
+        Graph.getSiteEngagement = async () => ({ ...emptyEng });
+        r = await Analysis.analyzeSite(
+          { webUrl: 'https://x.sharepoint.com/sites/b', lastModifiedDateTime: null },
+          { staleDays: 365 });
+        eq('Stale + 0 views → Clean up', r.advice, 'Clean up');
+
+        // Site 3: stale + still has all-time views → Review
+        SharePoint.getWebInfo = async () => ({
+          LastItemUserModifiedDate: new Date(Date.now() - 800 * 86400000).toISOString(),
+        });
+        Graph.getSiteEngagement = async () => ({
+          ...emptyEng, allTimeViews: 50, allTimeActors: 5,
+        });
+        r = await Analysis.analyzeSite(
+          { webUrl: 'https://x.sharepoint.com/sites/c', lastModifiedDateTime: null },
+          { staleDays: 365 });
+        eq('Stale + still viewed → Review', r.advice, 'Review');
+
+        // Site 4: no signals at all, both 403 → No access
+        SharePoint.getWebInfo = async () => { throw new Error('403 Forbidden'); };
+        SharePoint.getDocLibsLastModified = async () => { throw new Error('403 Forbidden'); };
+        Graph.getSiteEngagement = async () => ({ ...emptyEng });
+        r = await Analysis.analyzeSite(
+          { webUrl: 'https://x.sharepoint.com/sites/d', lastModifiedDateTime: null },
+          { staleDays: 365 });
+        eq('Both 403 → No access', r.advice, 'No access');
+        ok('No access flag set',         r.accessDenied === true, 'accessDenied: ' + r.accessDenied);
+        ok('No access reason mentions 401/403', /401\/403/.test(r.reason), 'reason: ' + r.reason);
+
+        // Site 5: web 403 but lib succeeds with items → still has lib signal → analyses normally
+        SharePoint.getWebInfo = async () => { throw Object.assign(new Error('SPO 403: denied'), { status: 403 }); };
+        SharePoint.getDocLibsLastModified = async () => [{ LastItemUserModifiedDate: new Date(Date.now() - 10 * 86400000).toISOString(), ItemCount: 5 }];
+        Graph.getSiteEngagement = async () => ({ ...emptyEng });
+        r = await Analysis.analyzeSite(
+          { webUrl: 'https://x.sharepoint.com/sites/e', lastModifiedDateTime: null },
+          { staleDays: 365 });
+        ok('Partial denial does not become No access', r.advice !== 'No access', 'advice: ' + r.advice);
+
+        // Site 6: web 500 + lib 403 → mixed errors → still Unknown (not No access)
+        SharePoint.getWebInfo = async () => { throw new Error('SPO 500: server error'); };
+        SharePoint.getDocLibsLastModified = async () => { throw new Error('SPO 403: denied'); };
+        Graph.getSiteEngagement = async () => ({ ...emptyEng });
+        r = await Analysis.analyzeSite(
+          { webUrl: 'https://x.sharepoint.com/sites/f', lastModifiedDateTime: null },
+          { staleDays: 365 });
+        eq('Mixed errors -> Unknown', r.advice, 'Unknown');
+      } finally {
+        SharePoint.getWebInfo = realWeb;
+        SharePoint.getDocLibsLastModified = realLibs;
+        SharePoint.getSiteOwners = realOwners;
+        Graph.getSiteEngagement = realEng;
+      }
+    })();
+
+    // ---------- Per-site Graph engagement signals ----------
+    (async function testSiteEngagement() {
+      const realWeb = SharePoint.getWebInfo;
+      const realLibs = SharePoint.getDocLibsLastModified;
+      const realOwners = SharePoint.getSiteOwners;
+      const realEng = Graph.getSiteEngagement;
+      SharePoint.getSiteOwners = async () => ([]);
+      const baseEng = {
+        allTimeViews: 0, allTimeActors: 0, allTimeStart: null, allTimeEnd: null,
+        recentViews: 0, recentActors: 0, recentStart: null, recentEnd: null,
+        last30Views: 0, last30Actors: 0, last30LastDay: null,
+        lastPageEdit: null, quotaUsedBytes: null,
+      };
+      try {
+        // Stale site, all-time views > 0 → Review
+        SharePoint.getWebInfo = async () => ({ LastItemUserModifiedDate: new Date(Date.now() - 800 * 86400000).toISOString() });
+        SharePoint.getDocLibsLastModified = async () => ([]);
+        Graph.getSiteEngagement = async () => ({
+          ...baseEng,
+          allTimeViews: 42, allTimeActors: 5, allTimeStart: '2020-01-01', allTimeEnd: '2026-04-20',
+        });
+        let r = await Analysis.analyzeSite(
+          { id: 'tenant,site,web', webUrl: 'https://x.sharepoint.com/sites/g', lastModifiedDateTime: null },
+          { staleDays: 365 });
+        eq('All-time views populates pageViews', r.pageViews, 42);
+        eq('pageViewsSource = siteAnalyticsAllTime', r.pageViewsSource, 'siteAnalyticsAllTime');
+        eq('Stale + all-time views → Review', r.advice, 'Review');
+        ok('Why mentions all-time', /all-time/.test(r.reason), 'reason: ' + r.reason);
+
+        // Stale site, 0 all-time views → Clean up
+        Graph.getSiteEngagement = async () => ({ ...baseEng });
+        r = await Analysis.analyzeSite(
+          { id: 'tenant,site,web', webUrl: 'https://x.sharepoint.com/sites/h', lastModifiedDateTime: null },
+          { staleDays: 365 });
+        eq('0 all-time views + stale → Clean up', r.advice, 'Clean up');
+
+        // Last 7 days has activity → lastViewed approx + Review
+        SharePoint.getWebInfo = async () => ({ LastItemUserModifiedDate: new Date(Date.now() - 800 * 86400000).toISOString() });
+        Graph.getSiteEngagement = async () => ({
+          ...baseEng,
+          allTimeViews: 100, allTimeActors: 10,
+          recentViews: 3, recentActors: 1, recentStart: '2026-04-13', recentEnd: '2026-04-20',
+        });
+        r = await Analysis.analyzeSite(
+          { id: 'tenant,site,web', webUrl: 'https://x.sharepoint.com/sites/i', lastModifiedDateTime: null },
+          { staleDays: 365 });
+        ok('Recent views populate lastViewed', r.lastViewed instanceof Date);
+        ok('lastViewedApprox flag set when sourced from lastSevenDays', r.lastViewedApprox === true);
+        ok('Why mentions last 7 days', /last 7 days/.test(r.reason), 'reason: ' + r.reason);
+
+        // last30LastDay populates lastViewed exactly (NOT approx) and last30Views > 0 → Review (highest priority)
+        const last30Day = new Date(Date.now() - 5 * 86400000).toISOString();
+        Graph.getSiteEngagement = async () => ({
+          ...baseEng,
+          allTimeViews: 100, allTimeActors: 10,
+          last30Views: 7, last30Actors: 2, last30LastDay: last30Day,
+        });
+        r = await Analysis.analyzeSite(
+          { id: 'tenant,site,web', webUrl: 'https://x.sharepoint.com/sites/i30', lastModifiedDateTime: null },
+          { staleDays: 365 });
+        ok('last30LastDay populates lastViewed', r.lastViewed instanceof Date);
+        ok('lastViewedApprox NOT set when sourced from last30LastDay', !r.lastViewedApprox);
+        eq('last30Views > 0 + stale → Review', r.advice, 'Review');
+        ok('Why mentions last 30 days', /last 30 days/.test(r.reason), 'reason: ' + r.reason);
+
+        // lastPageEdit doubles as a modification signal
+        const pageEditDate = new Date(Date.now() - 100 * 86400000).toISOString();
+        SharePoint.getWebInfo = async () => ({ LastItemUserModifiedDate: new Date(Date.now() - 800 * 86400000).toISOString() });
+        Graph.getSiteEngagement = async () => ({
+          ...baseEng,
+          lastPageEdit: { date: pageEditDate, name: 'Home.aspx', webUrl: 'https://x/p', modifiedBy: 'u@x' },
+        });
+        r = await Analysis.analyzeSite(
+          { id: 'tenant,site,web', webUrl: 'https://x.sharepoint.com/sites/pe', lastModifiedDateTime: null },
+          { staleDays: 365 });
+        eq('lastPageEditDate captured in signals', r.signals.lastPageEditDate.toISOString(), pageEditDate);
+        ok('Page edit extends lastModified', r.lastModified.getTime() === new Date(pageEditDate).getTime());
+        eq('lastPageEditName captured', r.signals.lastPageEditName, 'Home.aspx');
+
+        // quotaUsedBytes → storageMB
+        Graph.getSiteEngagement = async () => ({ ...baseEng, quotaUsedBytes: 5 * 1048576 });
+        r = await Analysis.analyzeSite(
+          { id: 'tenant,site,web', webUrl: 'https://x.sharepoint.com/sites/q', lastModifiedDateTime: null },
+          { staleDays: 365 });
+        eq('quotaUsedBytes → storageMB', r.storageMB, 5);
+
+        // Engagement throws → still works, no crash, error captured
+        Graph.getSiteEngagement = async () => { throw new Error('graph 500'); };
+        r = await Analysis.analyzeSite(
+          { id: 'tenant,site,web', webUrl: 'https://x.sharepoint.com/sites/j', lastModifiedDateTime: null },
+          { staleDays: 365 });
+        ok('Engagement error captured', (r.errors || []).some(e => e && /graph 500/.test(e)), 'errors: ' + JSON.stringify(r.errors));
+      } finally {
+        SharePoint.getWebInfo = realWeb;
+        SharePoint.getDocLibsLastModified = realLibs;
+        SharePoint.getSiteOwners = realOwners;
+        Graph.getSiteEngagement = realEng;
+      }
+    })();
+
+    // ---------- System site detection ----------
+    (async function testSystemSiteOverride() {
+      const realWeb = SharePoint.getWebInfo;
+      const realLibs = SharePoint.getDocLibsLastModified;
+      const realOwners = SharePoint.getSiteOwners;
+      const realEng = Graph.getSiteEngagement;
+      // Make every site look very stale + zero views so the rule engine would
+      // normally say "Clean up". The override should still force "Keep".
+      SharePoint.getWebInfo = async () => ({ LastItemUserModifiedDate: new Date(Date.now() - 1500 * 86400000).toISOString() });
+      SharePoint.getDocLibsLastModified = async () => ([]);
+      SharePoint.getSiteOwners = async () => ([]);
+      Graph.getSiteEngagement = async () => ({
+        allTimeViews: 0, allTimeActors: 0, allTimeStart: null, allTimeEnd: null,
+        recentViews: 0, recentActors: 0, recentStart: null, recentEnd: null,
+        last30Views: 0, last30Actors: 0, last30LastDay: null,
+        lastPageEdit: null, quotaUsedBytes: null,
+      });
+      try {
+        const cases = [
+          { label: 'tenant root site',  site: { webUrl: 'https://contoso.sharepoint.com/' } },
+          { label: 'admin host',        site: { webUrl: 'https://contoso-admin.sharepoint.com/' } },
+          { label: 'mysite host root',  site: { webUrl: 'https://contoso-my.sharepoint.com/' } },
+          { label: '/search',           site: { webUrl: 'https://contoso.sharepoint.com/search' } },
+          { label: '/sites/appcatalog', site: { webUrl: 'https://contoso.sharepoint.com/sites/appcatalog' } },
+          { label: 'content type hub',  site: { webUrl: 'https://contoso.sharepoint.com/sites/contenttypehub' } },
+          { label: 'APPCATALOG template', site: { webUrl: 'https://x.sharepoint.com/sites/whatever', root: { '@odata.type': '#SP.SiteCollection.APPCATALOG#0' } } },
+          { label: 'TENANTADMIN template', site: { webUrl: 'https://x.sharepoint.com/sites/random', root: { '@odata.type': '#SP.SiteCollection.TENANTADMIN#0' } } },
+          { label: 'POINTPUBLISHINGTOPIC template', site: { webUrl: 'https://x.sharepoint.com/sites/topics', root: { '@odata.type': '#SP.SiteCollection.POINTPUBLISHINGTOPIC#0' } } },
+        ];
+        for (const c of cases) {
+          const r = await Analysis.analyzeSite(c.site, { staleDays: 365 });
+          eq(`System site forced to Keep: ${c.label}`, r.advice, 'Keep');
+          ok(`System site reason mentions 'System site' (${c.label})`, /System site/i.test(r.reason), 'reason: ' + r.reason);
+        }
+        // Sanity: a regular site collection in /sites/ does NOT get forced.
+        const normal = await Analysis.analyzeSite({ webUrl: 'https://contoso.sharepoint.com/sites/marketing' }, { staleDays: 365 });
+        ok('Normal site is not forced to Keep', normal.advice !== 'Keep' || !/System site/i.test(normal.reason));
+
+        // Direct helper checks (no analyze flow)
+        eq('isSystemSite admin host',   !!Analysis.isSystemSite({ webUrl: 'https://x-admin.sharepoint.com/' }), true);
+        eq('isSystemSite mysite root',  !!Analysis.isSystemSite({ webUrl: 'https://x-my.sharepoint.com/' }), true);
+        eq('isSystemSite individual OneDrive is NOT system', !!Analysis.isSystemSite({ webUrl: 'https://x-my.sharepoint.com/personal/u_x_com' }), false);
+        eq('isSystemSite normal /sites/foo', !!Analysis.isSystemSite({ webUrl: 'https://x.sharepoint.com/sites/foo' }), false);
+      } finally {
+        SharePoint.getWebInfo = realWeb;
+        SharePoint.getDocLibsLastModified = realLibs;
+        SharePoint.getSiteOwners = realOwners;
+        Graph.getSiteEngagement = realEng;
+      }
+    })();
+
+    // ---------- normalizeUrl ----------
+    (function testNormalizeUrl() {
+      eq('normalizeUrl trailing slash', Graph.normalizeUrl('https://X.SharePoint.com/sites/Foo/'), 'https://x.sharepoint.com/sites/foo');
+      eq('normalizeUrl percent decode', Graph.normalizeUrl('https://x.sharepoint.com/sites/My%20Site'), 'https://x.sharepoint.com/sites/my site');
+    })();
+
+    // ---------- Concurrency ----------
+    (async function testPmap() {
+      const items = [1,2,3,4,5,6,7,8,9,10];
+      let progressFinal = 0;
+      const { results } = await Concurrency.pmap(items, async (n) => n * 2, {
+        concurrency: 3,
+        onProgress: (d) => { progressFinal = d; },
+      });
+      eq('pmap maps each item', results, items.map(x => x * 2));
+      eq('pmap calls onProgress to completion', progressFinal, items.length);
+
+      // Cancellation
+      const ct = new Concurrency.CancelToken();
+      let cancelled = false;
+      setTimeout(() => ct.cancel(), 20);
+      const r2 = await Concurrency.pmap([1,2,3,4,5], async (n) => {
+        await Concurrency.sleep(50);
+        ct.throwIfCancelled();
+        return n;
+      }, { concurrency: 1, cancelToken: ct });
+      cancelled = r2.results.some(x => x && x.__error);
+      ok('pmap respects cancelToken', cancelled);
+    })();
+
+    // ---------- Final summary ----------
+    setTimeout(() => {
+      const summary = document.createElement('h2');
+      summary.textContent = `Summary: ${pass} passed, ${fail} failed`;
+      summary.style.color = fail === 0 ? '#128d4f' : '#c0392b';
+      results.appendChild(summary);
+    }, 500);
+  </script>
+</body>
+</html>

@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>InactiveDevices - tests</title>
+  <style>
+    body { font: 14px/1.4 -apple-system,Segoe UI,sans-serif; padding: 20px; max-width: 900px; margin: 0 auto; }
+    .pass { color: #1f7a3a; }
+    .fail { color: #b32026; font-weight: bold; }
+    pre { background: #f4f4f6; padding: 10px; border-radius: 6px; overflow: auto; }
+    h1 { font-size: 18px; }
+  </style>
+</head>
+<body>
+  <h1>InactiveDevices - unit tests</h1>
+  <div id="out"></div>
+  <script src="../src/log.js"></script>
+  <script src="../src/devices.js"></script>
+  <script>
+    const out = document.getElementById('out');
+    let pass = 0;
+    let fail = 0;
+
+    function test(name, fn) {
+      try {
+        fn();
+        out.insertAdjacentHTML('beforeend', `<div class="pass">PASS ${name}</div>`);
+        pass++;
+      } catch (e) {
+        out.insertAdjacentHTML('beforeend', `<div class="fail">FAIL ${name}<br><pre>${e.stack || e.message}</pre></div>`);
+        fail++;
+      }
+    }
+
+    function eq(a, b, m = '') {
+      const A = JSON.stringify(a);
+      const B = JSON.stringify(b);
+      if (A !== B) throw new Error(`${m} expected ${B}, got ${A}`);
+    }
+
+    const NOW = new Date('2026-01-01T00:00:00Z');
+
+    test('isAutopilot uses managed.autopilotEnrolled when available', () => {
+      eq(Devices.isAutopilot({}, { autopilotEnrolled: true }), true);
+      eq(Devices.isAutopilot({}, { autopilotEnrolled: false }), false);
+      // fallback: devicePhysicalIds ZTDId check for unmanaged devices
+      eq(Devices.isAutopilot({ devicePhysicalIds: ['[ZTDId]:123'] }, null), true);
+      eq(Devices.isAutopilot({ devicePhysicalIds: ['[OrderId]:ABC'] }, null), false);
+      eq(Devices.isAutopilot({}, null), false);
+    });
+      const map = Devices.buildManagedMap([
+        { azureADDeviceId: 'ABC', userPrincipalName: 'u@contoso.com' },
+      ]);
+      eq(map.get('abc').userPrincipalName, 'u@contoso.com');
+    });
+
+    test('enrich computes lastActive from max(lastSignIn,lastSync) and uses Autopilot flag', () => {
+      const managedMap = Devices.buildManagedMap([
+        {
+          azureADDeviceId: 'D1',
+          userPrincipalName: 'user@contoso.com',
+          lastSyncDateTime: '2025-12-15T00:00:00Z',
+          autopilotEnrolled: true,
+        },
+      ]);
+      const r = Devices.enrich({
+        id: 'x',
+        deviceId: 'D1',
+        displayName: 'PC-01',
+        createdDateTime: '2025-01-01T00:00:00Z',
+        approximateLastSignInDateTime: '2025-12-01T00:00:00Z',
+        operatingSystem: 'Windows',
+        trustType: 'AzureAD',
+        isManaged: false,
+        devicePhysicalIds: [],
+      }, managedMap, NOW);
+
+      eq(Devices.fmtDate(r.lastActive), '2025-12-15');
+      eq(r.primaryUser, 'user@contoso.com');
+      eq(r.isManagedEffective, true);
+      eq(r.isAutopilot, true);  // matched via managed.autopilotEnrolled
+      eq(r.joinType, 'Azure AD joined');
+      eq(r.inactiveDays, 17);
+      eq(r.deviceAgeDays, 365);
+    });
+
+    test('enrich falls back to creation date if no activity', () => {
+      const r = Devices.enrich({
+        id: 'x2',
+        deviceId: 'D2',
+        createdDateTime: '2025-11-01T00:00:00Z',
+        trustType: 'Workplace',
+      }, new Map(), NOW);
+      eq(r.neverActive, true);
+      eq(r.inactiveDays, 61);
+      eq(r.joinType, 'Azure AD registered');
+    });
+
+    test('passesFilter supports key dimensions', () => {
+      const d = {
+        displayName: 'Laptop-01',
+        deviceId: 'abc',
+        id: 'id1',
+        primaryUser: 'alice@contoso.com',
+        operatingSystem: 'Windows',
+        operatingSystemVersion: '11',
+        osBucket: 'windows',
+        inactiveDays: 120,
+        deviceAgeDays: 340,
+        joinType: 'Azure AD joined',
+        isAutopilot: true,
+        isManagedEffective: true,
+        accountEnabled: true,
+      };
+      eq(Devices.passesFilter(d, { search: 'alice' }), true);
+      eq(Devices.passesFilter(d, { search: 'bob' }), false);
+      eq(Devices.passesFilter(d, { minInactive: 130 }), false);
+      eq(Devices.passesFilter(d, { minInactive: 90 }), true);
+      eq(Devices.passesFilter(d, { osFilter: 'windows' }), true);
+      eq(Devices.passesFilter(d, { osFilter: 'android' }), false);
+      eq(Devices.passesFilter(d, { joinType: 'Azure AD joined' }), true);
+      eq(Devices.passesFilter(d, { autopilot: 'yes' }), true);
+      eq(Devices.passesFilter(d, { autopilot: 'no' }), false);
+      eq(Devices.passesFilter(d, { managed: 'managed' }), true);
+      eq(Devices.passesFilter(d, { hasPrimaryUser: 'yes' }), true);
+      eq(Devices.passesFilter(d, { enabled: 'disabled' }), false);
+    });
+
+    out.insertAdjacentHTML('beforeend', `<h2>${pass} passed, ${fail} failed</h2>`);
+  </script>
+</body>
+</html>
