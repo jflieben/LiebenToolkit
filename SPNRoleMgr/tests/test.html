@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>SPNRoleMgr - tests</title>
+  <style>
+    body { font: 14px/1.4 -apple-system,Segoe UI,sans-serif; padding: 20px; max-width: 900px; margin: 0 auto; }
+    .pass { color: #1f7a3a; } .fail { color: #b32026; font-weight: bold; }
+    pre { background: #f4f4f6; padding: 10px; border-radius: 6px; overflow: auto; }
+    h1 { font-size: 18px; }
+  </style>
+</head>
+<body>
+  <h1>SPNRoleMgr - unit tests for pure helpers</h1>
+  <div id="out"></div>
+  <script src="../src/log.js"></script>
+  <script src="../src/spns.js"></script>
+  <script>
+    // Tiny test harness. No build step.
+    const out = document.getElementById('out');
+    let pass = 0, fail = 0;
+    function test(name, fn) {
+      try {
+        fn();
+        out.insertAdjacentHTML('beforeend', `<div class="pass">PASS ${name}</div>`);
+        pass++;
+      } catch (e) {
+        out.insertAdjacentHTML('beforeend', `<div class="fail">FAIL ${name}<br><pre>${e.stack || e.message}</pre></div>`);
+        fail++;
+      }
+    }
+    function eq(a, b, msg = '') {
+      const A = JSON.stringify(a), B = JSON.stringify(b);
+      if (A !== B) throw new Error(`${msg} expected ${B}, got ${A}`);
+    }
+
+    // classifySpn
+    test('classifySpn: Microsoft first-party', () => {
+      eq(Spns.classifySpn({ servicePrincipalType: 'Application', appOwnerOrganizationId: Spns.MS_FIRST_PARTY_TENANT }), 'Microsoft first-party');
+    });
+    test('classifySpn: User-assigned managed identity', () => {
+      eq(Spns.classifySpn({ servicePrincipalType: 'ManagedIdentity', tags: ['UserAssigned,MSI'] }), 'Managed identity (user-assigned)');
+    });
+    test('classifySpn: System-assigned managed identity', () => {
+      eq(Spns.classifySpn({ servicePrincipalType: 'ManagedIdentity', tags: [] }), 'Managed identity (system-assigned)');
+    });
+    test('classifySpn: Application fallback', () => {
+      eq(Spns.classifySpn({ servicePrincipalType: 'Application', appOwnerOrganizationId: 'tenant-x' }), 'Application');
+    });
+
+    // buildPermissionIndex
+    test('buildPermissionIndex: maps appRoles + scopes', () => {
+      const sp = {
+        appRoles: [{ id: 'r1', value: 'User.Read.All', displayName: 'Read users', description: 'desc' }],
+        oauth2PermissionScopes: [{ id: 's1', value: 'Mail.Read', adminConsentDisplayName: 'Read mail', adminConsentDescription: 'desc2' }],
+      };
+      const idx = Spns.buildPermissionIndex(sp);
+      eq(idx.get('r1').type, 'AppRole');
+      eq(idx.get('r1').name, 'User.Read.All');
+      eq(idx.get('s1').type, 'OAuth2');
+      eq(idx.get('s1').name, 'Mail.Read');
+    });
+    test('buildPermissionIndex: handles null SPN', () => {
+      eq(Spns.buildPermissionIndex(null).size, 0);
+    });
+
+    // parseScopeString / joinScopeString
+    test('parseScopeString: splits and trims', () => {
+      eq(Spns.parseScopeString('  Mail.Read   User.Read  '), ['Mail.Read', 'User.Read']);
+      eq(Spns.parseScopeString(''), []);
+      eq(Spns.parseScopeString(null), []);
+    });
+    test('joinScopeString: dedupes and trims', () => {
+      eq(Spns.joinScopeString(['Mail.Read', ' User.Read ', 'Mail.Read']), 'Mail.Read User.Read');
+    });
+
+    test('summarizePermissionRemoval: counts app roles, grants and delegated scopes', () => {
+      const summary = Spns.summarizePermissionRemoval(
+        [{ id: 'a1' }, { id: 'a2' }],
+        [{ id: 'g1', scope: 'Mail.Read User.Read' }, { id: 'g2', scope: 'Files.Read' }]
+      );
+      eq(summary.appRoleCount, 2);
+      eq(summary.grantCount, 2);
+      eq(summary.delegatedScopeCount, 3);
+      eq(summary.totalPermissionEntries, 4);
+    });
+
+    // isMicrosoftFirstParty
+    test('isMicrosoftFirstParty: matches the well-known tenant id', () => {
+      eq(Spns.isMicrosoftFirstParty({ appOwnerOrganizationId: Spns.MS_FIRST_PARTY_TENANT }), true);
+      eq(Spns.isMicrosoftFirstParty({ appOwnerOrganizationId: 'other' }), false);
+      eq(Spns.isMicrosoftFirstParty(null), false);
+    });
+
+    // assignable permission helpers
+    test('hasAssignableAppRoles: only enabled app roles assignable to Application', () => {
+      const sp = {
+        appRoles: [
+          { id: '1', isEnabled: true, allowedMemberTypes: ['Application'] },
+          { id: '2', isEnabled: true, allowedMemberTypes: ['User'] },
+        ],
+      };
+      eq(Spns.hasAssignableAppRoles(sp), true);
+      eq(Spns.hasAssignableAppRoles({ appRoles: [{ isEnabled: true, allowedMemberTypes: ['User'] }] }), false);
+    });
+    test('hasAssignableDelegatedScopes: only enabled delegated scopes count', () => {
+      eq(Spns.hasAssignableDelegatedScopes({ oauth2PermissionScopes: [{ id: 's1', isEnabled: true }] }), true);
+      eq(Spns.hasAssignableDelegatedScopes({ oauth2PermissionScopes: [{ id: 's2', isEnabled: false }] }), false);
+      eq(Spns.hasAssignableDelegatedScopes(null), false);
+    });
+    test('hasAssignablePermissions: true when either app role or scope is assignable', () => {
+      eq(Spns.hasAssignablePermissions({ appRoles: [{ isEnabled: true, allowedMemberTypes: ['Application'] }], oauth2PermissionScopes: [] }), true);
+      eq(Spns.hasAssignablePermissions({ appRoles: [], oauth2PermissionScopes: [{ isEnabled: true }] }), true);
+      eq(Spns.hasAssignablePermissions({ appRoles: [{ isEnabled: true, allowedMemberTypes: ['User'] }], oauth2PermissionScopes: [{ isEnabled: false }] }), false);
+    });
+
+    // Sites.Selected detection
+    test('hasSitesSelected: true for Sites.Selected on Microsoft Graph', () => {
+      const resourceCache = new Map([['res-graph', { appId: Spns.GRAPH_APP_ID }]]);
+      const idx = new Map([['role-1', { name: 'Sites.Selected' }]]);
+      const resourceIndexCache = new Map([['res-graph', idx]]);
+      const appRoles = [{ resourceId: 'res-graph', appRoleId: 'role-1' }];
+      eq(Spns.hasSitesSelected(appRoles, resourceCache, resourceIndexCache), true);
+    });
+    test('hasSitesSelected: true for Sites.Selected on SharePoint Online', () => {
+      const resourceCache = new Map([['res-spo', { appId: Spns.SPO_APP_ID }]]);
+      const idx = new Map([['role-x', { name: 'Sites.Selected' }]]);
+      const resourceIndexCache = new Map([['res-spo', idx]]);
+      const appRoles = [{ resourceId: 'res-spo', appRoleId: 'role-x' }];
+      eq(Spns.hasSitesSelected(appRoles, resourceCache, resourceIndexCache), true);
+    });
+    test('hasSitesSelected: false when Sites.Selected is on some other API', () => {
+      const resourceCache = new Map([['res-other', { appId: 'some-other-app-id' }]]);
+      const idx = new Map([['role-1', { name: 'Sites.Selected' }]]);
+      const resourceIndexCache = new Map([['res-other', idx]]);
+      const appRoles = [{ resourceId: 'res-other', appRoleId: 'role-1' }];
+      eq(Spns.hasSitesSelected(appRoles, resourceCache, resourceIndexCache), false);
+    });
+    test('hasSitesSelected: false for a different Graph role', () => {
+      const resourceCache = new Map([['res-graph', { appId: Spns.GRAPH_APP_ID }]]);
+      const idx = new Map([['role-1', { name: 'Sites.ReadWrite.All' }]]);
+      const resourceIndexCache = new Map([['res-graph', idx]]);
+      const appRoles = [{ resourceId: 'res-graph', appRoleId: 'role-1' }];
+      eq(Spns.hasSitesSelected(appRoles, resourceCache, resourceIndexCache), false);
+    });
+    test('hasSitesSelected: safe on empty / missing inputs', () => {
+      eq(Spns.hasSitesSelected(null, null, null), false);
+      eq(Spns.hasSitesSelected([], new Map(), new Map()), false);
+    });
+
+    // Site permission normalization
+    test('extractSiteAppPermissions: flattens grantedToIdentitiesV2', () => {
+      const perms = [
+        { id: 'p1', roles: ['read'], grantedToIdentitiesV2: [{ application: { id: 'app-1', displayName: 'App One' } }] },
+        { id: 'p2', roles: ['write', 'read'], grantedToIdentitiesV2: [{ application: { id: 'app-2', displayName: 'App Two' } }] },
+      ];
+      const rows = Spns.extractSiteAppPermissions(perms);
+      eq(rows.length, 2);
+      eq(rows[0], { permissionId: 'p1', appId: 'app-1', displayName: 'App One', roles: ['read'] });
+      eq(rows[1].roles, ['write', 'read']);
+    });
+    test('extractSiteAppPermissions: falls back to grantedToIdentities and skips non-app', () => {
+      const perms = [
+        { id: 'p1', roles: ['read'], grantedToIdentities: [{ application: { id: 'app-1' } }] },
+        { id: 'p2', roles: ['read'], grantedToIdentitiesV2: [{ user: { id: 'u1' } }] },
+      ];
+      const rows = Spns.extractSiteAppPermissions(perms);
+      eq(rows.length, 1);
+      eq(rows[0].appId, 'app-1');
+      eq(rows[0].displayName, '');
+    });
+    test('findAppPermissionOnSite: matches by appId case-insensitively', () => {
+      const perms = [{ id: 'p1', roles: ['write'], grantedToIdentitiesV2: [{ application: { id: 'AAA-Bbb', displayName: 'X' } }] }];
+      eq(Spns.findAppPermissionOnSite(perms, 'aaa-bbb').permissionId, 'p1');
+      eq(Spns.findAppPermissionOnSite(perms, 'nope'), null);
+      eq(Spns.findAppPermissionOnSite(perms, null), null);
+    });
+
+    // Auth file parser (loaded inline since auth.js exposes it)
+  </script>
+  <script src="../src/auth.js"></script>
+  <script>
+    test('Auth._parseAuthFile: parses key:value lines', () => {
+      const cfg = Auth._parseAuthFile('clientId:abc\nredirect-url-local: http://localhost:1985\nredirect-url-web: https://example.com\n# comment\n');
+      eq(cfg.clientId, 'abc');
+      eq(cfg['redirect-url-local'], 'http://localhost:1985');
+      eq(cfg['redirect-url-web'], 'https://example.com');
+    });
+    test('Auth._pickRedirectUriForOrigin: picks local for localhost', () => {
+      const cfg = { 'redirect-url-local': 'http://localhost:1985', 'redirect-url-web': 'https://x.example.com' };
+      eq(Auth._pickRedirectUriForOrigin(cfg, 'http://localhost:1985'), 'http://localhost:1985');
+      eq(Auth._pickRedirectUriForOrigin(cfg, 'https://x.example.com'), 'https://x.example.com');
+    });
+
+    out.insertAdjacentHTML('beforeend', `<h2>${pass} passed, ${fail} failed</h2>`);
+  </script>
+</body>
+</html>

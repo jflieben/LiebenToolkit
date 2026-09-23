@@ -1,0 +1,61 @@
+{
+  "value": [
+    {
+      "isZtModelRow": true,
+      "customData": null,
+      "roleDefinitionId": null,
+      "ticketInfo": {
+        "ticketNumber": null,
+        "ticketSystem": null
+      },
+      "principalId": null,
+      "scheduleInfo": {
+        "expiration": {
+          "duration": null,
+          "type": null,
+          "endDateTime": "1900-01-01T00:00:00Z"
+        },
+        "startDateTime": "1900-01-01T00:00:00Z",
+        "recurrence": null
+      },
+      "action": null,
+      "principal": {
+        "@odata.type": null,
+        "displayName": null,
+        "userPrincipalName": null,
+        "uniqueName": null,
+        "id": null,
+        "createdDateTime": "1900-01-01T00:00:00Z",
+        "renewedDateTime": "1900-01-01T00:00:00Z",
+        "refreshTokensValidFromDateTime": "1900-01-01T00:00:00Z",
+        "signInSessionsValidFromDateTime": "1900-01-01T00:00:00Z",
+        "assignedPlans": [
+          {
+            "assignedDateTime": "1900-01-01T00:00:00Z",
+            "capabilityStatus": null,
+            "service": null,
+            "servicePlanId": null
+          }
+        ]
+      },
+      "targetScheduleId": null,
+      "justification": null,
+      "isValidationOnly": false,
+      "completedDateTime": "1900-01-01T00:00:00Z",
+      "appScopeId": null,
+      "id": null,
+      "createdDateTime": "1900-01-01T00:00:00Z",
+      "status": null,
+      "directoryScopeId": null,
+      "createdBy": {
+        "device": null,
+        "application": null,
+        "user": {
+          "displayName": null,
+          "id": null
+        }
+      },
+      "approvalId": null
+    }
+  ]
+}

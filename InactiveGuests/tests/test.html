@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>InactiveGuests - tests</title>
+  <style>
+    body { font: 14px/1.4 -apple-system,Segoe UI,sans-serif; padding: 20px; max-width: 900px; margin: 0 auto; }
+    .pass { color: #1f7a3a; } .fail { color: #b32026; font-weight: bold; }
+    pre { background: #f4f4f6; padding: 10px; border-radius: 6px; overflow: auto; }
+    h1 { font-size: 18px; }
+  </style>
+</head>
+<body>
+  <h1>InactiveGuests - unit tests</h1>
+  <div id="out"></div>
+  <script src="../src/log.js"></script>
+  <script src="../src/guests.js"></script>
+  <script>
+    const out = document.getElementById('out');
+    let pass = 0, fail = 0;
+    function test(name, fn) {
+      try { fn(); out.insertAdjacentHTML('beforeend', `<div class="pass">PASS ${name}</div>`); pass++; }
+      catch (e) { out.insertAdjacentHTML('beforeend', `<div class="fail">FAIL ${name}<br><pre>${e.stack || e.message}</pre></div>`); fail++; }
+    }
+    function eq(a, b, m='') {
+      const A = JSON.stringify(a), B = JSON.stringify(b);
+      if (A !== B) throw new Error(`${m} expected ${B}, got ${A}`);
+    }
+
+    const NOW = new Date('2026-01-01T00:00:00Z');
+
+    test('lastSignInDate: prefers most recent of interactive vs non-interactive', () => {
+      const u = { signInActivity: { lastSignInDateTime: '2025-06-01T00:00:00Z', lastNonInteractiveSignInDateTime: '2025-12-01T00:00:00Z' } };
+      eq(Guests.lastSignInDate(u).toISOString(), '2025-12-01T00:00:00.000Z');
+    });
+    test('lastSignInDate: ignores zero date', () => {
+      const u = { signInActivity: { lastSignInDateTime: '0001-01-01T00:00:00Z', lastNonInteractiveSignInDateTime: null } };
+      eq(Guests.lastSignInDate(u), null);
+    });
+    test('lastSignInDate: null signInActivity is null', () => {
+      eq(Guests.lastSignInDate({}), null);
+    });
+
+    test('enrich: never signed in falls back to creation date for inactiveDays', () => {
+      const u = { createdDateTime: '2025-09-01T00:00:00Z', signInActivity: null, externalUserState: 'PendingAcceptance' };
+      const r = Guests.enrich(u, NOW);
+      eq(r.neverSignedIn, true);
+      eq(r.inactiveDays, 122);
+      eq(r.accountAgeDays, 122);
+      eq(r.redemptionState, 'PendingAcceptance');
+    });
+    test('enrich: signed in computes inactiveDays from last sign-in', () => {
+      const u = {
+        createdDateTime: '2024-01-01T00:00:00Z',
+        signInActivity: { lastSignInDateTime: '2025-12-01T00:00:00Z' },
+        externalUserState: 'Accepted',
+      };
+      const r = Guests.enrich(u, NOW);
+      eq(r.neverSignedIn, false);
+      eq(r.inactiveDays, 31);
+      eq(r.redemptionState, 'Accepted');
+    });
+
+    test('passesFilter: search matches across multiple fields', () => {
+      const g = Guests.enrich({ displayName: 'Alice', userPrincipalName: 'alice_contoso.com#EXT#@tenant.com', mail: 'alice@contoso.com', companyName: 'Contoso', createdDateTime: '2025-01-01T00:00:00Z' }, NOW);
+      eq(Guests.passesFilter(g, { search: 'contoso' }), true);
+      eq(Guests.passesFilter(g, { search: 'wayne' }), false);
+    });
+    test('passesFilter: minInactive', () => {
+      const g = Guests.enrich({ createdDateTime: '2025-12-15T00:00:00Z', signInActivity: { lastSignInDateTime: '2025-12-15T00:00:00Z' } }, NOW);
+      eq(Guests.passesFilter(g, { minInactive: 30 }), false); // 17 days
+      eq(Guests.passesFilter(g, { minInactive: 10 }), true);
+    });
+    test('passesFilter: redemption + enabled', () => {
+      const g = Guests.enrich({ accountEnabled: false, externalUserState: 'PendingAcceptance', createdDateTime: '2024-01-01T00:00:00Z' }, NOW);
+      eq(Guests.passesFilter(g, { enabled: 'enabled' }), false);
+      eq(Guests.passesFilter(g, { enabled: 'disabled' }), true);
+      eq(Guests.passesFilter(g, { redemption: 'PendingAcceptance' }), true);
+      eq(Guests.passesFilter(g, { redemption: 'Accepted' }), false);
+    });
+    test('passesFilter: never signed in toggle', () => {
+      const never = Guests.enrich({ createdDateTime: '2024-01-01T00:00:00Z' }, NOW);
+      const signed = Guests.enrich({ createdDateTime: '2024-01-01T00:00:00Z', signInActivity: { lastSignInDateTime: '2025-12-01T00:00:00Z' } }, NOW);
+      eq(Guests.passesFilter(never,  { neverSignedIn: 'never' }), true);
+      eq(Guests.passesFilter(signed, { neverSignedIn: 'never' }), false);
+      eq(Guests.passesFilter(signed, { neverSignedIn: 'signed' }), true);
+    });
+
+    test('fmtDate: ISO date prefix only', () => {
+      eq(Guests.fmtDate(new Date('2025-06-01T12:34:56Z')), '2025-06-01');
+      eq(Guests.fmtDate(null), '');
+    });
+
+    out.insertAdjacentHTML('beforeend', `<h2>${pass} passed, ${fail} failed</h2>`);
+  </script>
+</body>
+</html>

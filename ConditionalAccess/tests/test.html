@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>ConditionalAccess tests</title>
+  <style>
+    body { font-family: system-ui, sans-serif; max-width: 950px; margin: 24px auto; padding: 0 16px; }
+    h1 { font-size: 18px; }
+    .test { padding: 6px 10px; margin: 3px 0; border-radius: 6px; }
+    .pass { background: #d6f3e3; color: #1f6e3a; }
+    .fail { background: #fde2e1; color: #b3261e; }
+    .group { margin-top: 18px; font-weight: 600; }
+    pre { background: #f4f6fa; padding: 8px; border-radius: 4px; font-size: 12px; }
+  </style>
+</head>
+<body>
+  <h1>ConditionalAccess unit tests</h1>
+  <div id="results"></div>
+
+  <script src="../src/policies.js"></script>
+  <script>
+    const root = document.getElementById('results');
+    let pass = 0, fail = 0;
+
+    function group(name) {
+      const d = document.createElement('div');
+      d.className = 'group';
+      d.textContent = name;
+      root.appendChild(d);
+    }
+
+    function it(name, fn) {
+      const d = document.createElement('div');
+      try {
+        fn();
+        d.className = 'test pass';
+        d.textContent = 'PASS - ' + name;
+        pass++;
+      } catch (e) {
+        d.className = 'test fail';
+        d.innerHTML = 'FAIL - ' + name + '<br><pre>' + (e.stack || e.message) + '</pre>';
+        fail++;
+      }
+      root.appendChild(d);
+    }
+
+    function eq(a, b, msg) {
+      const sa = JSON.stringify(a);
+      const sb = JSON.stringify(b);
+      if (sa !== sb) throw new Error((msg ? msg + ' - ' : '') + 'expected ' + sb + ', got ' + sa);
+    }
+
+    function truthy(v, msg) {
+      if (!v) throw new Error(msg || 'expected truthy, got ' + v);
+    }
+
+    group('parseImportPayload');
+    it('accepts array payload', () => {
+      const x = PolicyUtils.parseImportPayload('[{"displayName":"P1"}]');
+      eq(x.policies.length, 1);
+      eq(x.policies[0].displayName, 'P1');
+    });
+    it('accepts wrapped payload', () => {
+      const x = PolicyUtils.parseImportPayload('{"policies":[{"displayName":"P2"}],"metadata":{"m":1}}');
+      eq(x.policies.length, 1);
+      eq(x.metadata.m, 1);
+    });
+
+    group('principal extraction and mapping');
+    it('extracts GUIDs from users/groups only', () => {
+      const p = {
+        conditions: {
+          users: {
+            includeUsers: ['All', 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'],
+            excludeUsers: ['bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb'],
+            includeGroups: ['cccccccc-cccc-4ccc-8ccc-cccccccccccc'],
+            excludeGroups: ['not-guid'],
+          },
+        },
+      };
+      const ids = PolicyUtils.extractPrincipalIds(p).sort();
+      eq(ids, [
+        'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+        'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+        'cccccccc-cccc-4ccc-8ccc-cccccccccccc',
+      ]);
+    });
+    it('applies mapping to principal ids', () => {
+      const p = {
+        conditions: {
+          users: {
+            includeUsers: ['aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'],
+            excludeGroups: ['bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb'],
+          },
+        },
+      };
+      const out = PolicyUtils.applyPrincipalMapping(p, {
+        'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa': '11111111-1111-4111-8111-111111111111',
+        'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb': '22222222-2222-4222-8222-222222222222',
+      });
+      eq(out.conditions.users.includeUsers[0], '11111111-1111-4111-8111-111111111111');
+      eq(out.conditions.users.excludeGroups[0], '22222222-2222-4222-8222-222222222222');
+    });
+
+    group('normalize and starter set');
+    it('normalizes policy fields for create/update', () => {
+      const p = {
+        id: 'x',
+        displayName: 'Old',
+        state: 'disabled',
+        createdDateTime: '2024-01-01T00:00:00Z',
+        conditions: { users: { includeUsers: ['All'] } },
+      };
+      const out = PolicyUtils.normalizePolicyForCreateOrUpdate(p, 'New', 'enabled');
+      truthy(!out.id, 'id should be removed');
+      eq(out.displayName, 'New');
+      eq(out.state, 'enabled');
+    });
+    it('starter set contains expected baseline policies', () => {
+      const s = PolicyUtils.buildStarterPolicies();
+      truthy(s.length >= 6);
+
+      const byName = new Map(s.map((p) => [p.displayName, p]));
+      truthy(byName.has('Baseline - Block device code authentication'));
+      truthy(byName.has('Baseline - Require MFA for Microsoft admin portals'));
+      truthy(byName.has('Baseline - Protect security info registration with MFA'));
+
+      const deviceCode = byName.get('Baseline - Block device code authentication');
+      eq(deviceCode.grantControls.builtInControls, ['block']);
+      eq(deviceCode.conditions.authenticationFlows.transferMethods, ['deviceCodeFlow']);
+    });
+
+    group('comparePolicySets');
+    it('detects added, removed and changed policies', () => {
+      const oldSet = [
+        { displayName: 'A', state: 'disabled', conditions: { users: { includeUsers: ['All'] } } },
+        { displayName: 'B', state: 'enabled', conditions: { users: { includeUsers: ['All'] } } },
+      ];
+      const newSet = [
+        { displayName: 'A', state: 'enabled', conditions: { users: { includeUsers: ['All'] } } },
+        { displayName: 'C', state: 'enabled', conditions: { users: { includeUsers: ['All'] } } },
+      ];
+      const d = PolicyUtils.comparePolicySets(oldSet, newSet);
+      eq(d.added, ['C']);
+      eq(d.removed, ['B']);
+      eq(d.changed.length, 1);
+      eq(d.changed[0].name, 'A');
+    });
+
+    setTimeout(() => {
+      const sum = document.createElement('div');
+      sum.className = fail === 0 ? 'test pass' : 'test fail';
+      sum.style.marginTop = '18px';
+      sum.textContent = `${pass} passed, ${fail} failed`;
+      root.appendChild(sum);
+    }, 30);
+  </script>
+</body>
+</html>

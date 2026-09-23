@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>SPOMove - tests</title>
+  <style>
+    body { font: 14px/1.4 -apple-system,Segoe UI,sans-serif; padding: 20px; max-width: 900px; margin: 0 auto; }
+    .pass { color: #1f7a3a; } .fail { color: #b32026; font-weight: bold; }
+    pre { background: #f4f4f6; padding: 10px; border-radius: 6px; overflow: auto; }
+    h1 { font-size: 18px; }
+    #summary { font-weight: bold; margin: 12px 0; }
+  </style>
+</head>
+<body>
+  <h1>SPOMove - unit tests for pure helpers</h1>
+  <div id="summary"></div>
+  <div id="out"></div>
+  <script src="../src/log.js"></script>
+  <script src="../src/concurrency.js"></script>
+  <script src="../src/auth.js"></script>
+  <script src="../src/graph.js"></script>
+  <script src="../src/sharepoint.js"></script>
+  <script src="../src/transfer.js"></script>
+  <script>
+    const out = document.getElementById('out');
+    let pass = 0, fail = 0;
+    function test(name, fn) {
+      try { fn(); out.insertAdjacentHTML('beforeend', `<div class="pass">PASS ${name}</div>`); pass++; }
+      catch (e) { out.insertAdjacentHTML('beforeend', `<div class="fail">FAIL ${name}<br><pre>${e.stack || e.message}</pre></div>`); fail++; }
+    }
+    function eq(a, b, msg = '') {
+      const A = JSON.stringify(a), B = JSON.stringify(b);
+      if (A !== B) throw new Error(`${msg} expected ${B}, got ${A}`);
+    }
+
+    const SP = window.SharePoint;
+
+    // ---- path helpers ----
+    test('trimUrl strips trailing slashes', () => {
+      eq(SP.trimUrl('https://t.sharepoint.com/sites/A/'), 'https://t.sharepoint.com/sites/A');
+      eq(SP.trimUrl('https://t.sharepoint.com/sites/A'), 'https://t.sharepoint.com/sites/A');
+    });
+    test('serverRelativeOf returns pathname', () => {
+      eq(SP.serverRelativeOf('https://t.sharepoint.com/sites/A/Shared Documents/f.docx'), '/sites/A/Shared Documents/f.docx');
+    });
+    test('hostOf returns host', () => {
+      eq(SP.hostOf('https://contoso.sharepoint.com/sites/A'), 'contoso.sharepoint.com');
+    });
+    test('folderOf returns parent folder', () => {
+      eq(SP.folderOf('/sites/A/Docs/sub/file.txt'), '/sites/A/Docs/sub');
+      eq(SP.folderOf('/file.txt'), '/');
+    });
+    test('nameOf returns file name', () => {
+      eq(SP.nameOf('/sites/A/Docs/sub/file.txt'), 'file.txt');
+      eq(SP.nameOf('file.txt'), 'file.txt');
+    });
+    test('joinPath joins folder and name', () => {
+      eq(SP.joinPath('/sites/A/Docs/', 'file.txt'), '/sites/A/Docs/file.txt');
+      eq(SP.joinPath('/sites/A/Docs', 'file.txt'), '/sites/A/Docs/file.txt');
+    });
+
+    // ---- OData path encoding ----
+    test('spPath doubles single quotes and encodes', () => {
+      eq(SP.spPath("/sites/A/O'Brien/f.txt"), encodeURIComponent("/sites/A/O''Brien/f.txt"));
+    });
+    test('spPath encodes spaces and hash', () => {
+      eq(SP.spPath('/sites/A/My Docs/a#b.txt'), encodeURIComponent('/sites/A/My Docs/a#b.txt'));
+    });
+
+    // ---- claim login name ----
+    test('buildClaimLoginName wraps a UPN', () => {
+      eq(SP.buildClaimLoginName('user@contoso.com'), 'i:0#.f|membership|user@contoso.com');
+    });
+    test('buildClaimLoginName passes through an existing claim', () => {
+      eq(SP.buildClaimLoginName('i:0#.f|membership|user@contoso.com'), 'i:0#.f|membership|user@contoso.com');
+    });
+
+    // ---- byte formatting ----
+    test('fmtBytes formats magnitudes', () => {
+      eq(window.Transfer.fmtBytes(0), '0 B');
+      eq(window.Transfer.fmtBytes(1024), '1.0 KB');
+      eq(window.Transfer.fmtBytes(1048576), '1.0 MB');
+    });
+
+    // ---- .auth parsing ----
+    test('Auth._parseAuthFile parses key:value and skips comments', () => {
+      const cfg = window.Auth._parseAuthFile('# comment\nclientId: abc\nredirect-url-local: http://localhost:1985\n');
+      eq(cfg.clientId, 'abc');
+      eq(cfg['redirect-url-local'], 'http://localhost:1985');
+    });
+
+    // ---- OneDrive site URL derivation ----
+    test('oneDriveSiteUrlFromWebUrl strips the default document library', () => {
+      eq(window.Graph.oneDriveSiteUrlFromWebUrl('https://lieben-my.sharepoint.com/personal/jos_lieben_nu/Documents'),
+         'https://lieben-my.sharepoint.com/personal/jos_lieben_nu');
+    });
+    test('oneDriveSiteUrlFromWebUrl handles a nested library folder', () => {
+      eq(window.Graph.oneDriveSiteUrlFromWebUrl('https://t-my.sharepoint.com/personal/a_b_com/Documents/Sub/Deep'),
+         'https://t-my.sharepoint.com/personal/a_b_com');
+    });
+    test('oneDriveSiteUrlFromWebUrl returns null for empty input', () => {
+      eq(window.Graph.oneDriveSiteUrlFromWebUrl(''), null);
+    });
+
+    // ---- concurrency limiter (async) ----
+    async function asyncTests() {
+      let ok = true, err = null;
+      try {
+        let seen = 0;
+        const { results } = await window.Concurrency.pmap([1, 2, 3, 4], async (n) => n * 2, {
+          concurrency: 2, onProgress: () => seen++,
+        });
+        eq(results, [2, 4, 6, 8]);
+        eq(seen, 4);
+      } catch (e) { ok = false; err = e; }
+      if (ok) { out.insertAdjacentHTML('beforeend', `<div class="pass">PASS Concurrency.pmap runs all items and reports progress</div>`); pass++; }
+      else { out.insertAdjacentHTML('beforeend', `<div class="fail">FAIL Concurrency.pmap<br><pre>${err.stack || err.message}</pre></div>`); fail++; }
+    }
+
+    asyncTests().finally(() => {
+      document.getElementById('summary').innerHTML = `<span class="${fail ? 'fail' : 'pass'}">${pass} passed, ${fail} failed</span>`;
+    });
+  </script>
+</body>
+</html>

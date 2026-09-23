@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<!-- Append ?theme=dark to preview the dark palette. -->
+<head>
+  <meta charset="UTF-8"/>
+  <title>SimpleZTA dashboard preview</title>
+  <base href="../"/>
+  <link rel="stylesheet" href="style.css"/>
+</head>
+<body>
+  <main>
+    <div id="dashboardRoot"></div>
+  </main>
+  <script>
+    window.Auth = { coreScopes: [], getAccount: () => null };
+    if (new URLSearchParams(location.search).get('theme') === 'dark') {
+      document.documentElement.dataset.theme = 'dark';
+    }
+  </script>
+  <script src="src/log.js"></script>
+  <script src="src/storage.js"></script>
+  <script src="src/md.js"></script>
+  <script src="src/charts.js"></script>
+  <script src="src/ui-dashboard.js"></script>
+  <script>
+    const scan = {
+      id: 'scan-preview',
+      startedAt: '2026-07-01T09:30:00Z',
+      tenantId: '0817c655-a853-4d8f-9723-3a333b5b9235',
+      tenantDomain: 'elapora.com',
+      tenantName: 'Pora Inc.',
+      summary: { total: 306, passed: 180, failed: 74, skipped: 40, error: 12 },
+      results: [
+        ...Array.from({ length: 180 }, (_, i) => ({ id: `${40000 + i}`, title: `Passing control ${i}`, status: 'Passed', pillar: ['Identity', 'Devices', 'Network', 'Data'][i % 4], risk: ['High', 'Medium', 'Low'][i % 3], implementationLevel: 'full', durationMs: 40 })),
+        ...Array.from({ length: 74 }, (_, i) => ({ id: `${41000 + i}`, title: `Failing control ${i} — a longer descriptive control title to check wrapping`, status: 'Failed', message: 'Sample finding text for the failure.', pillar: ['Identity', 'Devices', 'Network', 'Data'][i % 4], risk: ['High', 'Medium', 'Low', 'High'][i % 4], implementationLevel: 'full', durationMs: 90 })),
+        ...Array.from({ length: 40 }, (_, i) => ({ id: `${42000 + i}`, title: `Skipped control ${i}`, status: 'Skipped', pillar: 'Data', risk: 'Medium', implementationLevel: i % 2 ? 'none' : 'full', durationMs: 4 })),
+        ...Array.from({ length: 12 }, (_, i) => ({ id: `${43000 + i}`, title: `Errored control ${i}`, status: 'Error', pillar: 'Identity', risk: 'High', implementationLevel: 'full', durationMs: 300 })),
+      ],
+      tenantInfo: {
+        TenantOverview: { UserCount: 1284, GuestCount: 96, GroupCount: 311, ApplicationCount: 142, DeviceCount: 987, ManagedDeviceCount: 704 },
+        OverviewCaMfaAllUsers: { description: 'Over the past 7 days, 78.2% of sign-ins were protected by conditional access policies enforcing multifactor.', nodes: [
+          { source: 'User sign in', target: 'No CA applied', value: 522 },
+          { source: 'User sign in', target: 'CA applied', value: 2919 },
+          { source: 'CA applied', target: 'No MFA', value: 228 },
+          { source: 'CA applied', target: 'MFA', value: 2691 } ] },
+        OverviewCaDevicesAllUsers: { description: 'Over the past 7 days, 61.5% of sign-ins were from compliant devices.', nodes: [
+          { source: 'User sign in', target: 'Unmanaged', value: 812 },
+          { source: 'User sign in', target: 'Managed', value: 2629 },
+          { source: 'Managed', target: 'Non-compliant', value: 513 },
+          { source: 'Managed', target: 'Compliant', value: 2116 } ] },
+        OverviewAuthMethodsAllUsers: { description: 'Strongest authentication method registered by all users.', nodes: [
+          { source: 'Users', target: 'Single factor', value: 205 },
+          { source: 'Users', target: 'Phishable', value: 863 },
+          { source: 'Phishable', target: 'Phone', value: 311 },
+          { source: 'Phishable', target: 'Authenticator', value: 552 },
+          { source: 'Users', target: 'Phish resistant', value: 216 },
+          { source: 'Phish resistant', target: 'Passkey', value: 84 },
+          { source: 'Phish resistant', target: 'WHfB', value: 132 } ] },
+        OverviewAuthMethodsPrivilegedUsers: { description: 'Strongest authentication method registered by privileged users.', nodes: [
+          { source: 'Users', target: 'Single factor', value: 2 },
+          { source: 'Users', target: 'Phishable', value: 9 },
+          { source: 'Phishable', target: 'Phone', value: 3 },
+          { source: 'Phishable', target: 'Authenticator', value: 6 },
+          { source: 'Users', target: 'Phish resistant', value: 14 },
+          { source: 'Phish resistant', target: 'Passkey', value: 9 },
+          { source: 'Phish resistant', target: 'WHfB', value: 5 } ] },
+        DeviceOverview: {
+          DesktopDevicesSummary: { description: 'Desktop devices (Windows and macOS) by join type and compliance status.', nodes: [
+            { source: 'Desktop devices', target: 'Windows', value: 590 },
+            { source: 'Desktop devices', target: 'macOS', value: 74 },
+            { source: 'Windows', target: 'Entra joined', value: 402 },
+            { source: 'Windows', target: 'Entra registered', value: 76 },
+            { source: 'Windows', target: 'Entra hybrid joined', value: 112 },
+            { source: 'Entra joined', target: 'Compliant', value: 344 },
+            { source: 'Entra joined', target: 'Non-compliant', value: 43 },
+            { source: 'Entra joined', target: 'Unmanaged', value: 15 },
+            { source: 'Entra hybrid joined', target: 'Compliant', value: 78 },
+            { source: 'Entra hybrid joined', target: 'Non-compliant', value: 21 },
+            { source: 'Entra hybrid joined', target: 'Unmanaged', value: 13 },
+            { source: 'Entra registered', target: 'Compliant', value: 22 },
+            { source: 'Entra registered', target: 'Non-compliant', value: 12 },
+            { source: 'Entra registered', target: 'Unmanaged', value: 42 },
+            { source: 'macOS', target: 'Compliant', value: 51 },
+            { source: 'macOS', target: 'Non-compliant', value: 9 },
+            { source: 'macOS', target: 'Unmanaged', value: 14 } ], totalDevices: 664, entrajoined: 402, entrahybridjoined: 112, entrareigstered: 76 },
+          MobileSummary: { description: 'Mobile devices by compliance status.', nodes: [
+            { source: 'Mobile devices', target: 'Android', value: 122 },
+            { source: 'Mobile devices', target: 'iOS', value: 201 },
+            { source: 'Android', target: 'Android (Company)', value: 41 },
+            { source: 'Android', target: 'Android (Personal)', value: 81 },
+            { source: 'iOS', target: 'iOS (Company)', value: 92 },
+            { source: 'iOS', target: 'iOS (Personal)', value: 109 },
+            { source: 'Android (Company)', target: 'Compliant', value: 36 },
+            { source: 'Android (Company)', target: 'Non-compliant', value: 5 },
+            { source: 'Android (Personal)', target: 'Compliant', value: 61 },
+            { source: 'Android (Personal)', target: 'Non-compliant', value: 20 },
+            { source: 'iOS (Company)', target: 'Compliant', value: 85 },
+            { source: 'iOS (Company)', target: 'Non-compliant', value: 7 },
+            { source: 'iOS (Personal)', target: 'Compliant', value: 84 },
+            { source: 'iOS (Personal)', target: 'Non-compliant', value: 25 } ], totalDevices: 323 },
+          DeviceOwnership: { corporateCount: 486, personalCount: 218 },
+          ManagedDevices: null,
+          DeviceCompliance: null,
+        },
+        ConfigWindowsEnrollment: [
+          { Type: 'MDM', PolicyName: 'Microsoft Intune', AppliesTo: 'All', Groups: 'Not Applicable' },
+          { Type: 'MDM', PolicyName: 'Microsoft Intune Enrollment', AppliesTo: 'Selected', Groups: 'Pilot users' },
+        ],
+        ConfigDeviceEnrollmentRestriction: null,
+        ConfigDeviceCompliancePolicies: null,
+        ConfigDeviceAppProtectionPolicies: null,
+      },
+      tenantInfoNotes: {
+        ConfigDeviceEnrollmentRestriction: 'Permission or license missing for this dataset.',
+        ConfigDeviceCompliancePolicies: 'Requires a Microsoft Intune license.',
+        ConfigDeviceAppProtectionPolicies: 'Requires a Microsoft Intune license.',
+      },
+    };
+    UIDashboard.render(scan);
+  </script>
+</body>
+</html>
