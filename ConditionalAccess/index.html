@@ -3,174 +3,234 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>ConditionalAccess - Import, export and diff CA policies</title>
-  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🛡️</text></svg>">
+  <title>ConditionalAccess - export, import and compare CA policies | LC Toolkit</title>
+  <meta name="description" content="Export, import and compare Conditional Access policies. Prefix or suffix names, pick the state per policy, map missing users and groups, and start from a baseline set. Runs in your browser." />
+  <link rel="icon" type="image/png" href="../shared/img/favicon.png" />
+  <link rel="stylesheet" href="../shared/toolkit.css" />
   <link rel="stylesheet" href="style.css" />
-  <script src="../vendor/msal-browser.3.27.0.min.js"
-          onerror="window.__msalLoadFailed=true"></script>
+  <script src="../shared/registry.js"></script>
+  <script src="../shared/toolkit.js"></script>
+  <script src="../shared/analytics.js" defer></script>
+  <script src="../shared/log.js" defer></script>
+  <script src="../shared/concurrency.js" defer></script>
+  <script src="../shared/http.js" defer></script>
+  <script src="../shared/auth.js" defer></script>
+  <script src="../shared/export.js" defer></script>
+  <script src="src/policies.js" defer></script>
+  <script src="src/graph.js" defer></script>
+  <script src="src/app.js" defer></script>
 </head>
-<body>
-  <header class="topbar">
-    <div class="brand">
-      <div class="logo">CA</div>
-      <div>
-        <h1>ConditionalAccess</h1>
-        <p class="subtitle">Import, export, compare and bootstrap Conditional Access policies</p>
-      </div>
-    </div>
-    <div class="topbar-actions">
-      <a href="../index.html" class="ghost-btn toolkit-link" title="Back to LCToolkit">&larr; Toolkit</a>
-      <button id="darkToggle" class="icon-btn" title="Toggle dark mode">&#127769;</button>
-      <div id="userBox" class="user-box hidden">
-        <span id="userName"></span>
-        <button id="signOutBtn" class="ghost-btn">Sign out</button>
-      </div>
-    </div>
-  </header>
+<body data-tool="ConditionalAccess">
+  <div data-tk="header"></div>
 
-  <nav class="tabs">
-    <button class="tab active" data-tab="connect">1. Connect</button>
-    <button class="tab" data-tab="export">2. Export</button>
-    <button class="tab" data-tab="import">3. Import / Starter</button>
-    <button class="tab" data-tab="diff">4. Diff</button>
-    <button class="tab" data-tab="debug">Debug</button>
-    <button class="tab" data-tab="about">About</button>
-  </nav>
+  <main class="tk-page">
+    <nav class="tabs" id="tabs">
+      <button class="tab active" data-tab="policies"><i data-icon="t-ConditionalAccess"></i>Policies</button>
+      <button class="tab" data-tab="import"><i data-icon="i-upload"></i>Import and starter set</button>
+      <button class="tab" data-tab="diff"><i data-icon="i-history"></i>Diff</button>
+      <button class="tab" data-tab="debug"><i data-icon="i-bug"></i>Debug</button>
+      <button class="tab" data-tab="about"><i data-icon="i-info"></i>About</button>
+    </nav>
 
-  <main>
-    <section class="tab-panel active" id="tab-connect">
-      <div class="card" id="connectCard">
-        <h2>Connect to your tenant</h2>
-        <p>This tool runs fully in your browser. It signs in with Microsoft (PKCE) and calls Microsoft Graph as you. Nothing is sent to a backend from this app.</p>
-        <p>Required delegated permissions:</p>
-        <ul>
-          <li><code>Policy.Read.All</code> - export and read existing Conditional Access policies</li>
-          <li><code>Policy.ReadWrite.ConditionalAccess</code> - create/update Conditional Access policies</li>
-          <li><code>Directory.Read.All</code> - resolve users/groups during import</li>
-          <li><code>User.Read</code> - sign-in profile</li>
-        </ul>
-        <button id="signInBtn" class="primary-btn">Sign in with Microsoft</button>
-      </div>
-
-      <div class="card hidden" id="connectedCard">
-        <h2>Connected</h2>
-        <p>You are connected. Use the next tabs to export policies, import a file with prefix/suffix logic, apply the starter pack, or diff two exports.</p>
-      </div>
-    </section>
-
-    <section class="tab-panel" id="tab-export">
-      <div class="card">
-        <div class="row between">
-          <h2>Export Conditional Access policies</h2>
-          <button id="refreshPoliciesBtn" class="ghost-btn" disabled>Refresh list</button>
+    <section class="tab-panel active" id="tab-policies">
+      <div class="card connect-card" id="connectCard">
+        <div class="connect-art"><i data-icon="t-ConditionalAccess"></i></div>
+        <div>
+          <h2>Connect to your tenant</h2>
+          <p>Sign in with the account you manage Conditional Access with. The tool reads the policies through Microsoft Graph, as you.</p>
+          <p class="muted small">Delegated permissions asked at sign-in:</p>
+          <ul class="small">
+            <li><code>Policy.Read.All</code> read policies and named locations</li>
+            <li><code>Directory.Read.All</code> show names for the users, groups, roles and apps a policy points at</li>
+          </ul>
+          <p class="muted small">Asked only when you first write a policy: <code>Policy.ReadWrite.ConditionalAccess</code>. You also need the <strong>Conditional Access Administrator</strong> role or higher, otherwise Graph answers 403.</p>
+          <p class="muted small">Comparing two exports on the Diff tab works without signing in.</p>
+          <button id="signInBtn" class="btn btn-primary"><i data-icon="i-login"></i>Sign in with Microsoft</button>
         </div>
-        <p>Export creates a JSON package with all policies and metadata, ready for backup, migration, or diffing later.</p>
-        <div class="row">
-          <button id="exportAllBtn" class="primary-btn" disabled>Export all policies</button>
-          <button id="copyExportSummaryBtn" class="ghost-btn" disabled>Copy summary</button>
+      </div>
+
+      <div class="card" id="policiesCard" hidden>
+        <div class="card-head">
+          <div>
+            <h2>Conditional Access policies</h2>
+            <p class="muted small" id="policiesStatus">Loading policies...</p>
+          </div>
+          <div class="row tight">
+            <button id="refreshPoliciesBtn" class="btn"><i data-icon="i-refresh"></i>Refresh</button>
+            <button id="exportAllBtn" class="btn btn-primary"><i data-icon="i-download"></i>Export JSON</button>
+          </div>
         </div>
-        <div id="exportSummary" class="summary-bar hidden"></div>
-        <div id="exportTableWrap" class="table-wrap hidden"></div>
+        <div id="policiesTableWrap" class="table-wrap" hidden>
+          <table class="data-table" id="policiesTable">
+            <thead>
+              <tr>
+                <th>Name</th>
+                <th>State</th>
+                <th>Users</th>
+                <th>Grant</th>
+                <th>Created</th>
+                <th>Modified</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+        <div id="policiesEmpty" class="empty-state" hidden><i data-icon="t-ConditionalAccess"></i><h3>No policies yet</h3><p>The starter set on the Import tab is a sane place to begin.</p></div>
+        <div class="action-bar" id="policiesActions" hidden>
+          <span class="grow muted small">The JSON export is what Import and Diff read.</span>
+          <button id="copyNamesBtn" class="btn btn-small"><i data-icon="i-copy"></i>Copy names</button>
+          <button id="exportXlsxBtn" class="btn btn-small"><i data-icon="i-table"></i>Excel</button>
+          <button id="exportCsvBtn" class="btn btn-small"><i data-icon="i-download"></i>CSV</button>
+        </div>
       </div>
     </section>
 
     <section class="tab-panel" id="tab-import">
-      <div class="card">
-        <h2>Import policies from JSON</h2>
-        <div class="row">
-          <input type="file" id="importFile" accept=".json,application/json" />
-          <button id="loadImportBtn" class="ghost-btn" disabled>Load file</button>
-        </div>
-
-        <div class="row">
-          <label>Prefix: <input type="text" id="namePrefix" placeholder="Optional prefix" /></label>
-          <label>Suffix: <input type="text" id="nameSuffix" placeholder="Optional suffix" /></label>
-          <label class="checkbox"><input type="checkbox" id="overwriteExisting" /> Overwrite existing policy when names match</label>
-        </div>
-        <p class="muted">Per policy you can choose the target state: disabled, report-only, or active.</p>
-
-        <div id="importPreviewWrap" class="hidden"></div>
+      <div class="notice notice-info" id="importSignedOut">
+        <i data-icon="i-lock"></i>
+        <div>Sign in on the Policies tab first. Import needs the current policies to detect name clashes and to check every id against your tenant.</div>
       </div>
 
-      <div class="card">
-        <div class="row between">
-          <h2>Starter policy set</h2>
-          <button id="loadStarterBtn" class="ghost-btn" disabled>Load starter set</button>
+      <div class="grid grid-2" id="importSources" hidden>
+        <div class="card">
+          <h2>Import from a file</h2>
+          <p class="muted small">A JSON export from this tool, an array of policies or a Graph list response. Only Conditional Access fields are kept; ids, timestamps and unknown fields are dropped and listed. The state in the file is ignored: you pick it per policy.</p>
+          <div class="row">
+            <input type="file" id="importFile" accept=".json,application/json" aria-label="Import file" />
+            <button id="loadImportBtn" class="btn" disabled><i data-icon="i-upload"></i>Load file</button>
+          </div>
         </div>
-        <p>A small, very basic set for new tenants. Always review these before applying.</p>
-        <div id="starterPreviewWrap" class="hidden"></div>
+        <div class="card">
+          <h2>Starter set</h2>
+          <p class="muted small">Six basic policies for a tenant that has none yet: block legacy auth and device code flow, MFA for admins, admin portals, all users and security info registration. Review the exclusions before you switch anything on.</p>
+          <button id="loadStarterBtn" class="btn"><i data-icon="i-sparkle"></i>Load starter set</button>
+        </div>
       </div>
 
-      <div class="card hidden" id="resolverCard">
-        <h2>Resolve unknown users/groups before import</h2>
-        <p>Some user/group IDs in this import are not present in the current tenant. Add replacement object IDs below so policies can be written safely.</p>
-        <div id="resolverWrap"></div>
+      <div class="card" id="reviewCard" hidden>
+        <div class="card-head">
+          <div>
+            <h2 id="reviewTitle">Review</h2>
+            <p class="muted small" id="reviewHint"></p>
+          </div>
+        </div>
+        <div class="row filters">
+          <label class="inline-field">Prefix <input type="text" id="namePrefix" placeholder="Optional" /></label>
+          <label class="inline-field">Suffix <input type="text" id="nameSuffix" placeholder="Optional" /></label>
+          <label class="checkbox"><input type="checkbox" id="overwriteExisting" />Overwrite existing policies with the exact same name</label>
+          <label class="inline-field">All to
+            <select id="bulkState" aria-label="Set the state of all selected policies">
+              <option value="">pick a state</option>
+              <option value="disabled">Off</option>
+              <option value="enabledForReportingButNotEnforced">Report-only</option>
+              <option value="enabled">On</option>
+            </select>
+          </label>
+        </div>
+        <div id="lockoutNotice" class="notice notice-err" hidden>
+          <i data-icon="i-alert"></i>
+          <div id="lockoutText"></div>
+        </div>
+        <div class="table-wrap">
+          <table class="data-table review-table" id="reviewTable">
+            <thead>
+              <tr>
+                <th class="col-check"><input type="checkbox" id="selectAll" aria-label="Select all" /></th>
+                <th>Policy</th>
+                <th>Assignments</th>
+                <th>Controls</th>
+                <th>State</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
       </div>
 
-      <div class="card hidden" id="applyCard">
-        <div class="row between">
-          <h2>Apply import</h2>
-          <button id="applyImportBtn" class="danger-btn" disabled>Apply selected policies</button>
+      <div class="card" id="resolverCard" hidden>
+        <h2>Objects that do not exist in this tenant</h2>
+        <p class="muted small">Users, groups, workload identities and named locations are tenant specific. Give each missing id a replacement from this tenant; it is looked up so you see what it points at. Policies cannot be written while one is open.</p>
+        <div class="table-wrap">
+          <table class="data-table" id="resolverTable">
+            <thead>
+              <tr>
+                <th>Kind</th>
+                <th>Missing id</th>
+                <th>Used by</th>
+                <th>Replacement id</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
         </div>
-        <p id="applyHint" class="muted"></p>
-        <div id="applyResults"></div>
+      </div>
+
+      <div id="applyCard" hidden>
+        <div class="action-bar">
+          <span class="grow" id="applyHint"></span>
+          <button id="applyImportBtn" class="btn btn-danger" disabled><i data-icon="i-upload"></i>Write selected policies</button>
+        </div>
+        <ul id="applyResults" class="action-result-list" hidden></ul>
       </div>
     </section>
 
     <section class="tab-panel" id="tab-diff">
       <div class="card">
-        <h2>Diff two policy exports</h2>
-        <p>Upload two export JSON files (old and new) and compare by policy name.</p>
-        <div class="row">
-          <label>Old export: <input type="file" id="diffFileOld" accept=".json,application/json" /></label>
-          <label>New export: <input type="file" id="diffFileNew" accept=".json,application/json" /></label>
-          <button id="runDiffBtn" class="primary-btn" disabled>Run diff</button>
+        <h2>Compare two exports</h2>
+        <p class="muted small">Pick an older and a newer export. Policies are matched by name; ids and timestamps are ignored. Nothing is sent anywhere.</p>
+        <div class="field-row">
+          <div class="field"><label for="diffFileOld">Old export</label><input type="file" id="diffFileOld" accept=".json,application/json" /></div>
+          <div class="field"><label for="diffFileNew">New export</label><input type="file" id="diffFileNew" accept=".json,application/json" /></div>
         </div>
-        <div id="diffSummary" class="summary-bar hidden"></div>
+        <div class="row">
+          <button id="runDiffBtn" class="btn btn-primary" disabled><i data-icon="i-history"></i>Compare</button>
+        </div>
+        <div id="diffSummary" class="row tight" hidden></div>
         <div id="diffWrap"></div>
       </div>
     </section>
 
     <section class="tab-panel" id="tab-debug">
-      <div class="card">
-        <div class="row between">
-          <h2>Debug log</h2>
-          <div>
-            <label class="checkbox"><input type="checkbox" id="verboseLog" /> Verbose</label>
-            <button id="clearLogBtn" class="ghost-btn">Clear</button>
-          </div>
-        </div>
-        <pre id="logPanel" class="log-panel"></pre>
-      </div>
+      <div data-tk="debug"></div>
     </section>
 
     <section class="tab-panel" id="tab-about">
-      <div class="card">
+      <div class="card about">
         <h2>About ConditionalAccess</h2>
-        <p>ConditionalAccess is part of <a href="../index.html">LCToolkit</a> by Lieben Consulting. It runs client-side and talks directly to Microsoft Graph from your browser.</p>
-        <h3>What this tool can do</h3>
+        <p>ConditionalAccess exports, imports and compares Conditional Access policies, and gives a new tenant a basic starter set.</p>
+        <div data-tk="about"></div>
+
+        <h3>What it does</h3>
         <ul>
-          <li>Export all Conditional Access policies as JSON</li>
-          <li>Import policies with optional name prefix/suffix</li>
-          <li>Overwrite existing policies when names match exactly (optional)</li>
-          <li>Set imported policy state per policy (disabled/report-only/enabled)</li>
-          <li>Resolve missing user/group IDs before writing policies</li>
-          <li>Compare two exports and show added/removed/changed policies</li>
+          <li>Exports every policy to JSON, and the overview to Excel or CSV.</li>
+          <li>Imports policies from a file with an optional name prefix or suffix.</li>
+          <li>Lets you pick off, report-only or on per policy. The default is always report-only, whatever the file says.</li>
+          <li>Overwrites a policy with the exact same name only when you switch that on, and shows a field-by-field diff for each one first.</li>
+          <li>Shows every user, group, role, app, workload identity and named location a policy points at, with its name in your tenant, and makes you map the ones that do not exist.</li>
+          <li>Warns when a policy applies to all users with a block, or excludes nobody, and you are not excluded. One click adds you to the exclusions.</li>
+          <li>Compares two exports and shows added, removed and changed policies down to the field.</li>
         </ul>
-        <h3>Important</h3>
+
+        <h3>How it works</h3>
         <ul>
-          <li>Always test in a lab tenant first</li>
-          <li>Review each policy state before applying</li>
-          <li>The app does not auto-apply anything without your explicit click</li>
+          <li><strong>Read</strong>: <code>GET /v1.0/identity/conditionalAccess/policies</code> and <code>namedLocations</code>.</li>
+          <li><strong>Names</strong>: <code>POST /v1.0/directoryObjects/getByIds</code>, <code>roleManagement/directory/roleDefinitions</code> and <code>servicePrincipals?$filter=appId in (...)</code>.</li>
+          <li><strong>Lockout check</strong>: your own id plus <code>GET /v1.0/me/transitiveMemberOf</code> for groups and roles.</li>
+          <li><strong>Write</strong>: <code>POST /v1.0/identity/conditionalAccess/policies</code> for new ones, <code>PATCH .../policies/{id}</code> for overwrites. One at a time.</li>
+        </ul>
+
+        <h3>Before you switch anything on</h3>
+        <ul>
+          <li>Try it in a test tenant first.</li>
+          <li>Keep at least one emergency account excluded from every policy.</li>
+          <li>Let report-only run for a while and check the sign-in logs before going to on.</li>
         </ul>
       </div>
     </section>
   </main>
 
-  <script src="src/log.js"></script>
-  <script src="src/auth.js"></script>
-  <script src="src/graph.js"></script>
-  <script src="src/policies.js"></script>
-  <script src="src/app.js"></script>
+  <div data-tk="related"></div>
+  <div data-tk="footer"></div>
 </body>
 </html>

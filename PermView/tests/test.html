@@ -1,64 +1,181 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-<meta charset="utf-8" />
-<title>PermView smoke test</title>
-<style>
-  body { font-family: -apple-system, "Segoe UI", sans-serif; padding: 20px; }
-  .pass { color: #128d4f; }
-  .fail { color: #c0392b; }
-  pre { background: #f4f6fa; padding: 10px; border-radius: 6px; overflow: auto; }
-</style>
+  <meta charset="UTF-8" />
+  <title>PermView - tests</title>
+  <style>
+    body { font: 14px/1.4 -apple-system,Segoe UI,sans-serif; padding: 20px; max-width: 900px; margin: 0 auto; }
+    .pass { color: #1f7a3a; } .fail { color: #b32026; font-weight: bold; }
+    pre { background: #f4f4f6; padding: 10px; border-radius: 6px; overflow: auto; }
+    h1 { font-size: 18px; }
+  </style>
+  <script src="../../shared/registry.js"></script>
+  <script src="../../shared/toolkit.js"></script>
 </head>
 <body>
-<h1>PermView smoke tests</h1>
-<p>Open this page over HTTP (use <code>serve.ps1</code>) and check the console / output below. These tests run without signing in and only verify the static module loading + parsing of the .auth file.</p>
-<div id="out"></div>
+  <h1>PermView - unit tests</h1>
+  <div id="out"></div>
+  <script src="../../shared/log.js"></script>
+  <script src="../../shared/concurrency.js"></script>
+  <script src="../../shared/http.js"></script>
+  <script src="../../shared/auth.js"></script>
+  <script src="../../shared/export.js"></script>
+  <script src="../src/guards.js"></script>
+  <script src="../src/api.js"></script>
+  <script src="../src/providers.js"></script>
+  <script>
+    const out = document.getElementById('out');
+    const tests = [];
+    function test(name, fn) { tests.push([name, fn]); }
+    function eq(a, b, m = '') {
+      const A = JSON.stringify(a), B = JSON.stringify(b);
+      if (A !== B) throw new Error(`${m} expected ${B}, got ${A}`);
+    }
+    function ok(v, m = '') { if (!v) throw new Error(`expected truthy ${m}`); }
 
-<script src="../src/log.js"></script>
-<script src="../src/concurrency.js"></script>
-<script src="../src/auth.js"></script>
-<script src="../src/api.js"></script>
-<script src="../src/providers.js"></script>
+    test('modules loaded', () => {
+      ok(window.Log && window.Concurrency && window.Http && window.ToolkitAuth && window.Export && window.Guards && window.Api && window.Providers);
+      ok(typeof Auth.getToken === 'function', 'Auth is a ToolkitAuth instance');
+    });
 
-<script>
-(async () => {
-  const out = document.getElementById('out');
-  const results = [];
-  function check(name, ok, detail) {
-    results.push({ name, ok, detail });
-    const div = document.createElement('div');
-    div.className = ok ? 'pass' : 'fail';
-    div.textContent = (ok ? 'PASS  ' : 'FAIL  ') + name + (detail ? ' - ' + detail : '');
-    out.appendChild(div);
-  }
+    test('nine providers with the full shape', () => {
+      eq(Providers.list.map((p) => p.id), ['entra', 'entra-app-access', 'sharepoint', 'onedrive', 'exchange', 'azure', 'devops', 'powerbi', 'powerplatform']);
+      for (const p of Providers.list) {
+        ok(typeof p.run === 'function', `${p.id} run`);
+        ok(Array.isArray(p.form), `${p.id} form`);
+        ok(/^i-[a-z-]+$/.test(p.icon), `${p.id} icon id`);
+        ok(Array.isArray(p.scopes) && p.scopes.length, `${p.id} scopes`);
+        ok(/m365permissions\.com/.test(p.notice), `${p.id} notice points to m365permissions.com`);
+        ok(!/[<>]/.test(p.notice), `${p.id} notice is plain text`);
+      }
+    });
 
-  check('Log loaded', !!window.Log && typeof window.Log.info === 'function');
-  check('Concurrency loaded', !!window.Concurrency && typeof window.Concurrency.pmap === 'function');
-  check('Auth loaded', !!window.Auth && typeof window.Auth.signIn === 'function');
-  check('Api loaded',  !!window.Api && !!window.Api.Graph);
-  check('Providers loaded', !!window.Providers && Array.isArray(window.Providers.list));
-  check('Providers count == 9', (window.Providers.list || []).length === 9,
-    (window.Providers.list || []).map(p => p.id).join(','));
+    test('scope sets: read only, Power BI without Tenant.Read.All', () => {
+      const all = Object.keys(Api.SETS).flatMap((k) => Auth.resolve(k));
+      ok(!all.some((s) => /ReadWrite|FullControl|Tenant\.Read\.All/i.test(s)), 'no write or tenant-admin scopes');
+      eq(Auth.resolve('powerbi'), ['https://analysis.windows.net/powerbi/api/Workspace.Read.All']);
+      eq(Auth.resolve('read'), ['https://graph.microsoft.com/User.Read', 'https://graph.microsoft.com/Directory.Read.All']);
+      ok(Auth.resolve('sites').includes('https://graph.microsoft.com/Sites.Read.All'));
+      eq(Auth.resolve('arm'), ['https://management.azure.com/user_impersonation']);
+    });
 
-  // .auth file must exist and parse
-  try {
-    const r = await fetch('../.auth', { cache: 'no-store' });
-    check('.auth fetched (HTTP 200)', r.ok, 'status ' + r.status);
-    const text = await r.text();
-    const cfg = window.Auth._parseAuthFile ? window.Auth._parseAuthFile(text) : null;
-    if (cfg) check('.auth has clientId', !!cfg.clientId, cfg.clientId);
-  } catch (e) {
-    check('.auth fetched', false, e.message);
-  }
+    test('.auth parses with a clientId', async () => {
+      const r = await fetch('../.auth', { cache: 'no-store' });
+      ok(r.ok, `HTTP ${r.status}`);
+      ok(/^[0-9a-f-]{36}$/i.test(ToolkitAuth.parseAuthFile(await r.text()).clientId || ''));
+    });
 
-  // Each provider must declare the required surface
-  for (const p of (window.Providers.list || [])) {
-    check(`Provider ${p.id} has run()`, typeof p.run === 'function');
-    check(`Provider ${p.id} has form array`, Array.isArray(p.form));
-    check(`Provider ${p.id} has icon`, !!p.icon);
-  }
-})();
-</script>
+    test('Guards.sharePointUrl: only https *.sharepoint.com', () => {
+      ok(Guards.sharePointUrl('https://contoso.sharepoint.com/sites/marketing'));
+      ok(Guards.sharePointUrl(' https://Contoso-my.SharePoint.com/personal/x '));
+      for (const bad of [
+        'http://contoso.sharepoint.com/sites/x', 'https://contoso.sharepoint.com.evil.net/sites/x',
+        'https://evil.net/contoso.sharepoint.com', 'https://evilsharepoint.com/', 'https://.sharepoint.com/',
+        'https://sharepoint.com/', 'https://user:pw@contoso.sharepoint.com/', 'https://contoso.sharepoint.com:8443/',
+        'javascript:alert(1)//.sharepoint.com', 'contoso.sharepoint.com/sites/x', '', null,
+      ]) eq(Guards.sharePointUrl(bad), null, String(bad));
+    });
+
+    test('Guards.dataverseOrigin: only https *.dynamics.com', () => {
+      eq(Guards.dataverseOrigin('https://org1.crm4.dynamics.com/'), 'https://org1.crm4.dynamics.com');
+      eq(Guards.dataverseOrigin('https://org1.api.crm4.dynamics.com/api/data'), 'https://org1.api.crm4.dynamics.com');
+      for (const bad of [
+        'http://org.crm.dynamics.com', 'https://org.crm.dynamics.com.evil.net', 'https://evil.net/.dynamics.com',
+        'https://orgdynamics.com', 'https://dynamics.com', 'https://a@org.crm.dynamics.com', 'https://org.crm.dynamics.com:444',
+        'https://evil.net?x=.dynamics.com', 'https://evil.net#.dynamics.com', undefined,
+      ]) eq(Guards.dataverseOrigin(bad), null, String(bad));
+    });
+
+    test('Api.dataverseBase refuses a host that is not *.dynamics.com', () => {
+      eq(Api.dataverseBase('https://contoso.crm.dynamics.com'), 'https://contoso.crm.dynamics.com');
+      let threw = false;
+      try { Api.dataverseBase('https://attacker.example/'); } catch { threw = true; }
+      ok(threw);
+    });
+
+    test('Guards.isDevOpsUrl', () => {
+      ok(Guards.isDevOpsUrl('https://app.vssps.visualstudio.com/_apis/profile/profiles/me'));
+      ok(Guards.isDevOpsUrl('https://vssps.dev.azure.com/org/_apis/graph/groups'));
+      ok(!Guards.isDevOpsUrl('https://vssps.dev.azure.com.evil.net/x'));
+      ok(!Guards.isDevOpsUrl('http://dev.azure.com/x'));
+      ok(!Guards.isDevOpsUrl('https://evil.net/dev.azure.com'));
+    });
+
+    test('Guards.graphSitePath encodes path segments', () => {
+      eq(Guards.graphSitePath(Guards.sharePointUrl('https://contoso.sharepoint.com/sites/My Site/')), '/sites/contoso.sharepoint.com:/sites/My%20Site:');
+      eq(Guards.graphSitePath(Guards.sharePointUrl('https://contoso.sharepoint.com/')), '/sites/contoso.sharepoint.com');
+      eq(Guards.graphSitePath(Guards.sharePointUrl('https://contoso.sharepoint.com/sites/a?x=1#y')), '/sites/contoso.sharepoint.com:/sites/a:');
+    });
+
+    test('Guards.isGraphSiteId', () => {
+      ok(Guards.isGraphSiteId('contoso.sharepoint.com,2c712604-1370-44e7-a1f5-426573b68e5b,2d2244c3-251a-49ea-93a8-39e1b3a64f5b'));
+      ok(!Guards.isGraphSiteId('contoso.sharepoint.com,../x,y'));
+      ok(!Guards.isGraphSiteId('a/b'));
+    });
+
+    test('Guards.matchGroupSite: a name match alone is not enough', () => {
+      const site = 'contoso.sharepoint.com,11111111-1111-1111-1111-111111111111,22222222-2222-2222-2222-222222222222';
+      const other = 'contoso.sharepoint.com,33333333-3333-3333-3333-333333333333,44444444-4444-4444-4444-444444444444';
+      const gA = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', gB = 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb';
+      eq(Guards.matchGroupSite(site, [{ groupId: gA, rootSiteId: other }]), null, 'unrelated group with the same alias');
+      eq(Guards.matchGroupSite(site, [{ groupId: gA, rootSiteId: other }, { groupId: gB, rootSiteId: site.toUpperCase() }]), gB);
+      eq(Guards.matchGroupSite(site, []), null);
+      eq(Guards.matchGroupSite(site, [{ groupId: 'not-a-guid', rootSiteId: site }]), null);
+    });
+
+    test('DevOps scope set is passed to MSAL unchanged', () => {
+      eq(Auth.resolve('devops'), ['499b84ac-1321-427f-aa17-267ca6975798/user_impersonation']);
+    });
+
+    test('ARM paging refuses a nextLink on another host', async () => {
+      const realFetch = window.fetch;
+      window.fetch = async () => new Response(JSON.stringify({ value: [{ id: 1 }], nextLink: 'https://evil.example/next' }), { headers: { 'Content-Type': 'application/json' } });
+      Auth.getToken = async () => 'test-token';
+      let msg = '';
+      try { await Api.armPageAll('/subscriptions?api-version=2022-12-01'); } catch (e) { msg = e.message; }
+      finally { window.fetch = realFetch; }
+      ok(/another host/i.test(msg), msg);
+    });
+
+    test('summarizeCredentials', () => {
+      const now = Date.parse('2026-01-01T00:00:00Z');
+      eq(Providers.summarizeCredentials([], [], now).state, 'None');
+      eq(Providers.summarizeCredentials([{ endDateTime: '2025-12-01T00:00:00Z' }], [], now).state, 'Expired');
+      eq(Providers.summarizeCredentials([], [{ endDateTime: '2026-01-10T00:00:00Z' }], now).state, 'ExpiringSoon');
+      eq(Providers.summarizeCredentials([{ endDateTime: '2027-01-01T00:00:00Z' }], [], now).state, 'Valid');
+    });
+
+    test('classifyPermissionRisk', () => {
+      eq(Providers.classifyPermissionRisk('Sites.FullControl.All'), 'High');
+      eq(Providers.classifyPermissionRisk('User.Read.All'), 'Medium');
+      eq(Providers.classifyPermissionRisk('User.Read'), 'Low');
+      eq(Providers.classifyPermissionRisk(''), 'Info');
+    });
+
+    test('exports neutralise formulas in tenant-controlled names', () => {
+      const t = Export.table([{ principal: '=HYPERLINK("https://evil/?"&A1,"Open")', role: '@SUM(1)' }], [{ key: 'principal' }, { key: 'role' }]);
+      ok(t.body[0][0].startsWith("'="));
+      ok(t.body[0][1].startsWith("'@"));
+    });
+
+    test('no inline handlers, style attributes or javascript: URLs in markup and code', async () => {
+      for (const f of ['../index.html', '../src/app.js', '../src/providers.js', '../src/api.js', '../src/guards.js']) {
+        const txt = await (await fetch(f, { cache: 'no-store' })).text();
+        ok(!/<[^>]*\son[a-z]+\s*=/i.test(txt), `${f} inline handler`);
+        ok(!/\sstyle\s*=/i.test(txt), `${f} style attribute`);
+        ok(!/javascript:/i.test(txt), `${f} javascript: URL`);
+        ok(!txt.includes(String.fromCharCode(0x2014)), `${f} em dash`);
+      }
+    });
+
+    (async () => {
+      let pass = 0, fail = 0;
+      for (const [name, fn] of tests) {
+        try { await fn(); out.insertAdjacentHTML('beforeend', `<div class="pass">PASS ${Toolkit.esc(name)}</div>`); pass++; }
+        catch (e) { out.insertAdjacentHTML('beforeend', `<div class="fail">FAIL ${Toolkit.esc(name)}<pre>${Toolkit.esc(e.stack || e.message)}</pre></div>`); fail++; }
+      }
+      out.insertAdjacentHTML('beforeend', `<h2>${pass} passed, ${fail} failed</h2><p id="result">TEST-RESULT: ${fail ? 'FAIL' : 'PASS'} ${pass}/${pass + fail}</p>`);
+    })();
+  </script>
 </body>
 </html>

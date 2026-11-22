@@ -1,5 +1,5 @@
 /*
- * Phase 2 — Bucket A: browser-feasible Microsoft Graph controls.
+ * Phase 2: Bucket A: browser-feasible Microsoft Graph controls.
  *
  * These port the data-collection + pass/fail logic of the ZeroTrustAssessment
  * PowerShell tests (powershell/tests/Test-Assessment.<id>.ps1) to delegated Graph.
@@ -95,15 +95,15 @@
   const wifiSecType = (c) => lower(c.wiFiSecurityType || c.wifiSecurityType || c.WifiSecurityType || '');
 
   const impl = {
-    // 25370 — Source IP restoration (Conditional Access signaling) is enabled.
+    // 25370: Source IP restoration (Conditional Access signaling) is enabled.
     '25370': async (test) => {
       const settings = await gsaGraph('networkAccess/settings/conditionalAccess');
       if (settings === null) return skip(test, `${skippedReason('NotApplicable')} Global Secure Access is not enabled or not licensed in this tenant.`);
       if (lower(settings.signalingStatus) === 'enabled') return pass(test, 'Global Secure Access source IP restoration (Conditional Access signaling) is enabled.', { signalingStatus: settings.signalingStatus });
-      return fail(test, 'Global Secure Access signaling is disabled — user source IP is not preserved for Conditional Access and risk detection.', { signalingStatus: settings.signalingStatus || null });
+      return fail(test, 'Global Secure Access signaling is disabled: user source IP is not preserved for Conditional Access and risk detection.', { signalingStatus: settings.signalingStatus || null });
     },
 
-    // 25371 — Universal Continuous Access Evaluation is enabled for network access.
+    // 25371: Universal Continuous Access Evaluation is enabled for network access.
     '25371': async (test) => {
       const [gsaSettings, forwardingProfiles, caPolicies] = await Promise.all([
         gsaGraph('networkAccess/settings/conditionalAccess'),
@@ -123,7 +123,7 @@
       return pass(test, 'Universal Continuous Access Evaluation is enabled for Global Secure Access.', { signalingStatus: gsaSettings.signalingStatus, forwardingProfiles: profiles });
     },
 
-    // 25372 — GSA client deployed on all managed endpoints (>=90% coverage).
+    // 25372: GSA client deployed on all managed endpoints (>=90% coverage).
     '25372': async (test) => {
       const end = new Date();
       const start = new Date(end.getTime() - 7 * 86400000);
@@ -140,14 +140,14 @@
       const evidence = { totalGsaDevices: totalGsa, activeGsaDevices: activeGsa, managedEntraDevices: managed };
 
       if (managed === 0 && totalGsa === 0) return fail(test, 'No Global Secure Access client deployment detected and no managed Entra devices found.', evidence);
-      if (managed === 0 && totalGsa > 0) return skip(test, 'GSA devices were detected but no Entra joined/hybrid-joined devices were found — deployment coverage cannot be calculated.', evidence);
+      if (managed === 0 && totalGsa > 0) return skip(test, 'GSA devices were detected but no Entra joined/hybrid-joined devices were found: deployment coverage cannot be calculated.', evidence);
       const pct = Math.round((totalGsa / managed) * 1000) / 10;
       evidence.deploymentPercentage = pct;
       if (pct >= 90) return pass(test, `Global Secure Access client is deployed on ${pct}% of managed endpoints.`, evidence);
       return fail(test, `Global Secure Access client deployment coverage is ${pct}% of managed endpoints (target is 90%).`, evidence);
     },
 
-    // 25375 — GSA licenses available and assigned to users.
+    // 25375: GSA licenses available and assigned to users.
     '25375': async (test) => {
       let skus = null;
       try { skus = await Api.graphAll('subscribedSkus', { beta: true }); }
@@ -183,7 +183,7 @@
       return pass(test, 'Global Secure Access licenses are available and assigned to at least one user.', evidence);
     },
 
-    // 25376 — Microsoft 365 traffic actively flowing through GSA.
+    // 25376: Microsoft 365 traffic actively flowing through GSA.
     '25376': async (test) => {
       const end = new Date();
       const start = new Date(end.getTime() - 7 * 86400000);
@@ -208,11 +208,11 @@
       if (profileEnabled && m365Total > 0) return pass(test, 'Microsoft 365 traffic forwarding is enabled and Microsoft 365 traffic is flowing through Global Secure Access.', evidence);
       return fail(test, 'Microsoft 365 traffic forwarding is disabled or no Microsoft 365 traffic is being tunneled through Global Secure Access.', evidence);
     },
-    // 25379 — Conditional Access policies use compliant network controls.
+    // 25379: Conditional Access policies use compliant network controls.
     '25379': async (test) => {
       const settings = await gsaGraph('networkAccess/settings/conditionalAccess');
       if (!settings || lower(settings.signalingStatus) !== 'enabled') {
-        return fail(test, 'Global Secure Access signaling is disabled — compliant network controls cannot function without this prerequisite.', { signalingStatus: settings?.signalingStatus || null });
+        return fail(test, 'Global Secure Access signaling is disabled: compliant network controls cannot function without this prerequisite.', { signalingStatus: settings?.signalingStatus || null });
       }
       const namedLocations = await Api.graphAll('identity/conditionalAccess/namedLocations', { beta: true, query: { '$top': '200' } }).catch(() => []);
       const compliant = toArray(namedLocations).find(l => lower(l['@odata.type']) === '#microsoft.graph.compliantnetworknamedlocation' && lower(l.compliantNetworkType) === 'alltenantcompliantnetworks');
@@ -225,7 +225,7 @@
       return fail(test, 'No Conditional Access policy blocks access from all locations except the compliant network.', { compliantLocation: compliant.displayName });
     },
 
-    // 25380 — GSA Conditional Access signaling is enabled.
+    // 25380: GSA Conditional Access signaling is enabled.
     '25380': async (test) => {
       const settings = await gsaGraph('networkAccess/settings/conditionalAccess');
       if (!settings || !settings.signalingStatus) return skip(test, `${skippedReason('NotApplicable')} Global Secure Access does not appear to be deployed in this tenant.`);
@@ -233,19 +233,19 @@
       return fail(test, 'Global Secure Access signaling for Conditional Access is not enabled.', { signalingStatus: settings.signalingStatus });
     },
 
-    // 25381 — Network traffic routed through GSA (all forwarding profiles enabled).
+    // 25381: Network traffic routed through GSA (all forwarding profiles enabled).
     '25381': async (test) => {
       const profiles = await gsaGraphAll('networkAccess/forwardingProfiles');
       if (profiles === null) return skip(test, `${skippedReason('NotApplicable')} Global Secure Access is not licensed/available.`);
-      if (!profiles.length) return fail(test, 'No traffic forwarding profiles found — Global Secure Access is not configured.');
+      if (!profiles.length) return fail(test, 'No traffic forwarding profiles found: Global Secure Access is not configured.');
       const disabled = profiles.filter(p => lower(p.state) !== 'enabled');
       const evidence = { profiles: profiles.map(p => ({ name: p.name, type: p.trafficForwardingType, state: p.state })) };
-      if (!disabled.length) return pass(test, 'All traffic forwarding profiles are enabled — traffic is captured by the Security Service Edge.', evidence);
-      if (disabled.length === profiles.length) return fail(test, 'All traffic forwarding profiles are disabled — Global Secure Access is not protecting any traffic.', evidence);
-      return fail(test, 'Some traffic forwarding profiles are disabled — only partial traffic is protected.', evidence);
+      if (!disabled.length) return pass(test, 'All traffic forwarding profiles are enabled: traffic is captured by the Security Service Edge.', evidence);
+      if (disabled.length === profiles.length) return fail(test, 'All traffic forwarding profiles are disabled: Global Secure Access is not protecting any traffic.', evidence);
+      return fail(test, 'Some traffic forwarding profiles are disabled: only partial traffic is protected.', evidence);
     },
 
-    // 25382 — Forwarding profiles are scoped to users/groups.
+    // 25382: Forwarding profiles are scoped to users/groups.
     '25382': async (test) => {
       const profiles = await gsaGraphAll('networkAccess/forwardingProfiles', { '$select': 'id,name,state,trafficForwardingType,associations,servicePrincipal' });
       if (profiles === null) return skip(test, `${skippedReason('NotApplicable')} Global Secure Access is not licensed/available.`);
@@ -264,11 +264,11 @@
         } catch { hasEnabledWithoutAssignments = true; detail.push({ name: p.name, assignment: 'error' }); }
       }
       if (hasEnabledWithoutAssignments) return fail(test, 'One or more enabled traffic forwarding profiles have no user/group assignments.', { profiles: detail });
-      if (hasDisabled) return fail(test, 'Some traffic forwarding profiles are disabled — review whether this is intentional.', { profiles: detail });
+      if (hasDisabled) return fail(test, 'Some traffic forwarding profiles are disabled: review whether this is intentional.', { profiles: detail });
       return pass(test, 'Traffic forwarding profiles are scoped to specific users/groups.', { profiles: detail });
     },
 
-    // 25383 — GA / GSA Administrator privileges are tightly limited.
+    // 25383: GA / GSA Administrator privileges are tightly limited.
     '25383': async (test) => {
       const roleDefs = await Api.graphAll('roleManagement/directory/roleDefinitions', { beta: true, query: { '$select': 'id,displayName,templateId', '$top': '400' } });
       const gaRole = toArray(roleDefs).find(r => r.displayName === 'Global Administrator');
@@ -293,7 +293,7 @@
       return pass(test, 'Global Administrator / Global Secure Access Administrator roles are limited to enabled, vetted member users.', evidence);
     },
 
-    // 25384 — Application Administrator rights constrained to specific Private Access apps.
+    // 25384: Application Administrator rights constrained to specific Private Access apps.
     '25384': async (test) => {
       const roleDefs = await Api.graphAll('roleManagement/directory/roleDefinitions', { beta: true, query: { '$select': 'id,displayName', '$top': '400' } });
       const appAdmin = toArray(roleDefs).find(r => r.displayName === 'Application Administrator');
@@ -312,7 +312,7 @@
       if (problematic.length) return fail(test, 'Application Administrator role includes groups, guests, or service principals.', evidence);
       return pass(test, 'Application Administrator rights are scoped (not tenant-wide) and assigned only to member users.', evidence);
     },
-    // 25391 — Private network connectors are active and healthy.
+    // 25391: Private network connectors are active and healthy.
     '25391': async (test) => {
       const connectors = await gsaGraphAll('onPremisesPublishingProfiles/applicationProxy/connectors');
       if (connectors === null) return skip(test, `${skippedReason('NotApplicable')} Application Proxy / Private Network connectors are not available.`);
@@ -323,14 +323,14 @@
       return fail(test, 'One or more Private Network connectors are inactive or unhealthy.', evidence);
     },
 
-    // 25392 — Connectors on the latest version. Latest version lives on a cross-origin MS Learn page.
+    // 25392: Connectors on the latest version. Latest version lives on a cross-origin MS Learn page.
     '25392': async (test) => {
       const connectors = await gsaGraphAll('onPremisesPublishingProfiles/applicationProxy/connectors');
       if (connectors === null || !connectors.length) return skip(test, `${skippedReason('NotApplicable')} No Private Access connectors were detected.`);
       return skip(test, `${skippedReason('NotSupported')} The latest connector version is published on a cross-origin Microsoft Learn page not fetchable from the browser; verify connector versions manually.`, { connectors: connectors.map(c => ({ machineName: c.machineName, version: c.version })) });
     },
 
-    // 25393 — Quick Access is enabled and bound to a connector.
+    // 25393: Quick Access is enabled and bound to a connector.
     '25393': async (test) => {
       const profiles = await gsaGraphAll('networkAccess/forwardingProfiles');
       if (profiles === null) return skip(test, `${skippedReason('NotApplicable')} Global Secure Access is not available.`);
@@ -355,7 +355,7 @@
       return fail(test, 'Quick Access is not bound to a connector group with active connectors, or the Private Access profile is not enabled.', evidence);
     },
 
-    // 25394 — Quick Access is bound to a Conditional Access policy with meaningful controls.
+    // 25394: Quick Access is bound to a Conditional Access policy with meaningful controls.
     '25394': async (test) => {
       const qa = (await Api.graphAll('servicePrincipals', { beta: true, query: { '$filter': "tags/any(c:c eq 'NetworkAccessQuickAccessApplication')", '$select': 'appId,displayName,id', '$top': '5' } }).catch(() => []))[0];
       if (!qa) return skip(test, `${skippedReason('NotApplicable')} No Quick Access application is configured.`);
@@ -371,7 +371,7 @@
       return fail(test, 'Quick Access application is not protected by a Conditional Access policy with meaningful grant controls.', { quickAccessApp: qa.displayName });
     },
 
-    // 25395 — Private Access application segments enforce least-privilege (partial: CSA check omitted; broad-scope heuristics).
+    // 25395: Private Access application segments enforce least-privilege (partial: CSA check omitted; broad-scope heuristics).
     '25395': async (test) => {
       const apps = await Api.graphAll('applications', { query: { '$filter': "tags/any(t:t eq 'PrivateAccessNonWebApplication')", '$select': 'id,appId,displayName,tags', '$top': '100' } }).catch(() => null);
       if (apps === null || !toArray(apps).length) return skip(test, `${skippedReason('NotApplicable')} No Entra Private Access per-app applications are configured.`);
@@ -395,7 +395,7 @@
       return pass(test, 'Private Access application segments are scoped for least-privilege access.', evidence);
     },
 
-    // 25396 — Conditional Access enforces strong authentication for private apps (partial: CSA scoring omitted).
+    // 25396: Conditional Access enforces strong authentication for private apps (partial: CSA scoring omitted).
     '25396': async (test) => {
       const apps = await Api.graphAll('servicePrincipals', { query: { '$filter': "(tags/any(t:t eq 'PrivateAccessNonWebApplication') or tags/any(t:t eq 'NetworkAccessQuickAccessApplication'))", '$select': 'id,displayName,appId,tags' } }).catch(() => null);
       if (apps === null || !toArray(apps).length) return skip(test, `${skippedReason('NotApplicable')} No Private Access applications are configured.`);
@@ -416,7 +416,7 @@
       if (unprotected.length) return fail(test, 'One or more Private Access applications are not protected by a Conditional Access policy enforcing MFA or stronger authentication.', evidence);
       return pass(test, 'Private Access applications enforce strong authentication via Conditional Access.', evidence);
     },
-    // 25398 — Domain controller RDP protected by phishing-resistant auth through GSA.
+    // 25398: Domain controller RDP protected by phishing-resistant auth through GSA.
     '25398': async (test) => {
       const paApps = await Api.graphAll('applications', { query: { '$filter': "tags/any(t:t eq 'PrivateAccessNonWebApplication')", '$select': 'id,appId,displayName', '$top': '100' } }).catch(() => null);
       if (paApps === null || !toArray(paApps).length) return skip(test, `${skippedReason('NotApplicable')} No Private Access applications configured.`);
@@ -449,7 +449,7 @@
       return pass(test, 'Domain controller RDP access is protected by phishing-resistant authentication through Global Secure Access.', evidence);
     },
 
-    // 25399 — Private DNS configured for internal name resolution (Quick Access).
+    // 25399: Private DNS configured for internal name resolution (Quick Access).
     '25399': async (test) => {
       const qa = (await Api.graphAll('applications', { beta: true, query: { '$filter': "tags/any(c:c eq 'NetworkAccessQuickAccessApplication')", '$top': '5' } }).catch(() => []))[0];
       if (!qa) return fail(test, "No Quick Access application found (NetworkAccessQuickAccessApplication tag).");
@@ -462,7 +462,7 @@
       return fail(test, 'Private DNS is not configured or DNS suffixes are missing.', evidence);
     },
 
-    // 25400 — DNS traffic for internal domains routed through Private Access.
+    // 25400: DNS traffic for internal domains routed through Private Access.
     '25400': async (test) => {
       const profiles = await gsaGraphAll('networkAccess/forwardingProfiles', { '$filter': "trafficForwardingType eq 'private'" });
       if (profiles === null) return skip(test, `${skippedReason('NotApplicable')} Global Secure Access is not available.`);
@@ -481,10 +481,10 @@
       }
       const evidence = { privateAccessApps: toArray(apps).length, hasDnsSuffix, hasPort53 };
       if (hasDnsSuffix || hasPort53) return pass(test, 'DNS traffic for internal domains is routed through Private Access (DNS suffix or port 53 segments configured).', evidence);
-      return fail(test, 'No DNS suffix or port 53 segments are configured for Private Access — internal DNS is not routed through GSA.', evidence);
+      return fail(test, 'No DNS suffix or port 53 segments are configured for Private Access: internal DNS is not routed through GSA.', evidence);
     },
 
-    // 25401 — Application Proxy apps require preauthentication.
+    // 25401: Application Proxy apps require preauthentication.
     '25401': async (test) => {
       const apps = await Api.graphAll('applications', { beta: true, query: { '$filter': 'onPremisesPublishing/isOnPremPublishingEnabled eq true', '$select': 'id,appId,displayName,onPremisesPublishing', '$top': '100' } }).catch(() => null);
       if (apps === null) return skip(test, `${skippedReason('NotApplicable')} Unable to determine Application Proxy configuration.`);
@@ -496,7 +496,7 @@
       if (!noPreauth.length) return pass(test, 'All Application Proxy applications require Microsoft Entra pre-authentication.', evidence);
       return fail(test, `${noPreauth.length} Application Proxy application(s) use passthrough authentication instead of Entra pre-authentication.`, evidence);
     },
-    // 25403 — Private Access sensors are active and enforcing on domain controllers.
+    // 25403: Private Access sensors are active and enforcing on domain controllers.
     '25403': async (test) => {
       const sensors = await gsaGraphAll('onPremisesPublishingProfiles/privateAccess/sensors');
       if (sensors === null) return skip(test, `${skippedReason('NotApplicable')} Private Access sensors are not available.`);
@@ -508,7 +508,7 @@
       return fail(test, 'One or more Private Access sensors are inactive or in audit mode.', evidence);
     },
 
-    // 25405 — Intelligent Local Access is enabled and configured.
+    // 25405: Intelligent Local Access is enabled and configured.
     '25405': async (test) => {
       const nets = await gsaGraphAll('networkAccess/privateNetworks');
       if (nets === null) return skip(test, `${skippedReason('NotApplicable')} Global Secure Access is not available.`);
@@ -516,7 +516,7 @@
       return pass(test, `Intelligent Local Access is enabled with ${nets.length} private network(s) configured.`, { privateNetworks: nets.length });
     },
 
-    // 25406 — Internet access forwarding profile is enabled and assigned.
+    // 25406: Internet access forwarding profile is enabled and assigned.
     '25406': async (test) => {
       const profs = await gsaGraphAll('networkAccess/forwardingProfiles', { '$filter': "trafficForwardingType eq 'internet'", '$select': 'name,state,servicePrincipal' });
       if (profs === null) return skip(test, `${skippedReason('NotApplicable')} Global Secure Access is not available.`);
@@ -537,7 +537,7 @@
       return fail(test, 'Internet Access forwarding profile is disabled or has no user/group assignments.', evidence);
     },
 
-    // 25407 — Web content filtering integrates with Conditional Access.
+    // 25407: Web content filtering integrates with Conditional Access.
     '25407': async (test) => {
       const [policies, filteringProfiles] = await Promise.all([getConditionalAccessPolicies().catch(() => []), gsaGraphAll('networkAccess/filteringProfiles')]);
       if (filteringProfiles === null) return skip(test, `${skippedReason('NotApplicable')} Global Secure Access filtering is not available.`);
@@ -550,7 +550,7 @@
       return fail(test, 'No enabled Conditional Access policy links to an enabled Global Secure Access web content filtering profile.', evidence);
     },
 
-    // 25408 — Web content filtering policies are configured (partial: profile↔policy linkage heuristic).
+    // 25408: Web content filtering policies are configured (partial: profile↔policy linkage heuristic).
     '25408': async (test) => {
       const allFilteringPolicies = await gsaGraphAll('networkAccess/filteringPolicies');
       if (allFilteringPolicies === null) return skip(test, `${skippedReason('NotApplicable')} Global Secure Access filtering is not available.`);
@@ -563,7 +563,7 @@
       if (wcf.length && enabledProfiles.length && caLinksGsa) return pass(test, 'Web content filtering policies are configured and applied via enabled filtering profiles linked to Conditional Access.', evidence);
       return fail(test, 'Web content filtering policies exist but are not fully applied through enabled filtering profiles linked to Conditional Access.', evidence);
     },
-    // 25409 — Web content filtering uses category-based rules (partial: profile-linkage heuristic).
+    // 25409: Web content filtering uses category-based rules (partial: profile-linkage heuristic).
     '25409': async (test) => {
       const allPol = await gsaGraphAll('networkAccess/filteringPolicies');
       if (allPol === null) return skip(test, `${skippedReason('NotApplicable')} Global Secure Access filtering is not available.`);
@@ -582,7 +582,7 @@
       return fail(test, 'Web content filtering does not use category-based rules applied through enabled, linked profiles.', evidence);
     },
 
-    // 25410 — WCF policies are linked to security profiles (partial).
+    // 25410: WCF policies are linked to security profiles (partial).
     '25410': async (test) => {
       const [policies, profiles] = await Promise.all([gsaGraphAll('networkAccess/filteringPolicies', { '$expand': 'policyRules' }), gsaGraphAll('networkAccess/filteringProfiles', { '$expand': 'policies($expand=policy),conditionalAccessPolicies' })]);
       if (policies === null || profiles === null) return skip(test, `${skippedReason('NotApplicable')} Global Secure Access filtering is not available.`);
@@ -596,7 +596,7 @@
       return fail(test, 'Web content filtering policies are not linked to a baseline or Conditional Access-linked security profile.', evidence);
     },
 
-    // 25411 — TLS inspection enabled and correctly configured (partial).
+    // 25411: TLS inspection enabled and correctly configured (partial).
     '25411': async (test) => {
       const tls = await gsaGraphAll('networkAccess/tlsInspectionPolicies');
       if (tls === null) return skip(test, `${skippedReason('NotApplicable')} Global Secure Access TLS inspection is not available.`);
@@ -609,7 +609,7 @@
       return fail(test, 'TLS inspection policies exist but are not applied through an enabled linked profile.', evidence);
     },
 
-    // 25413 — File transfer policies prevent data exfiltration (partial).
+    // 25413: File transfer policies prevent data exfiltration (partial).
     '25413': async (test) => {
       const filePolicies = await gsaGraphAll('networkAccess/filePolicies');
       if (filePolicies === null) return skip(test, `${skippedReason('NotApplicable')} Global Secure Access file policies are not available.`);
@@ -622,7 +622,7 @@
       return fail(test, 'File transfer policies exist but are not enforced through an enabled linked profile.', evidence);
     },
 
-    // 25415 — AI Gateway Prompt Shield protects generative AI apps (partial).
+    // 25415: AI Gateway Prompt Shield protects generative AI apps (partial).
     '25415': async (test) => {
       const promptPolicies = await gsaGraphAll('networkAccess/promptPolicies', { '$expand': 'policyRules' });
       if (promptPolicies === null) return skip(test, `${skippedReason('NotApplicable')} Global Secure Access AI Gateway / prompt policies are not available.`);
@@ -635,7 +635,7 @@
       return fail(test, 'AI Gateway prompt policies exist but are not applied through an enabled linked profile.', evidence);
     },
 
-    // 25416 — GSA cloud firewall protects branch office internet traffic.
+    // 25416: GSA cloud firewall protects branch office internet traffic.
     '25416': async (test) => {
       const branches = await gsaGraphAll('networkAccess/connectivity/branches');
       if (branches === null) return skip(test, `${skippedReason('NotApplicable')} Global Secure Access connectivity is not available.`);
@@ -648,7 +648,7 @@
       if (enabledCf.length > 0) return pass(test, 'Branch office internet traffic is protected by enabled cloud firewall policies through the baseline security profile.', evidence);
       return fail(test, 'Branch office internet traffic is not protected by enabled cloud firewall policies in the baseline profile.', evidence);
     },
-    // 25422 — GSA deployment logs populated with no recent failures.
+    // 25422: GSA deployment logs populated with no recent failures.
     '25422': async (test) => {
       const profiles = await gsaGraphAll('networkAccess/forwardingProfiles');
       if (profiles === null) return skip(test, `${skippedReason('NotApplicable')} Global Secure Access is not available.`);
@@ -662,7 +662,7 @@
       return fail(test, `${failed.length} Global Secure Access deployment(s) failed in the last 30 days.`, evidence);
     },
 
-    // 25466 — At least two active connectors per Private Access connector group.
+    // 25466: At least two active connectors per Private Access connector group.
     '25466': async (test) => {
       const groups = await gsaGraphAll('onPremisesPublishingProfiles/applicationProxy/connectorGroups');
       if (groups === null) return skip(test, `${skippedReason('NotApplicable')} Application Proxy is not available.`);
@@ -679,7 +679,7 @@
       return fail(test, 'One or more Private Access connector groups have fewer than two active connectors.', evidence);
     },
 
-    // 25480 — Quick Access has user or group assignments.
+    // 25480: Quick Access has user or group assignments.
     '25480': async (test) => {
       const qa = (await Api.graphAll('servicePrincipals', { beta: true, query: { '$filter': "tags/any(c:c eq 'NetworkAccessQuickAccessApplication')", '$select': 'id,appId,displayName', '$top': '5' } }).catch(() => []))[0];
       if (!qa) return skip(test, `${skippedReason('NotApplicable')} No Quick Access application is configured.`);
@@ -691,7 +691,7 @@
       return fail(test, 'Quick Access requires assignment but has no user or group assignments.', evidence);
     },
 
-    // 25481 — All Private Access apps have user or group assignments.
+    // 25481: All Private Access apps have user or group assignments.
     '25481': async (test) => {
       const raw = await Api.graphAll('servicePrincipals', { beta: true, query: { '$filter': "tags/any(c:c eq 'IsAccessibleViaZTNAClient')", '$expand': 'appRoleAssignedTo', '$select': 'id,appId,displayName,tags,appRoleAssignmentRequired' } }).catch(() => null);
       if (raw === null) return skip(test, `${skippedReason('NotApplicable')} Unable to enumerate Private Access applications.`);
@@ -703,7 +703,7 @@
       return fail(test, `${without.length} Private Access application(s) have no user or group assignments.`, evidence);
     },
 
-    // 27000 — Web content filtering blocks high-risk categories (partial: category rule shape best-effort).
+    // 27000: Web content filtering blocks high-risk categories (partial: category rule shape best-effort).
     '27000': async (test) => {
       const policies = await gsaGraphAll('networkAccess/filteringPolicies', { '$expand': 'policyRules' });
       if (policies === null) return skip(test, `${skippedReason('NotApplicable')} Global Secure Access filtering is not available.`);
@@ -726,7 +726,7 @@
       return fail(test, 'One or more high-risk web content categories are not blocked and applied through a security profile.', evidence);
     },
 
-    // 27001 — TLS inspection bypass rules are regularly reviewed (within 90 days).
+    // 27001: TLS inspection bypass rules are regularly reviewed (within 90 days).
     '27001': async (test) => {
       const tls = await gsaGraphAll('networkAccess/tlsInspectionPolicies', { '$expand': 'policyRules' });
       if (tls === null) return skip(test, `${skippedReason('NotApplicable')} Global Secure Access TLS inspection is not available.`);
@@ -742,7 +742,7 @@
       if (!flagged.length) return pass(test, 'TLS inspection bypass rules have been reviewed within the last 90 days (or none exist).', evidence);
       return fail(test, 'One or more TLS inspection policies with custom bypass rules have not been reviewed in over 90 days.', evidence);
     },
-    // 27002 — TLS inspection certificates have sufficient validity (>90 days).
+    // 27002: TLS inspection certificates have sufficient validity (>90 days).
     '27002': async (test) => {
       const tls = await gsaGraphAll('networkAccess/tlsInspectionPolicies');
       if (tls === null) return skip(test, `${skippedReason('NotApplicable')} Global Secure Access TLS inspection is not available.`);
@@ -765,7 +765,7 @@
       return fail(test, 'One or more TLS inspection certificates are expired, expiring, or within 90 days of expiration.', evidence);
     },
 
-    // 61005 — Agents deployed to Microsoft 365 Copilot are discoverable in the Agent Registry.
+    // 61005: Agents deployed to Microsoft 365 Copilot are discoverable in the Agent Registry.
     '61005': async (test) => {
       try {
         const pkgs = await Api.graphAll('copilot/admin/catalog/packages', { beta: true, query: { '$filter': "supportedHosts/any(h:h eq 'Copilot')" } });
@@ -777,7 +777,7 @@
       }
     },
 
-    // 61006 — AI administrative roles have assigned (tenant-scoped) principals.
+    // 61006: AI administrative roles have assigned (tenant-scoped) principals.
     '61006': async (test) => {
       const roleDefs = await Api.graphAll('roleManagement/directory/roleDefinitions', { beta: true, query: { '$select': 'id,displayName,templateId', '$top': '500' } }).catch(() => null);
       if (roleDefs === null) return skip(test, `${skippedReason('NotApplicable')} Unable to read directory role definitions.`);
@@ -797,7 +797,7 @@
       return fail(test, 'One or more AI administrative roles have no tenant-scoped assigned principal.', evidence);
     },
 
-    // 61008 — Agent identities carry lifecycle tagging (customSecurityAttributes present).
+    // 61008: Agent identities carry lifecycle tagging (customSecurityAttributes present).
     '61008': async (test) => {
       const agents = await getAgentIdentities();
       if (agents === null) return skip(test, `${skippedReason('NotApplicable')} Agent identities are not available (Agent 365 not licensed, or CustomSecAttributeAssignment.Read.All not consented).`);
@@ -809,7 +809,7 @@
       return fail(test, `${without.length} agent identity(ies) have no custom security attributes assigned.`, evidence);
     },
 
-    // 61009 — Conditional Access covers agent identities and agent users (partial).
+    // 61009: Conditional Access covers agent identities and agent users (partial).
     '61009': async (test) => {
       const agents = await getAgentIdentities();
       if (agents === null || !agents.length) return skip(test, `${skippedReason('NotApplicable')} No agent identities are configured in this tenant.`);
@@ -826,7 +826,7 @@
       return fail(test, 'Conditional Access does not cover both agent identities and agent users.', evidence);
     },
 
-    // 61011 — Agent identity sign-in activity is monitored (partial; agent-gated).
+    // 61011: Agent identity sign-in activity is monitored (partial; agent-gated).
     '61011': async (test) => {
       const agents = await getAgentIdentities();
       if (agents === null || !agents.length) return skip(test, `${skippedReason('NotApplicable')} No agent identities are configured in this tenant.`);
@@ -840,10 +840,10 @@
       const inactive = agents.filter(a => !active.has(lower(a.appId))).map(a => a.displayName);
       const evidence = { agentIdentities: agents.length, withRecentSignIn: active.size, withoutRecentSignIn: inactive.slice(0, 20) };
       if (!inactive.length) return pass(test, 'All agent identities show recent sign-in activity in the monitored window.', evidence);
-      return fail(test, `${inactive.length} agent identity(ies) show no recent sign-in activity — review for stale or unmonitored agents.`, evidence);
+      return fail(test, `${inactive.length} agent identity(ies) show no recent sign-in activity: review for stale or unmonitored agents.`, evidence);
     },
 
-    // 61012 — Risk-based Conditional Access blocks risky agent identities (partial).
+    // 61012: Risk-based Conditional Access blocks risky agent identities (partial).
     '61012': async (test) => {
       const agents = await getAgentIdentities();
       if (agents === null || !agents.length) return skip(test, `${skippedReason('NotApplicable')} No agent identities are configured in this tenant.`);
@@ -860,7 +860,7 @@
       return fail(test, 'No risk-based Conditional Access policy blocks risky agent identities.', evidence);
     },
 
-    // 61013 — Identity governance for agents: sponsors, entitlement channel, lifecycle automation (partial).
+    // 61013: Identity governance for agents: sponsors, entitlement channel, lifecycle automation (partial).
     '61013': async (test) => {
       const agents = await getAgentIdentities();
       const blueprints = await Api.graphAll('applications/microsoft.graph.agentIdentityBlueprint', { beta: true, query: { '$select': 'id,displayName' } }).catch(() => null);
@@ -879,7 +879,7 @@
       return fail(test, 'Identity governance for agents is incomplete: an entitlement-management channel and/or lifecycle-automation workflows are missing.', evidence);
     },
 
-    // 61014 — Agent identities/blueprint principals have owners and no disabled agents remain (partial).
+    // 61014: Agent identities/blueprint principals have owners and no disabled agents remain (partial).
     '61014': async (test) => {
       const agents = await getAgentIdentities();
       if (agents === null) return skip(test, `${skippedReason('NotApplicable')} Agent identities are not available in this tenant.`);
@@ -894,7 +894,7 @@
       if (!ownerless.length && !disabled.length) return pass(test, 'All agent identities have technical owners and no disabled agents remain in the directory.', evidence);
       return fail(test, 'One or more agent identities lack a technical owner or remain in the directory while disabled.', evidence);
     },
-    // 24546 — Windows automatic device enrollment (MDM) is enforced.
+    // 24546: Windows automatic device enrollment (MDM) is enforced.
     '24546': async (test) => {
       const policies = await intuneGraphAll('policies/mobileDeviceManagementPolicies');
       if (policies === null) return skip(test, `${skippedReason('NotLicensedEntraIDP1')}`);
@@ -904,7 +904,7 @@
       return fail(test, 'Windows automatic device enrollment is not enforced (Microsoft Intune MDM user scope is "none").', evidence);
     },
 
-    // 24561 — macOS LAPS protects local admin credentials during enrollment.
+    // 24561: macOS LAPS protects local admin credentials during enrollment.
     '24561': async (test) => {
       const depTokens = await intuneGraphAll('deviceManagement/depOnboardingSettings', { '$expand': 'enrollmentProfiles', '$select': 'id,appleIdentifier,tokenName' });
       if (depTokens === null) return skip(test, `${skippedReason('NotApplicable')} Apple DEP onboarding settings are not available.`);
@@ -927,7 +927,7 @@
       return fail(test, 'No assigned macOS enrollment profile protects local administrator credentials with LAPS.', evidence);
     },
 
-    // 24570 — Entra Connect Sync uses service principal credentials (no enabled sync user accounts).
+    // 24570: Entra Connect Sync uses service principal credentials (no enabled sync user accounts).
     '24570': async (test) => {
       const org = (await Api.graphAll('organization', { query: { '$select': 'onPremisesSyncEnabled,onPremisesLastSyncDateTime' } }).catch(() => []))[0];
       const isHybrid = !!org?.onPremisesSyncEnabled;
@@ -936,10 +936,10 @@
       const enabledUsers = members.filter(m => m.accountEnabled === true && lower(m['@odata.type']) === '#microsoft.graph.user');
       const evidence = { hybridIdentity: isHybrid, enabledDirSyncUserAccounts: enabledUsers.length };
       if (!isHybrid || enabledUsers.length === 0) return pass(test, isHybrid ? 'Entra Connect Sync uses service principal credentials (no enabled user accounts in the Directory Synchronization Accounts role).' : 'Tenant is not using hybrid identity synchronization.', evidence);
-      return fail(test, 'Enabled user accounts are present in the Directory Synchronization Accounts role — Entra Connect Sync is not using service principal credentials.', evidence);
+      return fail(test, 'Enabled user accounts are present in the Directory Synchronization Accounts role: Entra Connect Sync is not using service principal credentials.', evidence);
     },
 
-    // 24823 — Company Portal branding and support settings are customized.
+    // 24823: Company Portal branding and support settings are customized.
     '24823': async (test) => {
       const profiles = await intuneGraphAll('deviceManagement/intuneBrandingProfiles', { '$select': 'id,isDefaultProfile,profileName,displayName,contactITPhoneNumber,contactITEmailAddress' });
       if (profiles === null) return skip(test, `${skippedReason('NotLicensedIntune')}`);
@@ -956,7 +956,7 @@
       return fail(test, 'Company Portal branding is missing display name or IT support contact details.', evidence);
     },
 
-    // 24824 — Conditional Access blocks noncompliant devices (all platforms or unfiltered).
+    // 24824: Conditional Access blocks noncompliant devices (all platforms or unfiltered).
     '24824': async (test) => {
       const pols = await Api.graphAll('identity/conditionalAccess/policies', { beta: true, query: { '$filter': "state eq 'enabled' and grantControls/builtInControls/any(bc: bc eq 'compliantDevice')", '$select': 'id,displayName,grantControls,conditions' } }).catch(() => null);
       if (pols === null) return skip(test, `${skippedReason('NotApplicable')} Unable to read Conditional Access policies.`);
@@ -968,7 +968,7 @@
       return fail(test, 'Conditional Access does not block noncompliant devices across all platforms.', evidence);
     },
 
-    // 24827 — Conditional Access blocks unmanaged apps (compliantApplication for iOS/Android).
+    // 24827: Conditional Access blocks unmanaged apps (compliantApplication for iOS/Android).
     '24827': async (test) => {
       const pols = await Api.graphAll('identity/conditionalAccess/policies', { beta: true, query: { '$filter': "state eq 'enabled' and grantControls/builtInControls/any(bc: bc eq 'compliantApplication')", '$select': 'id,displayName,grantControls,conditions' } }).catch(() => null);
       if (pols === null) return skip(test, `${skippedReason('NotApplicable')} Unable to read Conditional Access policies.`);
@@ -980,12 +980,12 @@
       return fail(test, 'Conditional Access does not require approved/managed apps on iOS and Android.', evidence);
     },
 
-    // 24839 / 24840 / 24870 — Secure (enterprise) Wi-Fi profiles for iOS / Android / macOS.
+    // 24839 / 24840 / 24870: Secure (enterprise) Wi-Fi profiles for iOS / Android / macOS.
     '24839': async (test) => wifiProfileCheck(test, 'ios', 'iOS'),
     '24840': async (test) => wifiProfileCheck(test, 'android', 'Android'),
     '24870': async (test) => wifiProfileCheck(test, 'macos', 'macOS'),
 
-    // 24871 — Defender for Endpoint automatic enrollment enforced for Android.
+    // 24871: Defender for Endpoint automatic enrollment enforced for Android.
     '24871': async (test) => {
       const connectors = await intuneGraphAll('deviceManagement/mobileThreatDefenseConnectors');
       if (connectors === null) return skip(test, `${skippedReason('NotLicensedIntune')}`);
@@ -1003,7 +1003,7 @@
   const mamAssigned = (p) => p.isAssigned === true || toArray(p.assignments).length > 0;
 
   ZtaImpl.register({
-    // 24518 — Enterprise applications (with Graph permissions) have >=2 owners (partial: privilege proxy).
+    // 24518: Enterprise applications (with Graph permissions) have >=2 owners (partial: privilege proxy).
     '24518': async (test) => {
       const apps = await Api.graphAll('applications', { query: { '$select': 'id,appId,displayName,requiredResourceAccess,signInAudience', '$top': '999' } }).catch(() => null);
       if (apps === null) return skip(test, `${skippedReason('NotApplicable')} Unable to enumerate applications.`);
@@ -1020,7 +1020,7 @@
       return fail(test, `${insufficient.length} application(s) have fewer than two owners.`, evidence);
     },
 
-    // 35001 — Conditional Access policies don't exclude Rights Management workloads.
+    // 35001: Conditional Access policies don't exclude Rights Management workloads.
     '35001': async (test) => {
       const policies = (await getConditionalAccessPolicies().catch(() => null));
       if (policies === null) return skip(test, `${skippedReason('NotApplicable')} Unable to read Conditional Access policies.`);
@@ -1035,7 +1035,7 @@
       return fail(test, `${blocking.length} enabled Conditional Access policy(ies) target Rights Management workloads without excluding them.`, evidence);
     },
 
-    // 41003 — Microsoft Defender for Identity sensors healthy on AD FS/AD CS/Entra Connect (partial).
+    // 41003: Microsoft Defender for Identity sensors healthy on AD FS/AD CS/Entra Connect (partial).
     '41003': async (test) => {
       let sensors = null;
       try { sensors = await Api.graphAll('security/identities/sensors', { beta: true }); }
@@ -1047,7 +1047,7 @@
       return fail(test, 'One or more Microsoft Defender for Identity sensors are unhealthy.', evidence);
     },
 
-    // 41018 — No open Microsoft Defender for Identity health issues.
+    // 41018: No open Microsoft Defender for Identity health issues.
     '41018': async (test) => {
       let issues = null;
       try { issues = await Api.graphAll('security/identities/healthIssues', { beta: true, query: { '$filter': "status eq 'open'" } }); }
@@ -1058,13 +1058,13 @@
       return fail(test, `${critical.length} open medium/high Microsoft Defender for Identity health issue(s) are present.`, evidence);
     },
 
-    // 51001 — Windows Endpoint Privilege Management configured and assigned.
+    // 51001: Windows Endpoint Privilege Management configured and assigned.
     '51001': async (test) => {
       let skus = null;
       try { skus = await Api.graphAll('subscribedSkus'); } catch (err) { if (![400, 403, 404].includes(err.status)) throw err; }
       if (skus === null) return skip(test, `${skippedReason('NotApplicable')} Unable to determine Intune Suite (EPM) licensing.`);
       const epmLicensed = toArray(skus).some(s => lower(s.capabilityStatus) === 'enabled' && toArray(s.servicePlans).some(p => p.servicePlanName === 'Intune-EPM' && lower(p.provisioningStatus) === 'success'));
-      if (!epmLicensed) return fail(test, 'The tenant has no active Intune Suite (Intune-EPM) license — Endpoint Privilege Management cannot be enabled.');
+      if (!epmLicensed) return fail(test, 'The tenant has no active Intune Suite (Intune-EPM) license: Endpoint Privilege Management cannot be enabled.');
       const policies = await intuneGraphAll('deviceManagement/configurationPolicies', { '$expand': 'assignments', '$top': '200' });
       if (policies === null) return skip(test, `${skippedReason('NotLicensedIntune')}`);
       const epm = toArray(policies).filter(p => lower(p.templateReference?.templateFamily) === 'endpointsecurityendpointprivilegemanagement');
@@ -1077,7 +1077,7 @@
       return fail(test, 'Windows Endpoint Privilege Management is not fully configured (an assigned elevation settings and elevation rules policy are both required).', evidence);
     },
 
-    // 51013 — App Protection Policies block managed-app access when re-authentication fails (partial).
+    // 51013: App Protection Policies block managed-app access when re-authentication fails (partial).
     '51013': async (test) => {
       const [ios, android] = await Promise.all([mamPolicies('ios'), mamPolicies('android')]);
       if (ios === null && android === null) return skip(test, `${skippedReason('NotLicensedIntune')}`);
@@ -1092,7 +1092,7 @@
       return fail(test, 'One or more platforms lack an assigned App Protection Policy that blocks access when re-authentication fails.', evidence);
     },
 
-    // 51014 — App Protection Policies block on jailbroken/rooted devices.
+    // 51014: App Protection Policies block on jailbroken/rooted devices.
     '51014': async (test) => {
       const [ios, android] = await Promise.all([mamPolicies('ios'), mamPolicies('android')]);
       if (ios === null && android === null) return skip(test, `${skippedReason('NotLicensedIntune')}`);
@@ -1108,7 +1108,7 @@
       return fail(test, 'One or more platforms lack an assigned App Protection Policy enforcing jailbreak/root protection.', evidence);
     },
 
-    // 51015 — Multi Admin Approval is enabled in Intune.
+    // 51015: Multi Admin Approval is enabled in Intune.
     '51015': async (test) => {
       const policies = await intuneGraphAll('deviceManagement/operationApprovalPolicies', { '$select': 'id,displayName,policyType,policyPlatform' });
       if (policies === null) return skip(test, `${skippedReason('NotLicensedIntune')}`);
@@ -1117,7 +1117,7 @@
       return fail(test, 'No Intune Multi Admin Approval access policies are configured.', evidence);
     },
 
-    // 51018 — Windows App Control for Business (WDAC) configured and assigned (partial).
+    // 51018: Windows App Control for Business (WDAC) configured and assigned (partial).
     '51018': async (test) => {
       const policies = await intuneGraphAll('deviceManagement/configurationPolicies', { '$expand': 'assignments', '$top': '200' });
       if (policies === null) return skip(test, `${skippedReason('NotLicensedIntune')}`);
@@ -1131,7 +1131,7 @@
       return fail(test, 'No assigned Windows App Control for Business (WDAC) policy is configured in Intune.', evidence);
     },
 
-    // 51019 — MAM app access timeout / re-auth enforced after idle period.
+    // 51019: MAM app access timeout / re-auth enforced after idle period.
     '51019': async (test) => {
       const [ios, android] = await Promise.all([mamPolicies('ios'), mamPolicies('android')]);
       if (ios === null && android === null) return skip(test, `${skippedReason('NotLicensedIntune')}`);

@@ -1,25 +1,58 @@
+Options -Indexes
+DirectoryIndex index.html
+
 <IfModule mod_rewrite.c>
   RewriteEngine On
   RewriteBase /tools/
 
-  # Don't rewrite files that exist (including sitemap.xml and robots.txt)
-  RewriteCond %{REQUEST_FILENAME} -f
-  RewriteRule ^ - [L]
+  # One origin: the sign-in redirect URIs and the per-origin token cache are on lieben.nu.
+  RewriteCond %{HTTP_HOST} ^www\.(.+)$ [NC]
+  RewriteRule ^(.*)$ https://%1/tools/$1 [R=301,L]
 
-  # Don't rewrite directories that exist
+  # Local-only and author files are never served: test credentials, tool briefs,
+  # PowerShell sources and the reference module copies the browser ports are synced from.
+  # SimpleZTA reads its control docs, assets, manifest and test metadata at runtime.
+  RewriteRule ^SimpleZTA/powershell/(assets/[^/]+|tests/Test-Assessment\.[^/]+\.md|ZeroTrustAssessment\.psd1)$ - [L]
+  RewriteRule ^SimpleZTA/tests/TestMeta\.json$ - [L]
+
+  RewriteRule (^|/)\.(testauth|description|git[^/]*)$ - [F,L]
+  RewriteRule \.(ps1|psm1|psd1|ps1xml)$ - [F,L]
+  RewriteRule ^SimpleMaester/(module|build|tests)/ - [F,L]
+  RewriteRule ^SimpleZTA/(powershell|tools)/ - [F,L]
+  RewriteRule ^[^/]+/tests/ - [F,L]
+
+  # Existing files and folders as-is, anything else to the landing page.
+  RewriteCond %{REQUEST_FILENAME} -f [OR]
   RewriteCond %{REQUEST_FILENAME} -d
   RewriteRule ^ - [L]
-
-  # For all other requests, serve landing page if present (SPA fallback)
-  RewriteCond %{DOCUMENT_ROOT}/tools/index.html -f
   RewriteRule ^ /tools/index.html [L]
 </IfModule>
 
 <IfModule mod_headers.c>
+  # No inline scripts anywhere in the toolkit. Pages hold admin tokens; the only third party
+  # script next to them is Google's gtag.js (shared/analytics.js, Jos's choice 2026-10-24,
+  # so the tools are counted in GA like the rest of lieben.nu). connect-src lists exactly the
+  # APIs the tools call (PermView covers Power BI, Power Platform, Dataverse and DevOps;
+  # SimpleMaester resolves SPF/DKIM/DMARC over DNS-over-HTTPS).
+  Header always set Content-Security-Policy "default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'self'; script-src 'self' https://*.googletagmanager.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://*.google-analytics.com https://*.googletagmanager.com; font-src 'self' data:; connect-src 'self' https://login.microsoftonline.com https://graph.microsoft.com https://management.azure.com https://*.sharepoint.com https://api.powerbi.com https://api.bap.microsoft.com https://*.dynamics.com https://dev.azure.com https://*.dev.azure.com https://app.vssps.visualstudio.com https://cloudflare-dns.com https://*.google-analytics.com https://*.analytics.google.com https://*.googletagmanager.com; frame-src 'self' https://login.microsoftonline.com; form-action 'self'; upgrade-insecure-requests"
   Header always set Strict-Transport-Security "max-age=31536000; includeSubDomains"
-  Header always set Content-Security-Policy "default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'self'; script-src 'self' 'unsafe-inline' https://www.googletagmanager.com; connect-src 'self' https://www.google-analytics.com https://region1.google-analytics.com https://raw.githubusercontent.com https://graph.microsoft.com https://login.microsoftonline.com https://management.azure.com https://outlook.office365.com https://*.sharepoint.com; img-src 'self' data: blob: https:; style-src 'self' 'unsafe-inline'; font-src 'self' data:; frame-src 'self' https://login.microsoftonline.com; form-action 'self'; worker-src 'self' blob:; upgrade-insecure-requests"
   Header always set X-Frame-Options "SAMEORIGIN"
   Header always set X-Content-Type-Options "nosniff"
   Header always set Referrer-Policy "strict-origin-when-cross-origin"
-  Header always set Permissions-Policy "accelerometer=(), autoplay=(), camera=(), geolocation=(), gyroscope=(), magnetometer=(), microphone=(), payment=(), usb=()"
+  Header always set Permissions-Policy "accelerometer=(), autoplay=(), camera=(), geolocation=(), gyroscope=(), magnetometer=(), microphone=(), payment=(), usb=(), interest-cohort=()"
+  Header always set Cross-Origin-Resource-Policy "same-origin"
+
+  # .auth is read by the tools on every load and changes rarely; HTML must not be cached
+  # long or a fix to a tool does not reach people.
+  <FilesMatch "\.(html|auth)$">
+    Header set Cache-Control "no-cache"
+  </FilesMatch>
+  <FilesMatch "\.(js|css|svg|png)$">
+    Header set Cache-Control "public, max-age=3600"
+  </FilesMatch>
+</IfModule>
+
+<IfModule mod_mime.c>
+  AddType text/plain .auth
+  AddType image/svg+xml .svg
 </IfModule>

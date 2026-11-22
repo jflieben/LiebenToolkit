@@ -1,73 +1,78 @@
 # SPOMove
 
-> Browser-based SharePoint file mover. Move or copy files between SharePoint Online sites, within one tenant or between two tenants.
-> Part of the [Cloud Toolkit](../index.html) by Lieben Consulting.
+Move or copy SharePoint Online files between sites, within one tenant or between two tenants.
+Part of the [LC Toolkit](../index.html) by JSolve.
 
-SPOMove is a fully client-side single-page application. It signs you in to Microsoft 365 via OAuth2 PKCE using the public Lieben Consulting multi-tenant app registration (`271bf19c-6935-42dc-be52-67cb3bd93962`) and calls the Microsoft Graph and SharePoint REST APIs directly as the signed-in user.
+A client-side single-page app. It signs you in to Microsoft 365 with OAuth2 PKCE using the public multi-tenant app registration in `.auth` (`5ead7eeb-c250-472b-8e37-f59ef93e197d`) and calls Microsoft Graph and the SharePoint REST API as you. No backend; file contents go from Microsoft to your browser and back to Microsoft.
 
-**No backend. No telemetry. No file data leaves your browser.**
+## Wizard
 
----
+1. **Type**: same tenant or between two tenants.
+2. **Source login**: popup sign-in to the tenant that holds the files.
+3. **Source location**: **Sites** (search or paste a URL of the connected tenant), **OneDrive (by user)** or **All sites (admin)** (every site collection, SharePoint Administrator only). Then a library and optionally a subfolder.
+4. **Target login**: cross-tenant only, a second popup so both connections stay live.
+5. **Target location**: missing folders are created. A target that is the source folder, or inside it (or the other way round), is refused.
+6. **Options**: copy or move, keep or reset metadata, previous versions, overwrite (optionally only when the source is newer), parallelism.
+7. **Review and start**.
 
-## What it does
+A finished job opens its report: result chart, totals, duration, average speed and every file with status and error, filterable and exportable to Excel or CSV.
 
-A guided wizard walks you through a transfer:
-
-1. **Type** - same tenant or between two tenants.
-2. **Source login** - sign in to the tenant holding the files.
-3. **Source location** - find the files three ways: **Sites** (search by name or paste a URL), **OneDrive (by user)** (type a person's name or UPN), or **All sites (admin)** (list every site collection in the tenant - SharePoint Administrator only). Then pick a document library and drill into a subfolder.
-4. **Target login** - only for cross-tenant: a second sign-in popup so both connections stay live.
-5. **Target location** - where the files should land (missing folders are created automatically).
-6. **Options** - copy vs move, preserve/reset metadata, include previous versions, overwrite (optionally only when the source file is newer), parallelism.
-7. **Review & start**.
-
-When a job finishes, a **report** opens automatically: a success/failure donut chart, totals, duration and a searchable, filterable list of every file so you can drill into failures and their error messages, or export the full list as CSV.
-
-### Transfer mechanics
+## Transfer mechanics
 
 | Mode | How files move |
 |---|---|
-| **Same tenant** | SharePoint server-side `SP.MoveCopyUtil.CopyFileByPath` / `MoveFileByPath` - bytes never pass through the browser. Fast, efficient for large libraries. |
-| **Between tenants** | Download each file from the source, upload to the target (chunked upload above 10 MB). Bound by your bandwidth and memory. |
-| **Previous versions** | Best-effort: each historical version is replayed in order onto the target (streams through the browser). |
-| **Metadata** | Author, Editor, Created and Modified are preserved where the principal resolves in the target web (`ValidateUpdateListItem`). Turn it off to reset metadata to the current user / now. |
+| Same tenant | `SP.MoveCopyUtil.CopyFileByPath` / `MoveFileByPath`, server-side. A move does not bypass co-authoring locks. |
+| Between tenants | Download from the source, upload to the target (chunked above 10 MB). |
+| Previous versions | Every older version is replayed in order onto the target, best effort. |
+| Metadata | Author, Editor, Created and Modified are set where the user resolves in the target web. |
+| Overwrite off | An existing target file is skipped before anything is uploaded, versions included. |
+| Deletes | Move sources, replaced targets and sync deletes go to the site recycle bin (`recycle()`), never a hard delete. |
 
-### Resumable jobs
+## Jobs, resume and sync
 
-Every job and its per-file progress are stored in your browser's local storage. If a run is interrupted (tab closed, network drop, cancel), open the **Jobs** tab and **Resume** - only the remaining files are processed. Multiple jobs can run at the same time.
+Job records live in `localStorage` (`SPOMove-jobs`), per-file lists in IndexedDB (`SPOMove/jobItems`). No tokens are stored there; `Jobs` refuses to write anything that looks like one. Interrupted jobs resume with only the remaining files, and several jobs can run at once.
 
-### Taking ownership
+Re-run of a finished job:
+- **Full re-run** transfers everything that is in the source now.
+- **Sync changes** transfers new and changed files. For copy jobs it lists the target files this job created earlier that are gone from the source, and deletes them only after you confirm that list. When any source folder cannot be listed, nothing is deleted in that run and the job and report show which folders failed.
 
-If you cannot read a site you need and you hold the **SharePoint Administrator** role, SPOMove can temporarily add you as a site collection administrator (`SetSiteAdmin`) so the transfer can proceed.
+**Clear all job data** (Jobs tab, or when signing out) removes the history from the browser.
 
-## Required permissions (delegated)
+## Taking ownership
+
+When a site denies access and you hold the SharePoint Administrator role, **Take ownership** adds you as site collection admin (`SetSiteAdmin` through the tenant admin API) after a confirmation that names the site and the account. The grant is recorded before it is made, on the job that uses the site or in the Jobs tab otherwise. It stays until you click **Remove my site admin rights** (job card, report, or Jobs tab), which removes exactly the grants SPOMove made.
+
+## Sign-in
+
+- MSAL token cache in `sessionStorage`: tokens are gone when the tab closes.
+- Source and target are separate connections on one MSAL instance, popup only.
+- After a reload a role only re-attaches the account this tab signed in for it. Resuming a job reuses a cached account only when tenant id and UPN both match the job; otherwise you sign in again with the job's UPN as login hint, and a sign-in to another tenant is refused.
+- A SharePoint token is only requested for hosts of the connected tenant (`tenant`, `tenant-my`, `tenant-admin`, multi-geo variants).
+- A running job's connection cannot be switched until it finishes.
+
+## Permissions (delegated)
 
 | Permission | Why |
 |---|---|
-| `User.Read` | Sign-in identity and tenant detection |
-| `User.ReadBasic.All` | Look up a user's OneDrive by name/UPN (requested only when the OneDrive-by-user picker is used) |
-| SharePoint `AllSites.FullControl` / `Sites.FullControl.All` | Read source files, write target files, set metadata, list all sites, take ownership |
-
-The first sign-in may trigger an admin-consent prompt if your tenant has not consented to the app yet.
+| Graph `User.Read` | Identity and tenant detection |
+| Graph `User.ReadBasic.All` | OneDrive (by user) picker, asked when first used |
+| SharePoint `https://{tenant}.sharepoint.com/.default` (`AllSites.FullControl` on the app) | Read, write and delete files, set metadata, list all sites, take ownership |
 
 ## Run it locally
 
-MSAL refuses to run from `file://`, so serve the folder over HTTP. A PowerShell helper is included:
-
 ```powershell
-pwsh ./serve.ps1                 # http://localhost:1985/
-pwsh ./serve.ps1 -Port 1985      # explicit port
-pwsh ./serve.ps1 -NoBrowser      # don't auto-open
+.\serve.ps1               # http://localhost:1985/, same CSP as production
+.\serve.ps1 -Port 1995
 ```
 
-The origin must match `redirect-url-local` in `.auth` (`http://localhost:1985`) and that URI must be registered as a SPA redirect on the app registration.
+Sign-in only works on the origin in `redirect-url-local` (`http://localhost:1985`).
 
 ## Tests
 
-Open `tests/test.html` in a browser (served over HTTP) to run the pure-helper unit tests (path handling, OData encoding, claim login names, byte formatting, concurrency limiter).
+`tests/test.html` (served over HTTP) covers path helpers, the source/target overlap guard, existing-target and overwrite rules, the sync delete plan (including unlisted folders), SharePoint host checks, the resume account rule, the no-token guard for stored jobs and folder enumeration that reports unlisted folders. It prints `TEST-RESULT: PASS n/n`.
 
 ## Limitations
 
-- Cross-tenant transfers move file bytes through the browser; very large libraries are slow and memory-bound. Keep the tab open until the job finishes.
-- Version-history replay and cross-tenant Author/Editor preservation are best-effort and logged per file in the Debug tab.
-- SharePoint per-request throttling (429) is retried automatically with backoff.
+- Cross-tenant transfers move the bytes through the browser; very large libraries are slow and memory-bound. Keep the tab open.
+- Version replay and cross-tenant Author/Editor are best effort, logged per file on the Debug tab.
+- SharePoint throttling (429/503) is handled by one shared backoff for all jobs.

@@ -105,34 +105,35 @@
     };
   }
 
-  async function buildReportHtml(scan) {
-    const data = await buildAssessmentJson(scan);
+  // JSON for a <script> block. Every "<" becomes \u003c, so tenant strings cannot close the
+  // script ("</script>") or switch the parser into comment states ("<!--"). U+2028/U+2029
+  // are escaped for engines that treat them as line breaks in string literals.
+  function scriptSafeJson(data) {
+    return JSON.stringify(data)
+      .replace(/</g, '\\u003c')
+      .replace(/\u2028/g, '\\u2028')
+      .replace(/\u2029/g, '\\u2029');
+  }
 
-    const res = await fetch(TEMPLATE_URL, { cache: 'force-cache' });
-    if (!res.ok) {
-      throw new Error(`Could not load the bundled report template (${res.status}). Ensure the powershell folder is deployed alongside the app.`);
-    }
-    const template = await res.text();
-
+  // Same contract as Get-HtmlReport.ps1: replace everything from the start marker through
+  // the end marker with the assessment JSON.
+  function spliceTemplate(template, data) {
     const start = template.indexOf(START_MARKER);
     const endIdx = template.indexOf(END_MARKER);
     if (start < 0 || endIdx < 0) {
       throw new Error('Report template markers not found. The bundled ReportTemplate.html format has changed; re-sync the powershell folder.');
     }
     const end = endIdx + END_MARKER.length;
-
-    // `</` must be escaped so embedded JSON can never terminate the template's script tag.
-    const json = JSON.stringify(data).replace(/<\//g, '<\\/');
-    return `${template.substring(0, start)}reportData= ${json}${template.substring(end)}`;
+    return `${template.substring(0, start)}reportData= ${scriptSafeJson(data)}${template.substring(end)}`;
   }
 
-  function download(filename, content, type) {
-    const blob = new Blob([content], { type: type || 'text/html' });
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(blob);
-    a.download = filename;
-    a.click();
-    URL.revokeObjectURL(a.href);
+  async function buildReportHtml(scan) {
+    const data = await buildAssessmentJson(scan);
+    const res = await fetch(TEMPLATE_URL, { cache: 'force-cache' });
+    if (!res.ok) {
+      throw new Error(`Could not load the bundled report template (${res.status}). Make sure powershell/assets is deployed with the app.`);
+    }
+    return spliceTemplate(await res.text(), data);
   }
 
   async function exportReport(scan) {
@@ -140,12 +141,14 @@
     const html = await buildReportHtml(scan);
     const stamp = (scan.startedAt || new Date().toISOString()).slice(0, 10);
     const tenant = (scan.tenantDomain || scan.tenantId || 'tenant').replace(/[^a-z0-9.-]/gi, '_');
-    download(`ZeroTrustAssessmentReport-${tenant}-${stamp}.html`, html);
+    Export.save(new Blob([html], { type: 'text/html' }), `ZeroTrustAssessmentReport-${tenant}-${stamp}.html`);
   }
 
   window.ReportOfficial = {
     buildAssessmentJson,
     buildReportHtml,
+    spliceTemplate,
+    scriptSafeJson,
     export: exportReport,
   };
 })();

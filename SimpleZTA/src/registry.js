@@ -1,6 +1,5 @@
 (() => {
   let cached = null;
-  const ARM_USER_IMPERSONATION_SCOPE = 'https://management.azure.com/user_impersonation';
 
   const DOC_ROOTS = {
     identity: 'https://learn.microsoft.com/en-us/entra/fundamentals/configure-security?toc=/security/zero-trust/assessment/toc.json&bc=/security/zero-trust/assessment/toc.json',
@@ -90,14 +89,10 @@
     return `https://learn.microsoft.com/en-us/search/?terms=${encodeURIComponent(terms)}`;
   }
 
-  function neededScopesForTest(test) {
-    const scopes = [...Auth.coreScopes];
-    // Controls that call Azure Resource Manager must pre-consent the ARM scope
-    // before the run starts to avoid redirect prompts mid-scan. This covers the
-    // legacy ARM control (21788) and every control whose module Service is Azure.
-    const usesArm = `${test.id}` === '21788' || (Array.isArray(test.service) && test.service.some(s => `${s}`.toLowerCase() === 'azure'));
-    if (usesArm) scopes.push(ARM_USER_IMPERSONATION_SCOPE);
-    return scopes;
+  // Controls that call Azure Resource Manager: the legacy ARM control (21788) and every
+  // control whose module Service is Azure. Only these make a run ask for the ARM token.
+  function usesArm(test) {
+    return `${test.id}` === '21788' || (Array.isArray(test.service) && test.service.some(s => `${s}`.toLowerCase() === 'azure'));
   }
 
   async function getAll() {
@@ -115,7 +110,7 @@
           ...meta,
           implemented: !!impl,
           run: impl,
-          requiredScopes: neededScopesForTest(meta),
+          needsArm: usesArm(meta),
           implementationLevel: impl ? (notes ? 'partial' : 'full') : 'none',
           implementationNotes: notes,
           documentationUrl: docsRootFor(meta),
@@ -132,5 +127,5 @@
     return all.find(t => t.id === `${id}`) || null;
   }
 
-  window.Registry = { getAll, getById };
+  window.Registry = { getAll, getById, usesArm };
 })();

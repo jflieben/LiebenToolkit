@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>SimpleZTA - tests</title>
+  <style>
+    body { font: 14px/1.4 -apple-system,Segoe UI,sans-serif; padding: 20px; max-width: 900px; margin: 0 auto; }
+    .pass { color: #1f7a3a; } .fail { color: #b32026; font-weight: bold; }
+    pre { background: #f4f4f6; padding: 10px; border-radius: 6px; overflow: auto; }
+    h1 { font-size: 18px; }
+  </style>
+</head>
+<body>
+  <h1>SimpleZTA - unit tests</h1>
+  <p>Pure logic only. The browser smoke test with the real report template is <a href="smoke.html">smoke.html</a>.</p>
+  <div id="out"></div>
+  <script src="../../shared/log.js"></script>
+  <script src="../src/storage.js"></script>
+  <script src="../src/md.js"></script>
+  <script src="../src/charts.js"></script>
+  <script src="../src/registry.js"></script>
+  <script src="../src/report-official.js"></script>
+  <script>
+    const out = document.getElementById('out');
+    let pass = 0, fail = 0;
+    const esc = (s) => String(s).replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
+    function test(name, fn) {
+      try { fn(); out.insertAdjacentHTML('beforeend', `<div class="pass">PASS ${esc(name)}</div>`); pass++; }
+      catch (e) { out.insertAdjacentHTML('beforeend', `<div class="fail">FAIL ${esc(name)}<br><pre>${esc(e.stack || e.message)}</pre></div>`); fail++; }
+    }
+    function eq(a, b, m = '') {
+      const A = JSON.stringify(a), B = JSON.stringify(b);
+      if (A !== B) throw new Error(`${m} expected ${B}, got ${A}`);
+    }
+    function ok(cond, m) { if (!cond) throw new Error(m || 'assertion failed'); }
+
+    const LS = '\u2028', PS = '\u2029';
+    // Built from pieces: written out literally they would end or derail this very script block.
+    const LT = '<';
+    const nasty = { TenantName: `Evil${LT}/script>${LT}script>alert(1)${LT}/script>`, Domain: `x${LT}!--${LT}script>y`, Note: `a${LS}b${PS}c`, Tests: [{ TestResult: '<img src=x onerror=alert(1)>' }] };
+
+    // ---------- official report splice ----------
+    test('scriptSafeJson: no "<" and no raw U+2028/U+2029 left', () => {
+      const json = ReportOfficial.scriptSafeJson(nasty);
+      ok(!json.includes('<'), 'raw < found');
+      ok(!json.includes(LS) && !json.includes(PS), 'raw line separator found');
+      ok(json.includes('\\u003c/script>'), '</ escaped as \\u003c/');
+      ok(json.includes('\\u003c!--'), '<\!-- escaped');
+      ok(json.includes('\\u2028') && json.includes('\\u2029'), 'separators escaped');
+    });
+    test('scriptSafeJson: still valid JSON with the same data', () => {
+      eq(JSON.parse(ReportOfficial.scriptSafeJson(nasty)), nasty);
+    });
+    test('spliceTemplate: replaces marker span, keeps the rest of the template', () => {
+      const tpl = '<html><script>var a=1;const x={reportData={old:1,EndOfJson:"EndOfJson"}};<\/script><p>tail</p></html>';
+      const html = ReportOfficial.spliceTemplate(tpl, { A: 1, EndOfJson: 'EndOfJson' });
+      eq(html, '<html><script>var a=1;const x={reportData= {"A":1,"EndOfJson":"EndOfJson"}};<\/script><p>tail</p></html>');
+    });
+    test('spliceTemplate: tenant strings cannot add or break script tags', () => {
+      const tpl = '<html><script>const x={reportData={EndOfJson:"EndOfJson"}};<\/script></html>';
+      const html = ReportOfficial.spliceTemplate(tpl, nasty);
+      eq((html.match(/<script/gi) || []).length, 1, 'script open tags');
+      eq((html.match(/<\/script/gi) || []).length, 1, 'script close tags');
+      ok(!html.includes('<\!--'), 'comment opener leaked');
+      ok(!html.includes('<img'), 'markup leaked');
+    });
+    test('spliceTemplate: "$" patterns in data are taken literally', () => {
+      const tpl = 'A reportData={EndOfJson:"EndOfJson"} B';
+      eq(ReportOfficial.spliceTemplate(tpl, { v: "$& $' $`" }), 'A reportData= {"v":"$& $\' $`"} B');
+    });
+    test('spliceTemplate: missing markers throw', () => {
+      let threw = false;
+      try { ReportOfficial.spliceTemplate('<html></html>', {}); } catch { threw = true; }
+      ok(threw, 'no error');
+    });
+
+    // ---------- stored trace caps ----------
+    test('capTrace: caps entries and preview lengths', () => {
+      const big = 'x'.repeat(5000);
+      const trace = Array.from({ length: 40 }, (_, i) => ({ method: 'GET', url: `https://graph.microsoft.com/v1.0/u/${i}`, status: 200, ok: true, durationMs: 5, requestPreview: big, responsePreview: big, nextLink: null }));
+      const capped = Store.capTrace(trace);
+      eq(capped.length, Store.TRACE_MAX_ENTRIES + 1, 'entries plus note');
+      ok(capped.slice(0, -1).every((e) => e.responsePreview.length < Store.TRACE_PREVIEW_MAX + 60), 'response preview capped');
+      ok(capped[0].requestPreview.length < 600, 'request preview capped');
+      ok(capped[capped.length - 1].url.includes('15 more call(s) not stored'), 'note on dropped calls');
+    });
+    test('capTrace: short traces pass unchanged, junk becomes []', () => {
+      const t = [{ method: 'GET', url: 'u', status: 200, ok: true, durationMs: 1, requestPreview: '', responsePreview: 'ok', nextLink: null }];
+      eq(Store.capTrace(t), t);
+      eq(Store.capTrace(null), []);
+    });
+    test('saveScan: stored scan has capped traces (storage restored after)', () => {
+      const KEY = 'SimpleZTA:scans:v1';
+      const before = localStorage.getItem(KEY);
+      try {
+        localStorage.removeItem(KEY);
+        const trace = [{ method: 'GET', url: 'u', status: 200, ok: true, durationMs: 1, requestPreview: '', responsePreview: 'y'.repeat(9000), nextLink: null }];
+        const res = Store.saveScan({ id: 'scan-t', startedAt: '2026-01-01T00:00:00Z', summary: Store.computeSummary([]), results: [{ id: '1', status: 'Passed', apiTrace: trace }] });
+        ok(res.saved, 'saved');
+        const stored = Store.getScan('scan-t');
+        ok(stored.results[0].apiTrace[0].responsePreview.length < Store.TRACE_PREVIEW_MAX + 60, 'stored preview capped');
+      } finally {
+        if (before == null) localStorage.removeItem(KEY); else localStorage.setItem(KEY, before);
+      }
+    });
+    test('describeHistory: count, tenants and period', () => {
+      const d = Store.describeHistory([
+        { startedAt: '2026-02-01T10:00:00Z', tenantDomain: 'a.com' },
+        { startedAt: '2026-01-05T10:00:00Z', tenantDomain: 'b.com' },
+      ]);
+      ok(d.startsWith('2 scans of 2 tenants, 2026-01-05 to 2026-02-01'), d);
+      eq(Store.describeHistory([]), 'No stored scans');
+    });
+
+    // ---------- profiles ----------
+    test('cleanProfileName: trims, strips control chars, caps length', () => {
+      eq(Store.cleanProfileName('  My\u0000 set\n '), 'My set');
+      eq(Store.cleanProfileName('x'.repeat(200)).length, 80);
+      eq(Store.cleanProfileName(null), '');
+    });
+    test('cleanProfileName: rejects prototype keys', () => {
+      ['__proto__', 'constructor', 'prototype'].forEach((n) => eq(Store.cleanProfileName(n), '', n));
+    });
+    test('saveProfile/loadProfiles: round trip, bad stored keys ignored (storage restored after)', () => {
+      const KEY = 'SimpleZTA:profiles:v1';
+      const before = localStorage.getItem(KEY);
+      try {
+        localStorage.setItem(KEY, JSON.stringify({ good: ['1'], 'bad\u0007': ['2'], notArray: 'x' }));
+        eq(Object.keys(Store.loadProfiles()), ['good']);
+        Store.saveProfile('<b>bold</b>', [21772]);
+        eq(Store.loadProfiles()['<b>bold</b>'], ['21772']);
+        let threw = false;
+        try { Store.saveProfile('__proto__', ['1']); } catch { threw = true; }
+        ok(threw, '__proto__ accepted');
+      } finally {
+        if (before == null) localStorage.removeItem(KEY); else localStorage.setItem(KEY, before);
+      }
+    });
+
+    // ---------- ARM only for Azure controls ----------
+    test('usesArm: 21788 and Azure service controls only', () => {
+      eq(Registry.usesArm({ id: '21788', service: [] }), true);
+      eq(Registry.usesArm({ id: '21860', service: ['Azure'] }), true);
+      eq(Registry.usesArm({ id: '21772', service: ['Graph'] }), false);
+      eq(Registry.usesArm({ id: '1', service: [] }), false);
+    });
+
+    // ---------- markdown ----------
+    test('buildResultMarkdown: "$" in tenant data is not a replacement pattern', () => {
+      const md = Md.buildResultMarkdown({ status: 'Failed', message: "Group $& and $'" }, 'Before\n%TestResult%\nAfter');
+      ok(md.includes("Group $& and $'"), md);
+      ok(!md.includes('Before\n%TestResult%'), 'placeholder kept');
+    });
+    test('mdToHtml: escapes HTML and drops javascript: links', () => {
+      const html = Md.mdToHtml('<img src=x onerror=alert(1)> [x](javascript:alert(1))');
+      ok(!html.includes('<img'), 'img');
+      ok(!html.includes('javascript:'), 'js link');
+    });
+
+    // ---------- charts: CSP safe and theme tokens ----------
+    test('charts: no style attributes, colors via CSS variables', () => {
+      const html = [
+        Charts.donut({ segments: [{ label: 'Passed', value: 3, color: 'var(--viz-good)' }, { label: 'x"><b>', value: 1, color: 'var(--viz-critical)' }] }),
+        Charts.heatmap({ rows: ['Identity'], cols: ['High', 'Low'], get: (r, c) => (c === 'High' ? 10 : 1) }),
+        Charts.trend({ series: [{ name: 'A', color: 'var(--viz-s1)', points: [{ label: 'a', value: 1 }, { label: 'b', value: 2 }] }, { name: 'B', color: 'var(--viz-s2)', points: [{ label: 'a', value: 3 }, { label: 'b', value: 4 }] }], yMax: 100 }),
+        Charts.gauge({ label: 'Identity', value: 0, total: 0 }),
+      ].join('');
+      ok(!/\sstyle=/.test(html), 'style attribute found');
+      ok(!/#[0-9a-f]{6}/i.test(html), 'hard-coded hex color found');
+      ok(html.includes('viz-heat-5') && html.includes('viz-heat-1'), 'heat classes');
+      ok(!html.includes('<b>'), 'label not escaped');
+    });
+    test('Charts.swatch: SVG rect with escaped fill', () => {
+      const s = Charts.swatch('var(--viz-good)');
+      ok(s.startsWith('<svg') && s.includes('fill="var(--viz-good)"'), s);
+      ok(!Charts.swatch('"><script>').includes('<script>'), 'escaped');
+    });
+
+    out.insertAdjacentHTML('beforeend', `<h2>${pass} passed, ${fail} failed</h2><p id="result">TEST-RESULT: ${fail ? 'FAIL' : 'PASS'} ${pass}/${pass + fail}</p>`);
+  </script>
+</body>
+</html>

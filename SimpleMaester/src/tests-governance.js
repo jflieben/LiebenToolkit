@@ -9,12 +9,11 @@
   const ENTITLEMENT_SCOPES    = ['https://graph.microsoft.com/EntitlementManagement.Read.All', ...Auth.SCOPES.graphFull];
   const PURVIEW_SCOPES        = ['https://graph.microsoft.com/InformationProtectionPolicy.Read', ...Auth.SCOPES.graphFull];
   const SECURITY_EVENTS_SCOPES = Auth.SCOPES.graphSecurityEvents;
-  const ARM_SCOPES            = ['https://management.azure.com/.default'];
 
   function ms(t0) { return Math.round(performance.now() - t0); }
   function skipOn(id, e, t0, extra) {
     if (e.status === 403 || e.status === 401 || e.status === 404) {
-      return { id, status: 'Skipped', reason: `Insufficient permissions (HTTP ${e.status})${extra ? ` — ${extra}` : ''}. ${e.message}`, durationMs: ms(t0) };
+      return { id, status: 'Skipped', reason: `Insufficient permissions (HTTP ${e.status})${extra ? ` - ${extra}` : ''}. ${e.message}`, durationMs: ms(t0) };
     }
     return { id, status: 'Error', reason: e.message, durationMs: ms(t0) };
   }
@@ -95,7 +94,7 @@
     if (!assignments.length) return null;
     const policyId = assignments[0].policyId;
     // Get the policy rules
-    const rulesResp = await Graph.graph(`policies/roleManagementPolicies/${policyId}/rules`, { apiVersion: 'beta' });
+    const rulesResp = await Graph.graph(`policies/roleManagementPolicies/${encodeURIComponent(policyId)}/rules`, { apiVersion: 'beta' });
     return Array.isArray(rulesResp?.value) ? rulesResp.value : [];
   }
 
@@ -109,7 +108,7 @@
       const t0 = performance.now();
       try {
         const rules = await getGaActivationRules();
-        if (!rules) return { id: 'SM.GOV.1085', status: 'Skipped', reason: 'Could not retrieve PIM policy rules — requires Entra ID P2 and PIM access.', durationMs: ms(t0) };
+        if (!rules) return { id: 'SM.GOV.1085', status: 'Skipped', reason: 'Could not retrieve PIM policy rules - requires Entra ID P2 and PIM access.', durationMs: ms(t0) };
 
         // Look for enablement rule that includes MultiFactorAuthentication
         const enabRule = rules.find(r => r['@odata.type'] === '#microsoft.graph.unifiedRoleManagementPolicyEnablementRule' && r.id?.includes('Activation_'));
@@ -138,7 +137,7 @@
       const t0 = performance.now();
       try {
         const rules = await getGaActivationRules();
-        if (!rules) return { id: 'SM.GOV.1111', status: 'Skipped', reason: 'Could not retrieve PIM policy rules — requires Entra ID P2 and PIM access.', durationMs: ms(t0) };
+        if (!rules) return { id: 'SM.GOV.1111', status: 'Skipped', reason: 'Could not retrieve PIM policy rules - requires Entra ID P2 and PIM access.', durationMs: ms(t0) };
         const enablementRules = rules.filter(r => r['@odata.type'] === '#microsoft.graph.unifiedRoleManagementPolicyEnablementRule');
         if (!enablementRules.length) return { id: 'SM.GOV.1111', status: 'Skipped', reason: 'PIM activation enablement rule not found.', durationMs: ms(t0) };
 
@@ -164,7 +163,7 @@
       const t0 = performance.now();
       try {
         const rules = await getGaActivationRules();
-        if (!rules) return { id: 'SM.GOV.1112', status: 'Skipped', reason: 'Could not retrieve PIM policy rules — requires Entra ID P2 and PIM access.', durationMs: ms(t0) };
+        if (!rules) return { id: 'SM.GOV.1112', status: 'Skipped', reason: 'Could not retrieve PIM policy rules - requires Entra ID P2 and PIM access.', durationMs: ms(t0) };
         const expRule = rules.find(r => r['@odata.type'] === '#microsoft.graph.unifiedRoleManagementPolicyExpirationRule' && r.id?.includes('Activation_'));
         if (!expRule) return { id: 'SM.GOV.1112', status: 'Skipped', reason: 'PIM expiration rule for activation not found.', durationMs: ms(t0) };
         if (!expRule.isExpirationRequired) {
@@ -179,15 +178,15 @@
         if (ptH) hours = parseInt(ptH[1], 10);
         else if (pD) hours = parseInt(pD[1], 10) * 24;
         if (hours === null) return { id: 'SM.GOV.1112', status: 'Passed', reason: `PIM activation expiration is required. Duration: ${dur || 'not parsed'}.`, durationMs: ms(t0) };
-        if (hours > 8) return { id: 'SM.GOV.1112', status: 'Failed', reason: `PIM activation maximum duration is ${hours}h — should be 8 hours or less. Current: ${dur}.`, durationMs: ms(t0) };
-        return { id: 'SM.GOV.1112', status: 'Passed', reason: `PIM activation maximum duration is ${hours}h (${dur}) — within recommended 8-hour limit.`, durationMs: ms(t0) };
+        if (hours > 8) return { id: 'SM.GOV.1112', status: 'Failed', reason: `PIM activation maximum duration is ${hours}h - should be 8 hours or less. Current: ${dur}.`, durationMs: ms(t0) };
+        return { id: 'SM.GOV.1112', status: 'Passed', reason: `PIM activation maximum duration is ${hours}h (${dur}) - within recommended 8-hour limit.`, durationMs: ms(t0) };
       } catch (e) { return skipOn('SM.GOV.1112', e, t0, 'Requires Entra ID P2 and PIM'); }
     },
   });
 
   // ─────────────────────────────────────────────────────────────────────────────
   // FEDERATED IDENTITY CREDENTIALS ON PRIVILEGED APPS (SM.GOV.1147)
-  // Uses existing Application.Read.All scope — no new scope needed.
+  // Uses existing Application.Read.All scope - no new scope needed.
   // ─────────────────────────────────────────────────────────────────────────────
   tests.push({
     id: 'SM.GOV.1147',
@@ -220,11 +219,11 @@
         const findings = [];
         for (const app of privApps.slice(0, 30)) {
           try {
-            const creds = await Graph.graphAll(`applications/${app.id}/federatedIdentityCredentials`, { apiVersion: 'v1.0' });
+            const creds = await Graph.graphAll(`applications/${encodeURIComponent(app.id)}/federatedIdentityCredentials`, { apiVersion: 'v1.0' });
             if (creds.length) findings.push({ name: app.displayName, creds: creds.length });
           } catch {}
         }
-        if (!findings.length) return { id: 'SM.GOV.1147', status: 'Passed', reason: `${privApps.length} privileged app(s) checked — none have federated identity credentials.`, durationMs: ms(t0) };
+        if (!findings.length) return { id: 'SM.GOV.1147', status: 'Passed', reason: `${privApps.length} privileged app(s) checked - none have federated identity credentials.`, durationMs: ms(t0) };
         const detail = findings.map(f => `${f.name} (${f.creds} federated cred(s))`).join(', ');
         return { id: 'SM.GOV.1147', status: 'Failed', reason: `${findings.length} privileged app(s) have federated identity credentials: ${detail}. Verify these are intentional and from trusted sources.`, durationMs: ms(t0) };
       } catch (e) { return skipOn('SM.GOV.1147', e, t0); }
@@ -232,7 +231,7 @@
   });
 
   // ─────────────────────────────────────────────────────────────────────────────
-  // ACCESS REVIEWS (SM.GOV.1090, SM.GOV.1091) — requires AccessReview.Read.All
+  // ACCESS REVIEWS (SM.GOV.1090, SM.GOV.1091) - requires AccessReview.Read.All
   // ─────────────────────────────────────────────────────────────────────────────
   tests.push({
     id: 'SM.GOV.1090',
@@ -281,7 +280,7 @@
           apiVersion: 'v1.0', tokenScopes: ACCESS_REVIEW_SCOPES,
         });
         if (!defs.length) return { id: 'SM.GOV.1091', status: 'Failed', reason: 'No access review definitions found. Configure access reviews to remove stale privileged accounts.', durationMs: ms(t0) };
-        // Look for recurring reviews (not one-time) — recurring indicates ongoing hygiene
+        // Look for recurring reviews (not one-time) - recurring indicates ongoing hygiene
         const recurring = defs.filter(d => d.settings?.recurrence?.pattern?.type && d.settings.recurrence.pattern.type !== 'none');
         if (!recurring.length) return { id: 'SM.GOV.1091', status: 'Failed', reason: `${defs.length} access review(s) found but none are recurring. Stale account review should be a recurring process.`, durationMs: ms(t0) };
         return { id: 'SM.GOV.1091', status: 'Passed', reason: `${recurring.length} recurring access review(s) found that help manage stale accounts.`, durationMs: ms(t0) };
@@ -290,7 +289,7 @@
   });
 
   // ─────────────────────────────────────────────────────────────────────────────
-  // ENTITLEMENT MANAGEMENT (SM.GOV.1106–SM.GOV.1110) — requires EntitlementManagement.Read.All
+  // ENTITLEMENT MANAGEMENT (SM.GOV.1106–SM.GOV.1110) - requires EntitlementManagement.Read.All
   // ─────────────────────────────────────────────────────────────────────────────
   async function getAssignmentPolicies() {
     return Graph.graphAll('identityGovernance/entitlementManagement/assignmentPolicies', {
@@ -398,7 +397,7 @@
     title: 'Access package policies do not allow assignment directly by requestor',
     severity: 'High', category: 'Governance', tag: 'Governance',
     docUrl: null,
-    description: 'Assignment policies should require approval — requestors should not be able to assign themselves access.',
+    description: 'Assignment policies should require approval - requestors should not be able to assign themselves access.',
     requiredScopes: ENTITLEMENT_SCOPES,
     async run() {
       const t0 = performance.now();
@@ -423,7 +422,7 @@
   });
 
   // ─────────────────────────────────────────────────────────────────────────────
-  // PURVIEW — SENSITIVITY LABELS (MT.PUR.1001) — requires InformationProtectionPolicy.Read
+  // PURVIEW - SENSITIVITY LABELS (MT.PUR.1001) - requires InformationProtectionPolicy.Read
   // ─────────────────────────────────────────────────────────────────────────────
   tests.push({
     id: 'MT.PUR.1001',
@@ -468,7 +467,7 @@
         let found = null;
         for (const appId of MDI_APP_IDS) {
           try {
-            const res = await Graph.graphAll(`servicePrincipals?$filter=appId eq '${appId}'`, { apiVersion: 'v1.0' });
+            const res = await Graph.graphAll(`servicePrincipals?$filter=appId eq ${Http.odataString(appId)}`, { apiVersion: 'v1.0' });
             if (res.length) { found = res[0]; break; }
           } catch {}
         }
@@ -497,22 +496,15 @@
   });
 
   // ─────────────────────────────────────────────────────────────────────────────
-  // AZURE RBAC (SM.GOV.1056, SM.GOV.1064, SM.GOV.1065) — requires management.azure.com token
+  // AZURE RBAC (SM.GOV.1056, SM.GOV.1064, SM.GOV.1065) - requires management.azure.com token
   // ─────────────────────────────────────────────────────────────────────────────
 
   async function armFetch(url) {
-    const tok = await Auth.getToken(ARM_SCOPES);
-    const res = await fetch(url, { headers: { Authorization: 'Bearer ' + tok } });
-    if (res.status === 403 || res.status === 401) {
-      const err = new Error(`ARM 403 for ${url} — insufficient Azure RBAC read permissions`);
-      err.status = 403; throw err;
+    try { return await Graph.arm(url); }
+    catch (e) {
+      if (e.status === 401 || e.status === 403) e.message = `${e.message}: insufficient Azure RBAC read permissions`;
+      throw e;
     }
-    if (!res.ok) {
-      const t = await res.text().catch(() => '');
-      const err = new Error(`ARM ${res.status}: ${t.substring(0, 200)}`);
-      err.status = res.status; throw err;
-    }
-    return res.json();
   }
 
   async function listSubscriptions() {
@@ -526,7 +518,7 @@
     severity: 'High', category: 'Azure', tag: 'Azure',
     docUrl: null,
     description: 'Azure RBAC privileged roles (Owner, Contributor) should be assigned as eligible (via PIM) rather than as permanent active assignments.',
-    requiredScopes: ARM_SCOPES,
+    requiredScopes: 'arm',
     async run() {
       const t0 = performance.now();
       try {
@@ -537,14 +529,14 @@
           try {
             // Check for PIM eligible role assignment schedule instances
             const eligible = await armFetch(
-              `https://management.azure.com/subscriptions/${sub.subscriptionId}/providers/Microsoft.Authorization/roleEligibilityScheduleInstances?api-version=2020-10-01-preview`
+              `https://management.azure.com/subscriptions/${encodeURIComponent(sub.subscriptionId)}/providers/Microsoft.Authorization/roleEligibilityScheduleInstances?api-version=2020-10-01-preview`
             );
             const eligCount = (eligible.value || []).length;
             // Check for permanent active role assignments for Owner/Contributor
             const OWNER_ID = '8e3af657-a8ff-443c-a75c-2fe8c4bcb635';
             const CONTRIB_ID = 'b24988ac-6180-42a0-ab88-20f7382dd24c';
             const permanent = await armFetch(
-              `https://management.azure.com/subscriptions/${sub.subscriptionId}/providers/Microsoft.Authorization/roleAssignments?api-version=2022-04-01&$filter=atScope()`
+              `https://management.azure.com/subscriptions/${encodeURIComponent(sub.subscriptionId)}/providers/Microsoft.Authorization/roleAssignments?api-version=2022-04-01&$filter=atScope()`
             );
             const privPermanent = (permanent.value || []).filter(ra => {
               const rdId = (ra.properties?.roleDefinitionId || '').toLowerCase();
@@ -560,7 +552,7 @@
         }
         const status = totalPermanent > 0 ? 'Failed' : 'Passed';
         const msg = status === 'Passed'
-          ? `Azure PIM is in use — ${totalEligible} eligible role assignment(s) found across ${subs.length} subscription(s).`
+          ? `Azure PIM is in use - ${totalEligible} eligible role assignment(s) found across ${subs.length} subscription(s).`
           : `${totalPermanent} permanent privileged role assignment(s) found alongside ${totalEligible} eligible. Move to PIM. ${subDetails.join('; ')}`;
         return { id: 'SM.GOV.1056', status, reason: msg, durationMs: ms(t0) };
       } catch (e) { return skipOn('SM.GOV.1056', e, t0, 'Requires Azure subscription reader access (management.azure.com)'); }
@@ -573,7 +565,7 @@
     severity: 'High', category: 'Azure', tag: 'Azure',
     docUrl: null,
     description: 'Direct (non-PIM) Owner role assignments at subscription or management group scope should not exist.',
-    requiredScopes: ARM_SCOPES,
+    requiredScopes: 'arm',
     async run() {
       const t0 = performance.now();
       try {
@@ -584,7 +576,7 @@
         for (const sub of subs.slice(0, 10)) {
           try {
             const ra = await armFetch(
-              `https://management.azure.com/subscriptions/${sub.subscriptionId}/providers/Microsoft.Authorization/roleAssignments?api-version=2022-04-01&$filter=atScope()`
+              `https://management.azure.com/subscriptions/${encodeURIComponent(sub.subscriptionId)}/providers/Microsoft.Authorization/roleAssignments?api-version=2022-04-01&$filter=atScope()`
             );
             const owners = (ra.value || []).filter(r => {
               const rdId = (r.properties?.roleDefinitionId || '').toLowerCase();
@@ -607,7 +599,7 @@
     severity: 'Medium', category: 'Azure', tag: 'Azure',
     docUrl: null,
     description: 'Classic administrator roles (Co-Administrator, Service Administrator) are deprecated and should not be in use.',
-    requiredScopes: ARM_SCOPES,
+    requiredScopes: 'arm',
     async run() {
       const t0 = performance.now();
       try {
@@ -617,7 +609,7 @@
         for (const sub of subs.slice(0, 10)) {
           try {
             const ca = await armFetch(
-              `https://management.azure.com/subscriptions/${sub.subscriptionId}/providers/Microsoft.Authorization/classicAdministrators?api-version=2015-07-01`
+              `https://management.azure.com/subscriptions/${encodeURIComponent(sub.subscriptionId)}/providers/Microsoft.Authorization/classicAdministrators?api-version=2015-07-01`
             );
             const admins = (ca.value || []).filter(a => a.properties?.role !== 'AccountAdministrator');
             admins.forEach(a => classicAdmins.push({ sub: sub.displayName, role: a.properties?.role, email: a.properties?.emailAddress }));
@@ -625,7 +617,7 @@
         }
         if (classicAdmins.length) {
           const detail = classicAdmins.map(a => `${a.email} (${a.role}) on ${a.sub}`).join('; ');
-          return { id: 'SM.GOV.1065', status: 'Failed', reason: `${classicAdmins.length} classic administrator(s) found — these roles are deprecated: ${detail}`, durationMs: ms(t0) };
+          return { id: 'SM.GOV.1065', status: 'Failed', reason: `${classicAdmins.length} classic administrator(s) found - these roles are deprecated: ${detail}`, durationMs: ms(t0) };
         }
         return { id: 'SM.GOV.1065', status: 'Passed', reason: `No classic administrators (Co-Admin, Service Admin) found across ${subs.length} subscription(s).`, durationMs: ms(t0) };
       } catch (e) { return skipOn('SM.GOV.1065', e, t0, 'Requires Azure subscription reader access'); }

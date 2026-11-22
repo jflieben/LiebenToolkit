@@ -13,7 +13,9 @@
 <body>
   <h1>SPNRoleMgr - unit tests for pure helpers</h1>
   <div id="out"></div>
-  <script src="../src/log.js"></script>
+  <script src="../../shared/log.js"></script>
+  <script src="../../shared/http.js"></script>
+  <script src="../../shared/auth.js"></script>
   <script src="../src/spns.js"></script>
   <script>
     // Tiny test harness. No build step.
@@ -176,23 +178,242 @@
       eq(Spns.findAppPermissionOnSite(perms, null), null);
     });
 
-    // Auth file parser (loaded inline since auth.js exposes it)
-  </script>
-  <script src="../src/auth.js"></script>
-  <script>
-    test('Auth._parseAuthFile: parses key:value lines', () => {
-      const cfg = Auth._parseAuthFile('clientId:abc\nredirect-url-local: http://localhost:1985\nredirect-url-web: https://example.com\n# comment\n');
+    // Shared auth helpers this tool relies on
+    test('ToolkitAuth.parseAuthFile: parses key:value lines', () => {
+      const cfg = ToolkitAuth.parseAuthFile('clientId:abc\nredirect-url-local: http://localhost:1985\nredirect-url-web: https://example.com\n# comment\n');
       eq(cfg.clientId, 'abc');
       eq(cfg['redirect-url-local'], 'http://localhost:1985');
       eq(cfg['redirect-url-web'], 'https://example.com');
     });
-    test('Auth._pickRedirectUriForOrigin: picks local for localhost', () => {
+    test('ToolkitAuth.pickRedirectUriForOrigin: local vs web', () => {
       const cfg = { 'redirect-url-local': 'http://localhost:1985', 'redirect-url-web': 'https://x.example.com' };
-      eq(Auth._pickRedirectUriForOrigin(cfg, 'http://localhost:1985'), 'http://localhost:1985');
-      eq(Auth._pickRedirectUriForOrigin(cfg, 'https://x.example.com'), 'https://x.example.com');
+      eq(ToolkitAuth.pickRedirectUriForOrigin(cfg, 'http://localhost:1985'), 'http://localhost:1985');
+      eq(ToolkitAuth.pickRedirectUriForOrigin(cfg, 'https://x.example.com'), 'https://x.example.com');
     });
 
-    out.insertAdjacentHTML('beforeend', `<h2>${pass} passed, ${fail} failed</h2>`);
+    // API picker: by appId, no substring fallback
+    const GRAPH = { id: 'o1', appId: Spns.GRAPH_APP_ID, displayName: 'Microsoft Graph', appOwnerOrganizationId: Spns.MS_FIRST_PARTY_TENANT };
+    const TWIN_A = { id: 'o2', appId: '11111111-1111-1111-1111-111111111111', displayName: 'Contoso API', appOwnerOrganizationId: 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa' };
+    const TWIN_B = { id: 'o3', appId: '22222222-2222-2222-2222-222222222222', displayName: 'Contoso API', publisherName: 'Evil Corp', appOwnerOrganizationId: 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb' };
+    const APIS = [GRAPH, TWIN_A, TWIN_B];
+    test('apiOptionLabel: name plus appId', () => {
+      eq(Spns.apiOptionLabel(GRAPH), `Microsoft Graph (${Spns.GRAPH_APP_ID})`);
+    });
+    test('resolveApiQuery: option label resolves by appId', () => {
+      eq(Spns.resolveApiQuery(APIS, Spns.apiOptionLabel(TWIN_B)).sp.id, 'o3');
+      eq(Spns.resolveApiQuery(APIS, Spns.apiOptionLabel(TWIN_A)).sp.id, 'o2');
+    });
+    test('resolveApiQuery: bare appId and unique exact name', () => {
+      eq(Spns.resolveApiQuery(APIS, Spns.GRAPH_APP_ID.toUpperCase()).sp.id, 'o1');
+      eq(Spns.resolveApiQuery(APIS, '  microsoft graph ').sp.id, 'o1');
+    });
+    test('resolveApiQuery: duplicate names are refused', () => {
+      const r = Spns.resolveApiQuery(APIS, 'Contoso API');
+      eq(r.sp, undefined);
+      eq(r.matches.length, 2);
+    });
+    test('resolveApiQuery: no substring matching', () => {
+      eq(Spns.resolveApiQuery(APIS, 'Graph').sp, undefined);
+      eq(Spns.resolveApiQuery(APIS, 'Contoso').sp, undefined);
+      eq(Spns.resolveApiQuery(APIS, '').sp, undefined);
+    });
+    test('resolveApiQuery: unknown appId in label is refused', () => {
+      eq(Spns.resolveApiQuery(APIS, 'Microsoft Graph (99999999-9999-9999-9999-999999999999)').sp, undefined);
+    });
+    test('ownerLabel: Microsoft, own tenant, publisher', () => {
+      eq(Spns.ownerLabel(GRAPH, 't'), 'Microsoft');
+      eq(Spns.ownerLabel(TWIN_A, 'AAAAAAAA-aaaa-aaaa-aaaa-aaaaaaaaaaaa'), 'your tenant');
+      eq(Spns.ownerLabel(TWIN_B, 'x'), 'Evil Corp, tenant bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb');
+      eq(Spns.ownerLabel(null), 'unknown owner');
+    });
+
+    // Tenant guard
+    const b64u = (o) => btoa(JSON.stringify(o)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+    const jwt = (claims) => `${b64u({ alg: 'none' })}.${b64u(claims)}.sig`;
+    test('tokenTenantId: reads tid from a JWT, null otherwise', () => {
+      eq(Spns.tokenTenantId(jwt({ tid: 'tenant-1', name: 'Zoë ÿ' })), 'tenant-1');
+      eq(Spns.tokenTenantId('opaque-token'), null);
+      eq(Spns.tokenTenantId(null), null);
+    });
+    test('assertTokenTenant: throws on another tenant', () => {
+      let threw = false;
+      try { Spns.assertTokenTenant(jwt({ tid: 'customer' }), 'own'); } catch { threw = true; }
+      eq(threw, true);
+    });
+    test('assertTokenTenant: passes same tenant (any case), unpinned, or opaque token', () => {
+      Spns.assertTokenTenant(jwt({ tid: 'ABC' }), 'abc');
+      Spns.assertTokenTenant(jwt({ tid: 'x' }), null);
+      Spns.assertTokenTenant('opaque', 'abc');
+    });
+
+    // SharePoint URL validation
+    test('isSharePointHost: only *.sharepoint.com', () => {
+      eq(Spns.isSharePointHost('contoso.sharepoint.com'), true);
+      eq(Spns.isSharePointHost('contoso-my.sharepoint.com'), true);
+      eq(Spns.isSharePointHost('sharepoint.com'), false);
+      eq(Spns.isSharePointHost('contoso.sharepoint.com.evil.net'), false);
+      eq(Spns.isSharePointHost('evilsharepoint.com'), false);
+      eq(Spns.isSharePointHost('graph.microsoft.com'), false);
+    });
+    test('siteCollectionPath: collection of a deep URL, segments encoded', () => {
+      eq(Spns.siteCollectionPath('https://contoso.sharepoint.com/sites/Marketing/Sub/Shared%20Documents/x.aspx'), '/sites/contoso.sharepoint.com:/sites/Marketing');
+      eq(Spns.siteCollectionPath('https://contoso.sharepoint.com/sites/R%26D%20Team'), '/sites/contoso.sharepoint.com:/sites/R%26D%20Team');
+      eq(Spns.siteCollectionPath('https://contoso.sharepoint.com/'), '/sites/contoso.sharepoint.com');
+    });
+    test('siteCollectionPath: rejects other hosts and schemes', () => {
+      eq(Spns.siteCollectionPath('http://contoso.sharepoint.com/sites/a'), null);
+      eq(Spns.siteCollectionPath('https://contoso.sharepoint.com.evil.net/sites/a'), null);
+      eq(Spns.siteCollectionPath('https://user:pw@contoso.sharepoint.com/sites/a'), null);
+      eq(Spns.siteCollectionPath('https://contoso.sharepoint.com:8443/sites/a'), null);
+      eq(Spns.siteCollectionPath('javascript:alert(1)'), null);
+      eq(Spns.siteCollectionPath('Marketing'), null);
+      eq(Spns.siteCollectionPath('https://contoso.sharepoint.com/sites/%E0%A4%A'), null);
+    });
+    test('siteCollectionPath: path traversal stays encoded', () => {
+      eq(Spns.siteCollectionPath('https://contoso.sharepoint.com/sites/a%2F..%2F..%2Fusers'), '/sites/contoso.sharepoint.com:/sites/a%2F..%2F..%2Fusers');
+    });
+    test('isValidSiteId: host,guid,guid on SharePoint Online', () => {
+      const g = '0f0e0d0c-0b0a-0908-0706-050403020100';
+      eq(Spns.isValidSiteId(`contoso.sharepoint.com,${g},${g}`), true);
+      eq(Spns.isValidSiteId(`evil.net,${g},${g}`), false);
+      eq(Spns.isValidSiteId(`contoso.sharepoint.com,${g}`), false);
+      eq(Spns.isValidSiteId(`contoso.sharepoint.com,${g},${g}/../../users`), false);
+      eq(Spns.isValidSiteId(null), false);
+    });
+
+    // Confirm dialog content
+    test('confirmFacts: tenant, service principal, API, site', () => {
+      const rows = Spns.confirmFacts({
+        tenant: { domain: 'contoso.com', tenantId: 'tid-1' },
+        spn: { displayName: 'Backup app', appId: 'app-1' },
+        api: GRAPH,
+        site: { displayName: 'HR', webUrl: 'https://contoso.sharepoint.com/sites/hr' },
+      });
+      eq(rows.map((r) => r[0]), ['Tenant', 'Service principal', 'API', 'Site']);
+      eq(rows[0][1], 'contoso.com (tid-1)');
+      eq(rows[1][1], 'Backup app (appId app-1)');
+      eq(rows[2][1], `Microsoft Graph (appId ${Spns.GRAPH_APP_ID}), owned by Microsoft`);
+      eq(rows[3][1], 'HR (https://contoso.sharepoint.com/sites/hr)');
+    });
+    test('confirmFacts: tenant row even when not signed in', () => {
+      eq(Spns.confirmFacts({ tenant: null }), [['Tenant', '(not signed in)']]);
+    });
+    test('revokeAllItems: one line per assignment and grant', () => {
+      const rc = new Map([['res-graph', { displayName: 'Microsoft Graph', appId: Spns.GRAPH_APP_ID }]]);
+      const ric = new Map([['res-graph', new Map([['role-1', { name: 'User.Read.All' }]])]]);
+      const items = Spns.revokeAllItems(
+        [{ resourceId: 'res-graph', appRoleId: 'role-1' }, { resourceId: 'res-x', appRoleId: 'role-9', resourceDisplayName: 'Other' }],
+        [{ resourceId: 'res-graph', scope: 'Mail.Read User.Read', consentType: 'AllPrincipals' }, { resourceId: 'res-graph', scope: '', consentType: 'Principal', principalId: 'u1' }],
+        rc, ric);
+      eq(items, [
+        'Remove application permission Microsoft Graph: User.Read.All',
+        'Remove application permission Other: role-9',
+        'Remove delegated grant Microsoft Graph: Mail.Read User.Read (all users)',
+        'Remove delegated grant Microsoft Graph: (no scopes) (user u1)',
+      ]);
+    });
+
+    // bulk revoke of delegated scopes
+    test('planScopeRevocation: patch partial, delete full and scopeless grants', () => {
+      const grants = [
+        { id: 'g1', scope: 'Mail.Read User.Read Files.Read' },
+        { id: 'g2', scope: 'Sites.Read.All' },
+        { id: 'g3', scope: '' },
+        { id: 'g4', scope: 'Calendars.Read' },
+      ];
+      const sel = new Set([Spns.scopeKey('g1', 'Mail.Read'), Spns.scopeKey('g1', 'Files.Read'), Spns.scopeKey('g2', 'Sites.Read.All'), Spns.scopeKey('g3', '')]);
+      const plan = Spns.planScopeRevocation(grants, sel);
+      eq(plan.map((p) => [p.grant.id, p.action, p.remove, p.keep]), [
+        ['g1', 'update', ['Mail.Read', 'Files.Read'], ['User.Read']],
+        ['g2', 'delete', ['Sites.Read.All'], []],
+        ['g3', 'delete', [], []],
+      ]);
+    });
+    test('planScopeRevocation: nothing selected, nothing planned', () => {
+      eq(Spns.planScopeRevocation([{ id: 'g1', scope: 'Mail.Read' }], new Set()), []);
+    });
+
+    // Exchange hint
+    test('hasMailboxPermissions: Graph Mail.Read and any Exchange role count, User.Read.All does not', () => {
+      const rc = new Map([['g', { appId: Spns.GRAPH_APP_ID }], ['x', { appId: Spns.EXO_APP_ID }]]);
+      const ric = new Map([['g', new Map([['r1', { name: 'Mail.Read' }], ['r2', { name: 'User.Read.All' }]])], ['x', new Map()]]);
+      eq(Spns.hasMailboxPermissions([{ resourceId: 'g', appRoleId: 'r1' }], rc, ric), true);
+      eq(Spns.hasMailboxPermissions([{ resourceId: 'g', appRoleId: 'r2' }], rc, ric), false);
+      eq(Spns.hasMailboxPermissions([{ resourceId: 'x', appRoleId: 'whatever' }], rc, ric), true);
+      eq(Spns.hasMailboxPermissions([], rc, ric), false);
+    });
+
+    // site list
+    test('siteKey: collection URL, lowercase, subsites and libraries collapse', () => {
+      eq(Spns.siteKey('https://Contoso.sharepoint.com/sites/HR/Shared%20Documents/x.docx'), 'https://contoso.sharepoint.com/sites/hr');
+      eq(Spns.siteKey('https://contoso.sharepoint.com/'), 'https://contoso.sharepoint.com');
+      eq(Spns.siteKey('https://evil.example.com/sites/hr'), null);
+    });
+    const SITES = [
+      { displayName: 'Human Resources', webUrl: 'https://contoso.sharepoint.com/sites/HR' },
+      { displayName: 'Marketing EMEA', webUrl: 'https://contoso.sharepoint.com/sites/mkt-emea' },
+      { displayName: 'Project Falcon', webUrl: 'https://contoso.sharepoint.com/teams/falcon' },
+    ];
+    test('filterSites: partial words on name and URL, every word must match', () => {
+      eq(Spns.filterSites(SITES, 'sourc').map((s) => s.displayName), ['Human Resources']);
+      eq(Spns.filterSites(SITES, 'mkt').map((s) => s.displayName), ['Marketing EMEA']);
+      eq(Spns.filterSites(SITES, 'teams falc').map((s) => s.displayName), ['Project Falcon']);
+      eq(Spns.filterSites(SITES, 'marketing falcon'), []);
+      eq(Spns.filterSites(SITES, '*').length, 3);
+      eq(Spns.filterSites(SITES, '').length, 3);
+    });
+    test('filterSites: a pasted URL matches its site collection', () => {
+      eq(Spns.filterSites(SITES, 'https://contoso.sharepoint.com/sites/hr/Lists/Tasks').map((s) => s.displayName), ['Human Resources']);
+    });
+    test('sortSitesByAccess: sites with access first, original order otherwise', () => {
+      const access = new Map([['https://contoso.sharepoint.com/teams/falcon', { status: 'yes', roles: ['read'] }], ['https://contoso.sharepoint.com/sites/hr', { status: 'denied' }]]);
+      eq(Spns.sortSitesByAccess(SITES, access).map((s) => s.displayName), ['Project Falcon', 'Human Resources', 'Marketing EMEA']);
+    });
+    test('isAccessDenied: 401, 403 and accessDenied code', () => {
+      eq(Spns.isAccessDenied({ status: 403 }), true);
+      eq(Spns.isAccessDenied({ status: 401 }), true);
+      eq(Spns.isAccessDenied({ status: 400, code: 'accessDenied' }), true);
+      eq(Spns.isAccessDenied({ status: 404 }), false);
+      eq(Spns.isAccessDenied(null), false);
+    });
+    test('sitePermsForRemoval: one entry per permission, all its apps', () => {
+      const perms = [
+        { id: 'p1', roles: ['read'], grantedToIdentitiesV2: [{ application: { id: 'a1', displayName: 'One' } }, { application: { id: 'a2', displayName: 'Two' } }] },
+        { id: 'p2', roles: ['write'], grantedToIdentitiesV2: [{ application: { id: 'a3', displayName: 'Three' } }] },
+      ];
+      eq(Spns.sitePermsForRemoval(perms, new Set(['p1'])), [{ permissionId: 'p1', apps: [{ appId: 'a1', displayName: 'One' }, { appId: 'a2', displayName: 'Two' }], roles: ['read'] }]);
+      eq(Spns.sitePermsForRemoval(perms, new Set()), []);
+    });
+
+    // SharePoint admin
+    test('adminHostOf: tenant, -my and -admin hosts; anything else null', () => {
+      eq(Spns.adminHostOf('Contoso.sharepoint.com'), 'contoso-admin.sharepoint.com');
+      eq(Spns.adminHostOf('contoso-my.sharepoint.com'), 'contoso-admin.sharepoint.com');
+      eq(Spns.adminHostOf('contoso-admin.sharepoint.com'), 'contoso-admin.sharepoint.com');
+      eq(Spns.adminHostOf('contoso.sharepoint.com.evil.com'), null);
+      eq(Spns.adminHostOf(''), null);
+    });
+    test('claimLoginName: adds the membership claim once', () => {
+      eq(Spns.claimLoginName('jo@contoso.com'), 'i:0#.f|membership|jo@contoso.com');
+      eq(Spns.claimLoginName('i:0#.f|membership|jo@contoso.com'), 'i:0#.f|membership|jo@contoso.com');
+      let threw = false;
+      try { Spns.claimLoginName(''); } catch { threw = true; }
+      eq(threw, true);
+    });
+
+    // temporary site admin records
+    test('elevations: add replaces, drop removes, filtered per account', () => {
+      let list = [];
+      list = Spns.addElevation(list, { siteUrl: 'https://contoso.sharepoint.com/sites/HR/', upn: 'Jo@contoso.com', tenantId: 'T1', at: 'a' });
+      list = Spns.addElevation(list, { siteUrl: 'https://contoso.sharepoint.com/sites/hr', upn: 'jo@contoso.com', tenantId: 't1', at: 'b' });
+      list = Spns.addElevation(list, { siteUrl: 'https://contoso.sharepoint.com/sites/hr', upn: 'other@contoso.com', tenantId: 't1', at: 'c' });
+      eq(list.length, 2);
+      eq(Spns.elevationsFor(list, 't1', 'JO@contoso.com').map((r) => [r.siteUrl, r.at]), [['https://contoso.sharepoint.com/sites/hr', 'b']]);
+      list = Spns.dropElevation(list, 'https://contoso.sharepoint.com/sites/hr/SitePages', 't1', 'jo@contoso.com');
+      eq(list.map((r) => r.upn), ['other@contoso.com']);
+    });
+
+    out.insertAdjacentHTML('beforeend', `<h2>${pass} passed, ${fail} failed</h2><p id="result">TEST-RESULT: ${fail ? 'FAIL' : 'PASS'} ${pass}/${pass + fail}</p>`);
   </script>
 </body>
 </html>

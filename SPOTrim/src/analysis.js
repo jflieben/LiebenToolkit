@@ -176,7 +176,7 @@
       const allErrsAreDenied = (webDenied || !webErr) && (libDenied || !libErr) && (webDenied || libDenied);
       if (allErrsAreDenied) {
         advice = 'No access';
-        reason.push('You do not have permission to read this site (HTTP 401/403). Add yourself as a site collection administrator (or grant Sites.FullControl.All app permission) to analyze it.');
+        reason.push('You do not have permission to read this site (HTTP 401/403). Use force scan, or add yourself as site collection admin, to analyze it.');
         if (webErr) reason.push(`Web REST: ${webErr}`);
         if (libErr) reason.push(`Lists REST: ${libErr}`);
       } else {

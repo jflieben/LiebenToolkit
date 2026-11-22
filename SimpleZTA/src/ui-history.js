@@ -32,7 +32,7 @@
 
     const series = [];
     const overall = ordered.map((s, i) => ({ label: labels[i], value: scoreOf(s.results) ?? 0 }));
-    series.push({ name: 'Overall', color: 'var(--text)', points: overall });
+    series.push({ name: 'Overall', color: 'var(--viz-ink)', points: overall });
     PILLARS.forEach((p, idx) => {
       const points = ordered.map((s, i) => ({ label: labels[i], value: scoreOf(s.results, p) }))
         .map(pt => ({ ...pt, value: pt.value == null ? 0 : pt.value }));
@@ -80,8 +80,8 @@
         <td>${new Date(s.startedAt).toLocaleString()}</td>
         <td>${esc(s.tenantDomain || s.tenantId || '')}</td>
         <td>${scoreOf(s.results) ?? '-'}%</td>
-        <td>${s.summary.passed}/${s.summary.total}</td>
-        <td>${s.summary.failed}</td>
+        <td>${Number(s.summary?.passed) || 0}/${Number(s.summary?.total) || 0}</td>
+        <td>${Number(s.summary?.failed) || 0}</td>
       </tr>`).join('');
 
     return `
@@ -90,8 +90,7 @@
   }
 
   function statusDot(status, at) {
-    const color = Charts.statusColor(status);
-    return `<span class="hist-dot" style="background:${color}" title="${esc(status)} — ${new Date(at).toLocaleString()}"></span>`;
+    return `<span class="hist-dot-wrap" title="${esc(status)}, ${esc(new Date(at).toLocaleString())}">${Charts.swatch(Charts.statusColor(status), 'hist-dot')}</span>`;
   }
 
   function renderPerTest(scans) {
@@ -124,7 +123,7 @@
   // ---- Scan diff -------------------------------------------------------------------------
 
   function scanLabel(s) {
-    return `${new Date(s.startedAt).toLocaleString()} | ${s.tenantDomain || s.tenantId || 'tenant'} | ${s.summary.failed}F/${s.summary.passed}P`;
+    return `${new Date(s.startedAt).toLocaleString()} | ${s.tenantDomain || s.tenantId || 'tenant'} | ${Number(s.summary?.failed) || 0}F/${Number(s.summary?.passed) || 0}P`;
   }
 
   function renderDiffPickers(scans) {
@@ -136,7 +135,7 @@
       document.getElementById('diffRoot').innerHTML = '<p class="muted">Run at least two scans to compare.</p>';
       return;
     }
-    const options = ordered.map(s => `<option value="${s.id}">${esc(scanLabel(s))}</option>`).join('');
+    const options = ordered.map(s => `<option value="${esc(s.id)}">${esc(scanLabel(s))}</option>`).join('');
     from.innerHTML = options;
     to.innerHTML = options;
     to.value = ordered[0].id;
@@ -184,7 +183,7 @@
       <tr>
         <td><strong>${esc(after.id)}</strong> ${esc(after.title)}</td>
         <td class="status-${esc(before.status)}">${esc(before.status)}</td>
-        <td>→</td>
+        <td>${Toolkit.iconHtml('i-arrow-right', 'sm')}</td>
         <td class="status-${esc(after.status)}">${esc(after.status)}</td>
       </tr>`;
     const single = r => `<tr><td><strong>${esc(r.id)}</strong> ${esc(r.title)}</td><td class="status-${esc(r.status)}">${esc(r.status)}</td></tr>`;
@@ -192,12 +191,12 @@
     const scoreA = scoreOf(a.results);
     const scoreB = scoreOf(b.results);
     const delta = scoreA != null && scoreB != null ? scoreB - scoreA : null;
-    const deltaChip = delta == null ? '' : `<span class="viz-chip ${delta > 0 ? 'viz-chip-good' : delta < 0 ? 'viz-chip-bad' : ''}">Pass score ${scoreA}% → ${scoreB}% (${delta >= 0 ? '+' : ''}${delta})</span>`;
+    const deltaChip = delta == null ? '' : `<span class="viz-chip ${delta > 0 ? 'viz-chip-good' : delta < 0 ? 'viz-chip-bad' : ''}">Pass score ${scoreA}% to ${scoreB}% (${delta >= 0 ? '+' : ''}${delta})</span>`;
 
     root.innerHTML = `
       <div class="row">${deltaChip}
-        <span class="viz-chip ${regressions.length ? 'viz-chip-bad' : ''}">▼ ${regressions.length} regressed</span>
-        <span class="viz-chip ${fixes.length ? 'viz-chip-good' : ''}">▲ ${fixes.length} fixed</span>
+        <span class="viz-chip ${regressions.length ? 'viz-chip-bad' : ''}">${regressions.length} regressed</span>
+        <span class="viz-chip ${fixes.length ? 'viz-chip-good' : ''}">${fixes.length} fixed</span>
       </div>
       ${section('Regressions', 'status-Failed', regressions, pair)}
       ${section('Fixed', 'status-Passed', fixes, pair)}
@@ -210,6 +209,10 @@
 
   function refresh() {
     const scans = Store.loadScans();
+    document.getElementById('historyStorage').textContent = scans.length
+      ? `Stored in this browser: ${Store.describeHistory(scans)}.`
+      : 'Nothing stored in this browser yet.';
+    document.getElementById('clearHistoryBtn').disabled = !scans.length;
     document.getElementById('historySummary').innerHTML = buildTrend(scans);
     Charts.attachTooltips(document.getElementById('historySummary'));
     renderPerTest(scans);
@@ -220,11 +223,23 @@
     document.getElementById('historySearch').addEventListener('input', () => renderPerTest(Store.loadScans()));
     document.getElementById('diffFromSelect').addEventListener('change', renderDiff);
     document.getElementById('diffToSelect').addEventListener('change', renderDiff);
-    document.getElementById('clearHistoryBtn').addEventListener('click', () => {
-      if (!confirm('Delete all local scan history from this browser?')) return;
+    document.getElementById('clearHistoryBtn').addEventListener('click', async () => {
+      const scans = Store.loadScans();
+      if (!scans.length) return;
+      const ok = await Toolkit.confirm({
+        title: 'Clear the scan history?',
+        body: 'Removes every stored scan (results, evidence, API calls and tenant insights) from this browser. Export what you want to keep first. Saved profiles stay.',
+        items: [Store.describeHistory(scans)],
+        okLabel: 'Clear history',
+        danger: true,
+      });
+      if (!ok) return;
       Store.clearScans();
+      Log.info('Scan history cleared from this browser.');
+      Toolkit.toast('Scan history cleared', 'ok');
       refresh();
       UIResults.refreshPicker();
+      if (window.UIDashboard) UIDashboard.refresh();
     });
   }
 

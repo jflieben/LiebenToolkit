@@ -26,25 +26,27 @@
   // Category names match Maester's upstream tag taxonomy verbatim
   // (see https://maester.dev/docs/tests/ - the "Tag" column).
   const CATEGORY_META = {
-    'CA':             { icon: '\uD83D\uDEA6', desc: 'Conditional Access. Block legacy auth, require MFA, exclude break-glass, scope by risk and device.' },
-    'App':            { icon: '\uD83E\uDDE9', desc: 'Applications and service principals. Owners, secrets, high-risk permissions, broad assignments.' },
-    'Privileged':     { icon: '\uD83D\uDC51', desc: 'Privileged Identity Management and admin role hygiene. PIM eligibility, GA count, cloud-only admins.' },
-    'Authentication': { icon: '\uD83D\uDD11', desc: 'Authentication methods. Phishing-resistant MFA, FIDO2, MS Authenticator, weak methods like SMS/voice.' },
-    'Entra':          { icon: '\uD83C\uDFE2', desc: 'General Entra ID hygiene. Stale guests, administrative units, tenant settings, group creation.' },
-    'General':        { icon: '\uD83D\uDEE1', desc: 'EIDSCA - Entra ID Security Config Analyzer. 44 baseline configuration controls.' },
-    'CIS':            { icon: '\uD83D\uDEE1', desc: 'CIS Microsoft 365 Foundations Benchmark v6.0.1 - 38 controls across identity, mail, devices and apps.' },
+    'CA':             { icon: 'i-lock', desc: 'Conditional Access. Block legacy auth, require MFA, exclude break-glass, scope by risk and device.' },
+    'App':            { icon: 'i-code', desc: 'Applications and service principals. Owners, secrets, high-risk permissions, broad assignments.' },
+    'Privileged':     { icon: 'i-shield', desc: 'Privileged Identity Management and admin role hygiene. PIM eligibility, GA count, cloud-only admins.' },
+    'Authentication': { icon: 'i-key', desc: 'Authentication methods. Phishing-resistant MFA, FIDO2, MS Authenticator, weak methods like SMS/voice.' },
+    'Entra':          { icon: 'i-user', desc: 'General Entra ID hygiene. Stale guests, administrative units, tenant settings, group creation.' },
+    'General':        { icon: 'i-check-circle', desc: 'EIDSCA - Entra ID Security Config Analyzer. 44 baseline configuration controls.' },
+    'CISA':           { icon: 'i-book', desc: 'CISA SCuBA baseline. Entra ID controls, mail DNS records (SPF, DKIM, DMARC) and SharePoint sharing.' },
+    'CIS':            { icon: 'i-book', desc: 'CIS Microsoft 365 Foundations Benchmark v6.0.1 - 38 controls across identity, mail, devices and apps.' },
     // The following Maester tags exist upstream but we have no implemented tests for them yet.
     // They will only show up if/when tests are added.
-    'Teams':          { icon: '\uD83D\uDC65', desc: 'Microsoft Teams meeting and collaboration controls.' },
-    'Exchange':       { icon: '\u2709',       desc: 'Exchange Online mail flow, modern auth, MailTips, transport rules.' },
-    'Intune':         { icon: '\uD83D\uDCF1', desc: 'Intune device management, compliance and connector health.' },
-    'Defender':       { icon: '\uD83D\uDD12', desc: 'Microsoft Defender for Endpoint policy baselines.' },
-    'AIAgent':        { icon: '\uD83E\uDD16', desc: 'Copilot Studio AI agent security and access control.' },
-    'Governance':     { icon: '\uD83D\uDCDC', desc: 'Entitlement management, access packages, catalogs.' },
-    'Azure':          { icon: '\u2601',       desc: 'Azure subscription, management groups, RBAC.' },
-    'Group':          { icon: '\uD83D\uDC65', desc: 'Microsoft 365 group lifecycle and creation restrictions.' },
-    'XSPM':           { icon: '\uD83D\uDD0D', desc: 'Exposure Security Posture Management - device exposure surface.' },
-    'Backup':         { icon: '\uD83D\uDCBE', desc: 'Recovery Services Vault and backup hardening.' },
+    'Teams':          { icon: 'i-user', desc: 'Microsoft Teams meeting and collaboration controls.' },
+    'Exchange':       { icon: 'i-file',       desc: 'Exchange Online mail flow, modern auth, MailTips, transport rules.' },
+    'Intune':         { icon: 'i-settings', desc: 'Intune device management, compliance and connector health.' },
+    'Defender':       { icon: 'i-shield', desc: 'Microsoft Defender for Endpoint policy baselines.' },
+    'AIAgent':        { icon: 'i-sparkle', desc: 'Copilot Studio AI agent security and access control.' },
+    'Governance':     { icon: 'i-eye', desc: 'Entitlement management, access packages, catalogs.' },
+    'Azure':          { icon: 'i-cloud',       desc: 'Azure subscription, management groups, RBAC.' },
+    'Group':          { icon: 'i-user', desc: 'Microsoft 365 group lifecycle and creation restrictions.' },
+    'Purview':        { icon: 'i-file', desc: 'Microsoft Purview information protection, such as published sensitivity labels.' },
+    'XSPM':           { icon: 'i-search', desc: 'Exposure Security Posture Management - device exposure surface.' },
+    'Backup':         { icon: 'i-folder', desc: 'Recovery Services Vault and backup hardening.' },
   };
 
   async function init() {
@@ -61,7 +63,7 @@
     document.getElementById('selectNoneBtn').addEventListener('click', () => { _selected.clear(); renderRunCatalog(); });
     document.getElementById('restoreLastBtn').addEventListener('click', () => {
       const last = _loadLastSelection();
-      if (!last || !last.length) { window.App?.toast?.('No previous custom selection found.'); return; }
+      if (!last || !last.length) { Toolkit.toast('No previous custom selection found.', 'info'); return; }
       _selected = new Set(last);
       renderRunCatalog();
     });
@@ -79,14 +81,14 @@
 
     const allImpl = _all.filter(t => t.implemented).length;
     grid.appendChild(makeTile({
-      icon: '\uD83C\uDFAF', name: 'Run everything',
+      icon: 'i-play', name: 'Run everything',
       desc: "Run every check that's implemented in the browser. Takes a couple of minutes.",
       count: allImpl,
       onClick: () => window.App.runTests(_all.filter(t => t.implemented), 'Everything'),
     }));
 
     for (const cat of cats) {
-      const meta = CATEGORY_META[cat.name] || { icon: '\u2699', desc: `${cat.count} check(s) in this category.` };
+      const meta = CATEGORY_META[cat.name] || { icon: 'i-settings', desc: `${cat.count} check(s) in this category.` };
       grid.appendChild(makeTile({
         icon: meta.icon, name: cat.name, desc: meta.desc, count: cat.count,
         onClick: () => window.App.runTests(cat.tests, cat.name),
@@ -94,7 +96,7 @@
     }
 
     grid.appendChild(makeTile({
-      icon: '\uD83C\uDFA8', name: 'Custom selection', custom: true,
+      icon: 'i-filter', name: 'Custom selection', custom: true,
       desc: 'Hand-pick tests from the full catalog.',
       countLabel: `${_all.filter(t=>t.implemented).length} available`,
       onClick: showCustomView,
@@ -106,20 +108,20 @@
     btn.type = 'button';
     btn.className = 'category-tile' + (custom ? ' custom' : '');
     btn.innerHTML = `
-      <div class="ct-icon">${icon}</div>
+      <span class="ct-icon">${Toolkit.iconHtml(icon)}</span>
       <h3>${escape(name)}</h3>
       <p>${escape(desc)}</p>
-      <div class="ct-meta">
-        <span>${countLabel || (count + ' check' + (count === 1 ? '' : 's'))}</span>
-        <span>&rsaquo;</span>
-      </div>`;
+      <span class="ct-meta">
+        <span>${escape(countLabel || (count + ' check' + (count === 1 ? '' : 's')))}</span>
+        ${Toolkit.iconHtml('i-chevron-right', 'sm')}
+      </span>`;
     btn.addEventListener('click', onClick);
     return btn;
   }
 
   function showCustomView() {
-    document.getElementById('categoryPickerCard').classList.add('hidden');
-    document.getElementById('customPickerCard').classList.remove('hidden');
+    document.getElementById('categoryPickerCard').hidden = true;
+    document.getElementById('customPickerCard').hidden = false;
     // Default to the selection from the user's last custom run, so re-running is one click.
     // First time visiting (no history yet), pre-select all implemented Maester-native tests
     // as a sensible starter set.
@@ -136,8 +138,8 @@
     renderRunCatalog();
   }
   function showCategoryView() {
-    document.getElementById('customPickerCard').classList.add('hidden');
-    document.getElementById('categoryPickerCard').classList.remove('hidden');
+    document.getElementById('customPickerCard').hidden = true;
+    document.getElementById('categoryPickerCard').hidden = false;
   }
 
   function populateCustomCategoryDropdown() {
@@ -145,13 +147,13 @@
     // matches Maester's upstream taxonomy (CA, App, Privileged, ...).
     const cats = Array.from(new Set(_all.filter(t => t.implemented).map(t => t.runCategory || t.category))).sort();
     const sel = document.getElementById('catalogFilterCategory');
-    sel.innerHTML = '<option value="">All categories</option>' + cats.map(c => `<option value="${escape(c)}">${escape(c)}</option>`).join('');
+    sel.replaceChildren(new Option('All categories', ''), ...cats.map(c => new Option(c, c)));
   }
 
   function populateCategoryDropdown() {
     const cats = Array.from(new Set(_all.map(t => t.category))).sort();
     const sel = document.getElementById('catalogFullCategory');
-    sel.innerHTML = '<option value="">All categories</option>' + cats.map(c => `<option value="${c}">${c}</option>`).join('');
+    sel.replaceChildren(new Option('All categories', ''), ...cats.map(c => new Option(c, c)));
   }
 
   function visibleRun() {
@@ -171,7 +173,7 @@
     list.innerHTML = '';
     const items = visibleRun();
     for (const t of items) {
-      const div = document.createElement('div');
+      const div = document.createElement('label');
       div.className = 'catalog-item' + (t.implemented ? '' : ' disabled');
       const cb = document.createElement('input');
       cb.type = 'checkbox';
@@ -182,9 +184,9 @@
       body.className = 'body';
       body.innerHTML = `<div class="ci-title">${escape(t.id)} - ${escape(t.title)}</div>
         <div class="ci-meta">
-          <span class="badge ${(t.severity||'info').toLowerCase()}">${t.severity||'-'}</span>
-          <span class="badge tag">${escape(t.runCategory || t.category)}</span>
-          ${t.implemented ? '' : '<span class="badge stub">Not implemented</span>'}
+          ${SMUi.severityBadge(t.severity)}
+          ${SMUi.tagBadge(t.runCategory || t.category)}
+          ${t.implemented ? '' : SMUi.badge('neutral', 'Not implemented')}
         </div>`;
       div.appendChild(cb);
       div.appendChild(body);
@@ -221,16 +223,16 @@
       div.innerHTML = `<div class="body">
         <div class="ci-title">${escape(t.id)} - ${escape(t.title)}</div>
         <div class="ci-meta">
-          <span class="badge ${(t.severity||'info').toLowerCase()}">${t.severity||'-'}</span>
-          <span class="badge tag">${escape(t.runCategory || t.category)}</span>
-          ${t.implemented ? '<span class="badge passed">Implemented</span>' : '<span class="badge stub">Not implemented</span>'}
-          ${t.docUrl ? `<a href="${t.docUrl}" target="_blank" rel="noopener" style="margin-left:auto;font-size:11px">docs &rarr;</a>` : ''}
+          ${SMUi.severityBadge(t.severity)}
+          ${SMUi.tagBadge(t.runCategory || t.category)}
+          ${t.implemented ? SMUi.badge('ok', 'Implemented') : SMUi.badge('neutral', 'Not implemented')}
+          ${t.docUrl ? `<a class="ci-doc" href="${escape(Toolkit.safeUrl(t.docUrl))}" target="_blank" rel="noopener noreferrer">Docs ${Toolkit.iconHtml('i-external', 'sm')}</a>` : ''}
         </div></div>`;
       list.appendChild(div);
     }
   }
 
-  function escape(s) { return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+  const escape = (s) => Toolkit.esc(s);
 
   function getSelectedTests() {
     return _all.filter(t => _selected.has(t.id) && t.implemented);

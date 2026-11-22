@@ -3,6 +3,11 @@
   const LAST_SELECTION_KEY = 'SimpleZTA:lastSelection:v1';
   const PROFILES_KEY = 'SimpleZTA:profiles:v1';
 
+  // Stored API traces are capped: they hold raw tenant data and are the bulk of a scan.
+  const TRACE_MAX_ENTRIES = 25;
+  const TRACE_PREVIEW_MAX = 1000;
+  const TRACE_REQUEST_MAX = 500;
+
   function loadScans() {
     try {
       const raw = localStorage.getItem(SCANS_KEY);
@@ -33,6 +38,29 @@
     return `${text.slice(0, maxLen)}...`;
   }
 
+  function capText(value, max) {
+    const text = value == null ? '' : `${value}`;
+    return text.length <= max ? text : `${text.slice(0, max)}\n...truncated (${text.length} chars)...`;
+  }
+
+  function capTrace(trace) {
+    if (!Array.isArray(trace)) return [];
+    const kept = trace.slice(0, TRACE_MAX_ENTRIES).map(e => ({
+      method: e?.method,
+      url: e?.url,
+      status: e?.status,
+      ok: e?.ok,
+      durationMs: e?.durationMs,
+      requestPreview: capText(e?.requestPreview, TRACE_REQUEST_MAX),
+      responsePreview: capText(e?.responsePreview, TRACE_PREVIEW_MAX),
+      nextLink: e?.nextLink || null,
+    }));
+    if (trace.length > TRACE_MAX_ENTRIES) {
+      kept.push({ method: '', url: `${trace.length - TRACE_MAX_ENTRIES} more call(s) not stored`, status: '', ok: true, durationMs: 0, requestPreview: '', responsePreview: '', nextLink: null });
+    }
+    return kept;
+  }
+
   function compactResult(result, level) {
     const base = {
       id: result?.id,
@@ -48,7 +76,7 @@
       documentationUrl: result?.documentationUrl,
       documentationSearchUrl: result?.documentationSearchUrl,
       evidence: result?.evidence,
-      apiTrace: result?.apiTrace,
+      apiTrace: capTrace(result?.apiTrace),
     };
 
     if (level >= 1) {
@@ -131,7 +159,21 @@
   }
 
   function clearScans() {
-    localStorage.removeItem(SCANS_KEY);
+    try { localStorage.removeItem(SCANS_KEY); } catch { /* storage blocked */ }
+  }
+
+  function storedBytes() {
+    try { return (localStorage.getItem(SCANS_KEY) || '').length * 2; } catch { return 0; }
+  }
+
+  // One line for confirm dialogs: how many scans, which period, how big.
+  function describeHistory(scans) {
+    const list = scans || loadScans();
+    if (!list.length) return 'No stored scans';
+    const dates = list.map(x => `${x.startedAt || ''}`.slice(0, 10)).filter(Boolean).sort();
+    const tenants = new Set(list.map(x => x.tenantDomain || x.tenantId).filter(Boolean));
+    const kb = Math.round(storedBytes() / 1024);
+    return `${list.length} scan${list.length === 1 ? '' : 's'} of ${tenants.size || 1} tenant${tenants.size > 1 ? 's' : ''}, ${dates[0]} to ${dates[dates.length - 1]}, about ${kb} KB`;
   }
 
   function getScan(id) {
@@ -139,7 +181,7 @@
   }
 
   function rememberSelection(ids) {
-    localStorage.setItem(LAST_SELECTION_KEY, JSON.stringify(ids || []));
+    try { localStorage.setItem(LAST_SELECTION_KEY, JSON.stringify(ids || [])); } catch { /* storage full or blocked */ }
   }
 
   function loadSelection() {
@@ -162,28 +204,6 @@
       else if (r.status === 'Error') s.error += 1;
     }
     return s;
-  }
-
-  function toCsv(scan) {
-    const rows = [
-      ['scanId', 'startedAt', 'tenantId', 'tenantDomain', 'testId', 'title', 'status', 'risk', 'pillar', 'durationMs', 'message'],
-    ];
-    for (const r of scan.results) {
-      rows.push([
-        scan.id,
-        scan.startedAt,
-        scan.tenantId || '',
-        scan.tenantDomain || '',
-        r.id,
-        r.title,
-        r.status,
-        r.risk || '',
-        r.pillar || '',
-        r.durationMs,
-        (r.message || '').replace(/\r?\n/g, ' '),
-      ]);
-    }
-    return rows.map(cols => cols.map(c => `"${`${c ?? ''}`.replace(/"/g, '""')}"`).join(',')).join('\n');
   }
 
   function getAverageDurationByTest() {
@@ -214,15 +234,26 @@
     try {
       const raw = localStorage.getItem(PROFILES_KEY);
       const obj = raw ? JSON.parse(raw) : {};
-      return obj && typeof obj === 'object' ? obj : {};
+      if (!obj || typeof obj !== 'object' || Array.isArray(obj)) return {};
+      const out = {};
+      for (const [k, v] of Object.entries(obj)) if (cleanProfileName(k) === k && Array.isArray(v)) out[k] = v.map(x => `${x}`);
+      return out;
     } catch {
       return {};
     }
   }
 
+  // Profile names become object keys and option labels: plain text, short, no prototype keys.
+  function cleanProfileName(name) {
+    const clean = `${name ?? ''}`.replace(/[\u0000-\u001f\u007f]/g, '').trim().slice(0, 80);
+    return ['__proto__', 'constructor', 'prototype'].includes(clean) ? '' : clean;
+  }
+
   function saveProfile(name, ids) {
+    const key = cleanProfileName(name);
+    if (!key) throw new Error('Invalid profile name');
     const profiles = loadProfiles();
-    profiles[name] = Array.isArray(ids) ? ids.map(x => `${x}`) : [];
+    profiles[key] = Array.isArray(ids) ? ids.map(x => `${x}`) : [];
     localStorage.setItem(PROFILES_KEY, JSON.stringify(profiles));
     return profiles;
   }
@@ -240,12 +271,17 @@
     clearScans,
     getScan,
     computeSummary,
-    toCsv,
     getAverageDurationByTest,
     rememberSelection,
     loadSelection,
     loadProfiles,
     saveProfile,
     deleteProfile,
+    cleanProfileName,
+    capTrace,
+    describeHistory,
+    storedBytes,
+    TRACE_MAX_ENTRIES,
+    TRACE_PREVIEW_MAX,
   };
 })();

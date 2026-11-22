@@ -1,18 +1,40 @@
-# LCToolKit
+# LC Toolkit
 
-A toolkit for Microsoft Cloud environments that I personally use for consulting work to reduce rework and complexity
+Small, focused tools for Microsoft 365 and Azure admins, by [JSolve B.V.](https://jsolve.nl). Live at https://lieben.nu/tools/.
 
-## Overview
+| Tool | What it does |
+| --- | --- |
+| ConditionalAccess | Export, import, diff and baseline Conditional Access policies |
+| DupedDevices | Find duplicate Entra device registrations, keep one, retire the rest |
+| InactiveDevices | Find dormant Entra devices and disable or delete them in bulk |
+| InactiveGuests | Find dormant guest accounts, disable, delete or restore them |
+| SPNRoleMgr | Manage API permissions of service principals, managed identities and Sites.Selected |
+| SPOMove | Move or copy SharePoint files between sites or tenants |
+| SPOTrim | Find stale SharePoint and OneDrive sites |
+| PermView | Quick top-level permission view across Microsoft 365 and Azure |
+| SimpleMaester | Maester security tests in the browser |
+| SimpleZTA | Microsoft Zero Trust Assessment in the browser |
 
-LCToolKit is intended to provide a collection of utilities for managing Microsoft Cloud Environments, it does NOT collect any data and runs in your browser, not on my server. It only uses delegated permissions, so you're not authorizing an application.
+## How they work
 
-If you want to host this yourself, that is possible using the source code in this repo. Please make sure you check the commercial use page first: https://jsolve.nl/commercial-use.html
+Every tool runs in your browser. You sign in with your own account (delegated permissions, PKCE), and the page talks to Microsoft directly. There is no backend and no application consent. Write permissions are only asked for when you confirm your first change, and every change is previewed first. Sign-in tokens live in the browser tab and are gone when you close it.
+
+## Layout
+
+- `shared/` design system, icons, header/menu/footer shell, auth, http, log, export and the local dev server. See [shared/README.md](shared/README.md).
+- `<Tool>/` one folder per tool: `index.html`, `style.css`, `src/`, `tests/`, `.auth` (client id and redirect URIs) and `serve.ps1`.
+- `vendor/` pinned third-party browser libraries.
+
+Run a tool locally with `.\<Tool>\serve.ps1` and open http://localhost:1985/.
+
+## Self-hosting
+
+Possible with the source in this repo. Register your own app (SPA platform, redirect URIs for your host), put its client id in each tool's `.auth`, and serve the folder with the headers from `.htaccess`. Check the [commercial use terms](https://jsolve.nl/commercial-use.html) first.
 
 ## Contributing
 
-This is a personal/work-in-progress repository. Issues and suggestions are
-welcome via GitHub issues.
+Issues and suggestions are welcome via GitHub issues.
 
 ## Usage of AI
 
-AI is used to assist (human in the loop!) in generating code, documentation and reviewing code, not in touching anything live.
+AI assists (human in the loop) with writing code, documentation and reviews. It does not touch anything live.

@@ -1,744 +1,487 @@
-// PermView - SPA wiring.
-// Tabs are workload providers from providers.js. Each tab renders a small
-// form, runs the provider, then shows the results in a uniform table.
+// PermView UI. Workloads come from providers.js; each renders a small form, runs, and
+// streams rows into one table with filters, sorting and export.
 (() => {
+  const { h, esc, icon, iconHtml, toast, busy, setUser } = Toolkit;
+  const $ = (id) => document.getElementById(id);
+  const MAX_ROWS = 2000;
+  const PLUG_URL = 'https://www.m365permissions.com';
 
-  const state = {
-    activeProviderId: null,
-    lastResult: null,
-    lastFormValues: null,
-  };
+  const DEFAULT_COLUMNS = [
+    { key: 'principal', label: 'Principal' },
+    { key: 'principalType', label: 'Type' },
+    { key: 'role', label: 'Role / permission' },
+    { key: 'scope', label: 'Scope' },
+    { key: 'source', label: 'Source' },
+  ];
 
-  // --------- THEME ---------
-  function initTheme() {
-    const saved = localStorage.getItem('permview-theme') || 'light';
-    document.documentElement.setAttribute('data-theme', saved);
-  }
-  function toggleTheme() {
-    const cur = document.documentElement.getAttribute('data-theme');
-    const nxt = cur === 'dark' ? 'light' : 'dark';
-    document.documentElement.setAttribute('data-theme', nxt);
-    localStorage.setItem('permview-theme', nxt);
-  }
+  const state = { providerId: null, running: null, closeMenu: null };
 
-  // --------- TOAST ---------
-  function toast(msg, kind = 'info') {
-    const el = document.getElementById('toast');
-    el.textContent = msg;
-    el.className = `toast toast-${kind}`;
-    el.classList.remove('hidden');
-    clearTimeout(toast._t);
-    toast._t = setTimeout(() => el.classList.add('hidden'), 4000);
+  // Text with every "m365permissions.com" turned into a link.
+  function withPlugLinks(text) {
+    const parts = String(text).split('m365permissions.com');
+    const out = [];
+    parts.forEach((p, i) => {
+      if (p) out.push(p);
+      if (i < parts.length - 1) out.push(h('a', { href: PLUG_URL, target: '_blank', rel: 'noopener', text: 'm365permissions.com' }));
+    });
+    return out;
   }
 
-  // --------- AUTH UI ---------
-  async function refreshAuthUI() {
-    const acc = Auth.getAccount();
-    const userBox = document.getElementById('userBox');
-    const userName = document.getElementById('userName');
-    const connectCard = document.getElementById('connectCard');
-    const workspace = document.getElementById('workspace');
-    if (acc) {
-      userBox.classList.remove('hidden');
-      userName.textContent = acc.username || acc.name || 'Signed in';
-      connectCard.classList.add('hidden');
-      workspace.classList.remove('hidden');
-      if (!state.activeProviderId) selectProvider(Providers.list[0].id);
-    } else {
-      userBox.classList.add('hidden');
-      connectCard.classList.remove('hidden');
-      workspace.classList.add('hidden');
+  // ---------- auth ----------
+  function refreshAuthUI() {
+    const signedIn = !!Auth.getAccount();
+    setUser(Auth.userInfo(onSignOut));
+    $('connectCard').hidden = signedIn;
+    $('workspace').hidden = !signedIn;
+    if (signedIn) {
+      showTenant();
+      if (!state.providerId) selectProvider(Providers.list[0].id);
     }
   }
   async function onSignIn() {
-    try {
-      await Auth.signIn();
-      await refreshAuthUI();
-    } catch (e) { Log.err('Sign-in failed:', e); toast('Sign-in failed: ' + e.message, 'err'); }
+    try { await Auth.signIn('read'); }
+    catch (e) { Log.err('Sign-in failed:', e); toast(`Sign-in failed: ${e.message}`, 'err'); }
   }
   async function onSignOut() {
+    if (state.running) state.running.cancel();
+    state.providerId = null;
+    $('providerPanel').replaceChildren();
     await Auth.signOut();
-    state.activeProviderId = null;
-    state.lastResult = null;
-    state.lastFormValues = null;
-    await refreshAuthUI();
   }
 
-  // --------- PROVIDER TABS ---------
+  // Name and id of the tenant every result comes from, next to the account.
+  async function showTenant() {
+    const t = Auth.tenantInfo();
+    const line = $('tenantLine');
+    line.textContent = `Signed in as ${t.upn}, tenant ${t.tenantId}`;
+    try {
+      const org = await Api.Graph('read').json('/organization?$select=id,displayName');
+      const o = org && org.value && org.value[0];
+      if (o) line.textContent = `Signed in as ${t.upn}, tenant ${o.displayName} (${o.id})`;
+    } catch (e) { Log.warn(`Could not read the tenant name: ${e.message}`); }
+  }
 
+  // ---------- workload picker ----------
   function renderProviderTabs() {
-    const tabsEl = document.getElementById('providerTabs');
-    tabsEl.innerHTML = '';
-    for (const p of Providers.list) {
-      const btn = document.createElement('button');
-      btn.className = 'tab' + (p.id === state.activeProviderId ? ' active' : '');
-      btn.dataset.provider = p.id;
-      btn.innerHTML = `<span class="tab-icon">${p.icon}</span><span>${p.name}</span>`;
-      btn.addEventListener('click', () => selectProvider(p.id));
-      tabsEl.appendChild(btn);
-    }
+    const nav = $('providerTabs');
+    nav.replaceChildren(...Providers.list.map((p) => {
+      const active = p.id === state.providerId;
+      return h('button.chip-btn', {
+        type: 'button', class: active ? 'active' : '', 'aria-pressed': active ? 'true' : 'false',
+        on: { click: () => selectProvider(p.id) },
+      }, [icon(p.icon, 'sm'), p.name]);
+    }));
   }
 
-  async function selectProvider(id) {
-    state.activeProviderId = id;
-    state.lastResult = null;
+  function selectProvider(id) {
+    if (state.running) state.running.cancel();
+    if (state.closeMenu) state.closeMenu();
+    state.providerId = id;
     renderProviderTabs();
     renderProviderPanel();
   }
 
+  function consentLine(provider) {
+    if (provider.atSignIn) {
+      return h('p.muted.small', null, ['Uses the permission granted at sign-in: ', ...provider.scopes.map((s) => h('code', { text: s }))]);
+    }
+    const codes = [];
+    provider.scopes.forEach((s, i) => { if (i) codes.push(', '); codes.push(h('code', { text: s })); });
+    return h('p.muted.small', null, ['Asks for ', ...codes, ' the first time you run this workload (consent popup). Read only.']);
+  }
+
+  function buildSelect(f) {
+    const select = h('select', { name: f.name, id: `f-${f.name}` });
+    const reload = h('button.btn.btn-icon', { type: 'button', title: `Reload ${f.label.toLowerCase()} list`, 'aria-label': `Reload ${f.label.toLowerCase()} list` }, icon('i-refresh'));
+    async function load() {
+      select.disabled = true;
+      select.replaceChildren(h('option', { value: '', text: 'Loading...' }));
+      await busy(reload, async () => {
+        try {
+          const opts = await f.loadOptions();
+          select.replaceChildren(
+            h('option', { value: '', text: opts.length ? 'Choose' : 'Nothing found' }),
+            ...opts.map((o) => h('option', { value: o.value, text: o.label })),
+          );
+          select.disabled = false;
+        } catch (e) {
+          Log.err(`Loading ${f.label} failed:`, e);
+          select.replaceChildren(h('option', { value: '', text: `Failed: ${e.message}` }));
+        }
+      });
+    }
+    reload.addEventListener('click', load);
+    load();
+    return h('div.select-row', null, [select, reload]);
+  }
+
   function renderProviderPanel() {
-    const provider = Providers.byId(state.activeProviderId);
-    const root = document.getElementById('providerPanel');
-    root.innerHTML = '';
+    const provider = Providers.byId(state.providerId);
+    const root = $('providerPanel');
+    root.replaceChildren();
     if (!provider) return;
 
-    const card = document.createElement('div');
-    card.className = 'card';
+    const inputs = {};
+    const fields = provider.form.map((f) => {
+      const control = f.kind === 'select'
+        ? buildSelect(f)
+        : h('input', { type: 'text', name: f.name, id: `f-${f.name}`, placeholder: f.placeholder || null, autocomplete: 'off', spellcheck: 'false' });
+      inputs[f.name] = () => root.querySelector(`[name="${f.name}"]`).value;
+      return h('div.field', null, [h('label', { for: `f-${f.name}`, text: f.label }), control]);
+    });
 
-    const title = document.createElement('h2');
-    title.textContent = provider.name;
-    card.appendChild(title);
+    const runBtn = h('button.btn.btn-primary', { type: 'submit' }, [icon('i-play'), 'Show permissions']);
+    const status = h('span.muted.small');
+    const form = h('form.provider-form', null, [...fields, h('div.row.tight', null, [runBtn, status])]);
 
-    const desc = document.createElement('p');
-    desc.textContent = provider.description;
-    card.appendChild(desc);
-
-    if (provider.notice) {
-      const notice = document.createElement('div');
-      notice.className = 'notice';
-      notice.innerHTML = `<strong>Quick view limitation:</strong> ${provider.notice}`;
-      card.appendChild(notice);
-    }
-
-    // Form
-    const form = document.createElement('form');
-    form.className = 'provider-form';
-    const inputEls = {};
-    for (const f of provider.form) {
-      const wrap = document.createElement('label');
-      wrap.className = 'field';
-      const lbl = document.createElement('span');
-      lbl.textContent = f.label;
-      wrap.appendChild(lbl);
-      let input;
-      if (f.kind === 'select') {
-        input = document.createElement('select');
-        input.innerHTML = '<option value="">Loading...</option>';
-        input.disabled = true;
-        // Fire and forget the loader.
-        (async () => {
-          try {
-            const opts = await f.loadOptions();
-            input.innerHTML = '<option value="">-- choose --</option>' +
-              opts.map(o => `<option value="${escapeHtml(o.value)}">${escapeHtml(o.label)}</option>`).join('');
-            input.disabled = false;
-          } catch (e) {
-            Log.err('loadOptions failed:', e);
-            input.innerHTML = `<option value="">(failed: ${escapeHtml(e.message)})</option>`;
-          }
-        })();
-      } else {
-        input = document.createElement('input');
-        input.type = 'text';
-        if (f.placeholder) input.placeholder = f.placeholder;
-      }
-      input.name = f.name;
-      wrap.appendChild(input);
-      form.appendChild(wrap);
-      inputEls[f.name] = input;
-    }
-
-    const actions = document.createElement('div');
-    actions.className = 'row';
-    const runBtn = document.createElement('button');
-    runBtn.type = 'submit';
-    runBtn.className = 'primary-btn';
-    runBtn.textContent = 'Show permissions';
-    actions.appendChild(runBtn);
-
-    const status = document.createElement('span');
-    status.className = 'muted run-status';
-    actions.appendChild(status);
-    form.appendChild(actions);
+    const card = h('div.card', null, [
+      h('div.card-head', null, h('div', null, [
+        h('h2', null, [icon(provider.icon), ` ${provider.name}`]),
+        h('p.muted', { text: provider.description }),
+      ])),
+      consentLine(provider),
+      h('div.notice.notice-warn', null, [icon('i-alert'), h('div', null, [h('strong', { text: 'Quick view: ' }), ...withPlugLinks(provider.notice)])]),
+      form,
+    ]);
+    const results = h('div.card#resultsCard', { hidden: true });
+    root.append(card, results);
 
     form.addEventListener('submit', async (e) => {
       e.preventDefault();
+      if (state.running) return;
       const values = {};
-      for (const k of Object.keys(inputEls)) values[k] = inputEls[k].value;
-      state.lastFormValues = values;
-      runBtn.disabled = true;
-      status.textContent = 'Starting...';
-
-      // Streaming UI: progress bar + live-updating table.
-      const stream = startStreamingResults(provider);
-      try {
-        const ctx = {
-          onRow: (r) => stream.addRow(r),
-          onRows: (rs) => rs.forEach(stream.addRow),
-          onProgress: (p) => {
-            // p = { label, current?, total? }
-            stream.setProgress(p);
-            if (p && p.label) status.textContent = p.label;
-          },
-          setEntity: (entity) => stream.setEntity(entity),
-        };
-        const res = await provider.run(values, ctx);
-        // Provider may also return final shape; merge any extra rows.
-        if (res) {
-          if (res.entity) stream.setEntity(res.entity);
-          if (Array.isArray(res.rows)) {
-            for (const r of res.rows) stream.addRowIfMissing(r);
+      for (const [k, get] of Object.entries(inputs)) values[k] = get().trim();
+      const cancelToken = new Concurrency.CancelToken();
+      state.running = cancelToken;
+      const stream = startResults(provider, results, cancelToken);
+      status.textContent = '';
+      await busy(runBtn, async () => {
+        try {
+          await provider.run(values, {
+            cancelToken,
+            onRow: (r) => { cancelToken.throwIfCancelled(); stream.addRow(r); },
+            onProgress: (p) => { cancelToken.throwIfCancelled(); stream.setProgress(p); },
+            setEntity: (en) => stream.setEntity(en),
+          });
+          cancelToken.throwIfCancelled();
+          stream.finish();
+          status.textContent = `${stream.count()} row(s)`;
+        } catch (err) {
+          if (cancelToken.cancelled || err.message === 'Cancelled') {
+            stream.fail('Stopped. The table shows what was read until then.', true);
+            status.textContent = 'Stopped';
+          } else {
+            Log.err(`${provider.name} failed:`, err);
+            toast(`${provider.name} failed: ${err.message}`, 'err');
+            stream.fail(err.message);
+            status.textContent = 'Failed, see the Debug tab';
           }
+        } finally {
+          if (state.running === cancelToken) state.running = null;
         }
-        stream.finish();
-        state.lastResult = stream.snapshot();
-        status.textContent = `${state.lastResult.rows.length} row(s)`;
-      } catch (err) {
-        Log.err('Provider run failed:', err);
-        toast('Failed: ' + err.message, 'err');
-        status.textContent = 'Failed';
-        stream.fail(err.message);
-      } finally {
-        runBtn.disabled = false;
-      }
-    });
-
-    card.appendChild(form);
-    root.appendChild(card);
-
-    // Results placeholder
-    const resultsCard = document.createElement('div');
-    resultsCard.className = 'card hidden';
-    resultsCard.id = 'resultsCard';
-    root.appendChild(resultsCard);
-  }
-
-  // --------- RESULTS (streaming) ---------
-
-  // Builds the progress card + live-updating table, returns helpers to push
-  // rows / progress as the provider runs.
-  function startStreamingResults(provider) {
-    const card = document.getElementById('resultsCard');
-    card.classList.remove('hidden');
-    card.innerHTML = '';
-
-    const entity = { name: provider.name, sub: '' };
-    const columns = Array.isArray(provider.columns) && provider.columns.length
-      ? provider.columns
-      : [
-          { key: 'principal', label: 'Principal' },
-          { key: 'principalType', label: 'Type' },
-          { key: 'role', label: 'Role / Permission' },
-          { key: 'scope', label: 'Scope' },
-          { key: 'source', label: 'Source' },
-        ];
-
-    // Header + actions
-    const head = document.createElement('div');
-    head.className = 'row between';
-    const titleWrap = document.createElement('div');
-    const title = document.createElement('h2');
-    title.textContent = entity.name;
-    title.style.marginBottom = '4px';
-    titleWrap.appendChild(title);
-    const sub = document.createElement('div');
-    sub.className = 'muted';
-    titleWrap.appendChild(sub);
-    head.appendChild(titleWrap);
-
-    const exportBtn = document.createElement('button');
-    exportBtn.className = 'ghost-btn';
-    exportBtn.textContent = 'Download CSV';
-    exportBtn.disabled = true;
-    head.appendChild(exportBtn);
-    card.appendChild(head);
-
-    // Plug
-    const plug = document.createElement('div');
-    plug.className = 'plug';
-    plug.innerHTML = 'This is a quick view. For comprehensive permission audits across every workload, every scope and every point in time, see <a href="https://www.m365permissions.com" target="_blank" rel="noopener">m365permissions.com</a>.';
-    card.appendChild(plug);
-
-    // Progress block
-    const progressBox = document.createElement('div');
-    progressBox.className = 'progress-box';
-    progressBox.innerHTML = `
-      <div class="progress-header">
-        <span class="progress-label">Working...</span>
-        <span class="progress-count"></span>
-      </div>
-      <div class="progress-bar"><div class="progress-fill"></div></div>`;
-    card.appendChild(progressBox);
-    const progressLabel = progressBox.querySelector('.progress-label');
-    const progressCount = progressBox.querySelector('.progress-count');
-    const progressFill = progressBox.querySelector('.progress-fill');
-    progressFill.style.width = '0%';
-    // Indeterminate state until we get a total.
-    progressBox.classList.add('indeterminate');
-
-    // Filter row (live, applies to current rows)
-    const filterRow = document.createElement('div');
-    filterRow.className = 'row';
-    const filter = document.createElement('input');
-    filter.type = 'search';
-    filter.placeholder = 'Filter rows...';
-    filterRow.appendChild(filter);
-    const liveCount = document.createElement('span');
-    liveCount.className = 'muted';
-    filterRow.appendChild(liveCount);
-    card.appendChild(filterRow);
-
-    let activeQuickFilter = null;
-    if (Array.isArray(provider.quickFilters) && provider.quickFilters.length) {
-      const quickRow = document.createElement('div');
-      quickRow.className = 'row quick-filter-row';
-
-      const allBtn = document.createElement('button');
-      allBtn.type = 'button';
-      allBtn.className = 'chip-btn active';
-      allBtn.textContent = 'All';
-      quickRow.appendChild(allBtn);
-
-      const quickBtns = [{ id: 'all', btn: allBtn, predicate: null }];
-      for (const q of provider.quickFilters) {
-        const b = document.createElement('button');
-        b.type = 'button';
-        b.className = 'chip-btn';
-        b.textContent = q.label;
-        quickBtns.push({ id: q.id, btn: b, predicate: q.predicate });
-        quickRow.appendChild(b);
-      }
-
-      function applyQuick(id, predicate) {
-        activeQuickFilter = predicate;
-        for (const q of quickBtns) q.btn.classList.toggle('active', q.id === id);
-        repaint();
-      }
-
-      for (const q of quickBtns) {
-        q.btn.addEventListener('click', () => applyQuick(q.id, q.predicate));
-      }
-      card.appendChild(quickRow);
-    }
-
-    // Table
-    const wrap = document.createElement('div');
-    wrap.className = 'table-wrap';
-    const table = document.createElement('table');
-    table.className = 'data-table';
-    table.innerHTML = `<thead><tr>${columns.map(c => {
-      const key = escapeHtml(c.key);
-      const label = escapeHtml(c.label);
-      return `<th>
-        <button class="th-btn" data-col-key="${key}" type="button" title="Sort and filter">
-          <span>${label}</span><span class="th-caret">▾</span>
-        </button>
-        <div class="th-menu hidden" data-col-menu="${key}"></div>
-      </th>`;
-    }).join('')}</tr></thead><tbody></tbody>`;
-    const tbody = table.querySelector('tbody');
-    wrap.appendChild(table);
-    card.appendChild(wrap);
-
-    // Empty state placeholder (only shown after finish())
-    const emptyEl = document.createElement('p');
-    emptyEl.className = 'muted hidden';
-    emptyEl.textContent = 'No permissions found.';
-    card.appendChild(emptyEl);
-
-    const rows = [];
-    const seen = new Set();
-    const columnFilters = new Map(); // key -> Set(values) | null (all)
-    let sortState = { key: null, dir: null }; // dir: 'asc' | 'desc' | null
-    let activeMenu = null;
-    const menuByKey = new Map();
-
-    function closeActiveMenu() {
-      if (!activeMenu) return;
-      activeMenu.classList.add('hidden');
-      activeMenu.style.visibility = '';
-      activeMenu.style.left = '';
-      activeMenu.style.top = '';
-      activeMenu = null;
-    }
-
-    function positionMenuForButton(btn, menu) {
-      if (!btn || !menu) return;
-
-      menu.classList.remove('hidden');
-      menu.style.visibility = 'hidden';
-      menu.style.left = '0px';
-      menu.style.top = '0px';
-
-      const btnRect = btn.getBoundingClientRect();
-      const menuRect = menu.getBoundingClientRect();
-      const pad = 8;
-      const gap = 6;
-
-      let left = btnRect.left;
-      if (left + menuRect.width > window.innerWidth - pad) {
-        left = window.innerWidth - menuRect.width - pad;
-      }
-      left = Math.max(pad, left);
-
-      let top = btnRect.bottom + gap;
-      if (top + menuRect.height > window.innerHeight - pad) {
-        top = btnRect.top - menuRect.height - gap;
-      }
-      top = Math.max(pad, top);
-
-      menu.style.left = `${Math.round(left)}px`;
-      menu.style.top = `${Math.round(top)}px`;
-      menu.style.visibility = 'visible';
-    }
-
-    function clearAllColumnFilters() {
-      for (const c of columns) columnFilters.set(c.key, null);
-    }
-
-    clearAllColumnFilters();
-
-    for (const c of columns) {
-      const menu = table.querySelector(`.th-menu[data-col-menu="${c.key}"]`);
-      if (menu) menuByKey.set(c.key, menu);
-    }
-
-    document.addEventListener('click', (ev) => {
-      if (!activeMenu) return;
-      if (activeMenu.contains(ev.target)) return;
-      if (ev.target && ev.target.closest && ev.target.closest('.th-btn')) return;
-      closeActiveMenu();
-    });
-
-    document.addEventListener('keydown', (ev) => {
-      if (ev.key === 'Escape') closeActiveMenu();
-    });
-
-    table.querySelectorAll('.th-btn').forEach((btn) => {
-      btn.addEventListener('click', (ev) => {
-        ev.stopPropagation();
-        const key = btn.dataset.colKey;
-        const menu = menuByKey.get(key);
-        if (!menu) return;
-        const wasOpen = !menu.classList.contains('hidden');
-        closeActiveMenu();
-        if (wasOpen) return;
-        menu._anchorBtn = btn;
-        renderColumnMenu(key, menu);
-        positionMenuForButton(btn, menu);
-        activeMenu = menu;
       });
     });
+  }
 
-    window.addEventListener('resize', () => {
-      if (activeMenu && activeMenu._anchorBtn) positionMenuForButton(activeMenu._anchorBtn, activeMenu);
+  // ---------- results ----------
+  const RISK_BADGE = { high: 'danger', medium: 'warn', low: 'ok' };
+  const CRED_BADGE = { critical: 'danger', high: 'warn', ok: 'ok' };
+  const MODE_BADGE = { application: 'info', delegated: 'violet' };
+
+  function badgeFor(key, value, r) {
+    const v = String(value || '').toLowerCase();
+    if (key === 'riskLevel') return RISK_BADGE[v] || 'neutral';
+    if (key === 'credentialState') return CRED_BADGE[String(r.credentialSeverity || '').toLowerCase()] || 'neutral';
+    if (key === 'permissionMode') return MODE_BADGE[v] || '';
+    return '';
+  }
+
+  function compareValues(a, b) {
+    const na = Number(a), nb = Number(b);
+    if (a !== '' && b !== '' && Number.isFinite(na) && Number.isFinite(nb)) return na - nb;
+    return String(a).localeCompare(String(b), undefined, { numeric: true, sensitivity: 'base' });
+  }
+  const cell = (r, key) => (r[key] == null ? '' : String(r[key]));
+
+  function startResults(provider, card, cancelToken) {
+    card.hidden = false;
+    const columns = provider.columns && provider.columns.length ? provider.columns : DEFAULT_COLUMNS;
+    const entity = { name: provider.name, sub: '' };
+    const rows = [];
+    const seen = new Set();
+    const columnFilters = new Map(columns.map((c) => [c.key, null]));
+    let sort = { key: null, dir: null };
+    let quick = null;
+    let paintQueued = false;
+    const startedAt = Date.now();
+
+    const title = h('h2', { text: entity.name });
+    const sub = h('p.muted.small');
+    const xlsxBtn = h('button.btn.btn-small', { type: 'button', disabled: true }, [icon('i-table'), 'Excel']);
+    const csvBtn = h('button.btn.btn-small', { type: 'button', disabled: true }, [icon('i-download'), 'CSV']);
+
+    const progressLabel = h('span', { text: 'Starting' });
+    const progressEta = h('span.muted.small');
+    const fill = h('div');
+    const bar = h('div.progress-bar.indeterminate', null, fill);
+    const progressCount = h('span');
+    const cancelBtn = h('button.btn.btn-small', { type: 'button', on: { click: () => cancelToken.cancel() } }, [icon('i-stop'), 'Stop']);
+    const progressBox = h('div.progress-box', null, [
+      h('div.progress-header', null, [progressLabel, progressEta]),
+      bar,
+      h('div.progress-footer', null, [progressCount, cancelBtn]),
+    ]);
+
+    const filter = h('input', { type: 'search', placeholder: 'Filter rows', 'aria-label': 'Filter rows' });
+    const liveCount = h('span.muted.small');
+    const filterRow = h('div.row', null, [filter, liveCount]);
+
+    let quickRow = null;
+    if (provider.quickFilters && provider.quickFilters.length) {
+      const chips = [{ id: 'all', label: 'All', predicate: null }, ...provider.quickFilters].map((q) => {
+        const b = h('button.chip-btn', { type: 'button', class: q.id === 'all' ? 'active' : '', text: q.label });
+        b.addEventListener('click', () => {
+          quick = q.predicate;
+          chips.forEach((x) => x.classList.toggle('active', x === b));
+          repaint();
+        });
+        return b;
+      });
+      quickRow = h('div.row.quick-filters', null, chips);
+    }
+
+    const table = h('table.data-table.pv-table');
+    table.innerHTML = `<thead><tr>${columns.map((c) => `<th>
+        <button class="th-btn" data-col-key="${esc(c.key)}" type="button" title="Sort and filter">
+          <span>${esc(c.label)}</span><span class="th-sort">${iconHtml('i-sort', 'sm')}</span>
+        </button></th>`).join('')}</tr></thead><tbody></tbody>`;
+    const tbody = table.querySelector('tbody');
+    const hint = h('p.table-hint', { hidden: true });
+    const empty = h('div.empty-state', { hidden: true }, [icon('i-search'), h('h3', { text: 'No permissions found' }), h('p', { text: 'Nothing came back for this entity, or you cannot read it.' })]);
+
+    card.replaceChildren(
+      h('div.card-head', null, [h('div', null, [title, sub]), h('div.row.tight', null, [xlsxBtn, csvBtn])]),
+      h('div.plug-banner', null, [icon('i-sparkle'), h('div', null, [
+        'Quick view, top level only. For audits across every workload, every scope and over time, ',
+        h('a', { href: PLUG_URL, target: '_blank', rel: 'noopener', text: 'm365permissions.com' }),
+        ' goes all the way down.',
+      ])]),
+      ...[progressBox, filterRow, quickRow, h('div.table-wrap', null, table), hint, empty].filter(Boolean),
+    );
+
+    // ---------- column menu ----------
+    const menu = h('div.th-menu', { hidden: true });
+    document.body.appendChild(menu);
+    let menuKey = null;
+    let menuAnchor = null;
+    function closeMenu() { menu.hidden = true; menuKey = null; menuAnchor = null; }
+    function removeMenu() { closeMenu(); menu.remove(); document.removeEventListener('click', onDocClick); document.removeEventListener('keydown', onKey); window.removeEventListener('resize', place); window.removeEventListener('scroll', place, true); }
+    if (state.closeMenu) state.closeMenu();
+    state.closeMenu = removeMenu;
+
+    function place() {
+      if (!menuAnchor || menu.hidden) return;
+      const b = menuAnchor.getBoundingClientRect();
+      const m = menu.getBoundingClientRect();
+      const pad = 8;
+      let left = Math.max(pad, Math.min(b.left, window.innerWidth - m.width - pad));
+      let top = b.bottom + 6;
+      if (top + m.height > window.innerHeight - pad) top = Math.max(pad, b.top - m.height - 6);
+      menu.style.left = `${Math.round(left)}px`;
+      menu.style.top = `${Math.round(top)}px`;
+    }
+    function onDocClick(ev) {
+      if (menu.hidden || menu.contains(ev.target) || (ev.target.closest && ev.target.closest('.th-btn'))) return;
+      closeMenu();
+    }
+    function onKey(ev) { if (ev.key === 'Escape' && !menu.hidden) closeMenu(); }
+    document.addEventListener('click', onDocClick);
+    document.addEventListener('keydown', onKey);
+    window.addEventListener('resize', place);
+    window.addEventListener('scroll', place, true);
+
+    table.querySelector('thead').addEventListener('click', (ev) => {
+      const btn = ev.target.closest('.th-btn');
+      if (!btn) return;
+      ev.stopPropagation();
+      const key = btn.dataset.colKey;
+      if (menuKey === key) { closeMenu(); return; }
+      menuKey = key;
+      menuAnchor = btn;
+      renderMenu();
+      menu.hidden = false;
+      place();
     });
 
-    window.addEventListener('scroll', () => {
-      if (activeMenu && activeMenu._anchorBtn) positionMenuForButton(activeMenu._anchorBtn, activeMenu);
-    }, true);
-
-    function rowKey(r) {
-      return columns.map(c => String(r[c.key] || '')).join('|');
+    function renderMenu() {
+      const key = menuKey;
+      const values = [...new Set(rows.map((r) => cell(r, key)))].sort(compareValues);
+      const selected = columnFilters.get(key);
+      const action = (act, label) => `<button type="button" class="btn btn-small" data-act="${act}">${esc(label)}</button>`;
+      menu.innerHTML = `
+        <div class="th-menu-actions">${action('sort-asc', 'Sort A to Z')}${action('sort-desc', 'Sort Z to A')}${action('clear-sort', 'No sort')}</div>
+        <div class="th-menu-actions">${action('select-all', 'Select all')}${action('clear-filter', 'Select none')}</div>
+        <input type="search" class="th-menu-search" placeholder="Find value" aria-label="Find value" />
+        <div class="th-menu-values"></div>`;
+      const list = menu.querySelector('.th-menu-values');
+      const search = menu.querySelector('.th-menu-search');
+      const paintValues = () => {
+        const q = search.value.trim().toLowerCase();
+        const shown = values.filter((v) => !q || v.toLowerCase().includes(q));
+        list.innerHTML = shown.map((v) => `<label class="checkbox"><input type="checkbox" data-value="${esc(v)}" ${!selected || selected.has(v) ? 'checked' : ''}/> <span>${esc(v || '(blank)')}</span></label>`).join('')
+          || '<p class="muted small">No values</p>';
+      };
+      paintValues();
+      search.addEventListener('input', paintValues);
+      list.addEventListener('change', (ev) => {
+        const cb = ev.target.closest('input[data-value]');
+        if (!cb) return;
+        const next = new Set(columnFilters.get(key) || values);
+        if (cb.checked) next.add(cb.dataset.value); else next.delete(cb.dataset.value);
+        columnFilters.set(key, next.size >= values.length ? null : next);
+        repaint();
+      });
+      menu.querySelectorAll('[data-act]').forEach((b) => b.addEventListener('click', () => {
+        const a = b.dataset.act;
+        if (a === 'sort-asc') sort = { key, dir: 'asc' };
+        else if (a === 'sort-desc') sort = { key, dir: 'desc' };
+        else if (a === 'clear-sort' && sort.key === key) sort = { key: null, dir: null };
+        else if (a === 'select-all') columnFilters.set(key, null);
+        else if (a === 'clear-filter') columnFilters.set(key, new Set());
+        repaint();
+        renderMenu();
+        place();
+      }));
     }
 
-    function rowMatchesFilter(r, ft) {
-      if (activeQuickFilter && !activeQuickFilter(r)) return false;
+    // ---------- table ----------
+    function matches(r, ft) {
+      if (quick && !quick(r)) return false;
       for (const c of columns) {
-        const selected = columnFilters.get(c.key);
-        if (selected && selected.size) {
-          const val = String(r[c.key] == null ? '' : r[c.key]);
-          if (!selected.has(val)) return false;
-        }
+        const sel = columnFilters.get(c.key);
+        if (sel && !sel.has(cell(r, c.key))) return false;
       }
-      if (!ft) return true;
-      const text = columns.map(c => String(r[c.key] || '')).join(' ').toLowerCase();
-      return text.includes(ft);
+      return !ft || columns.map((c) => cell(r, c.key)).join(' ').toLowerCase().includes(ft);
     }
-
-    function compareValues(a, b) {
-      const na = Number(a);
-      const nb = Number(b);
-      const aNum = Number.isFinite(na);
-      const bNum = Number.isFinite(nb);
-      if (aNum && bNum) return na - nb;
-      return String(a).localeCompare(String(b), undefined, { numeric: true, sensitivity: 'base' });
-    }
-
-    function getVisibleRows() {
+    function visibleRows() {
       const ft = filter.value.trim().toLowerCase();
-      const vis = rows.filter(r => rowMatchesFilter(r, ft));
-      if (sortState.key && sortState.dir) {
-        vis.sort((ra, rb) => {
-          const av = String(ra[sortState.key] == null ? '' : ra[sortState.key]);
-          const bv = String(rb[sortState.key] == null ? '' : rb[sortState.key]);
-          const cmp = compareValues(av, bv);
-          return sortState.dir === 'asc' ? cmp : -cmp;
-        });
+      const vis = rows.filter((r) => matches(r, ft));
+      if (sort.key) {
+        const m = sort.dir === 'asc' ? 1 : -1;
+        vis.sort((a, b) => m * compareValues(cell(a, sort.key), cell(b, sort.key)));
       }
       return vis;
     }
-
-    function updateHeaderState() {
+    function rowHtml(r) {
+      return `<tr>${columns.map((c) => {
+        const v = cell(r, c.key);
+        const b = v ? badgeFor(c.key, v, r) : '';
+        return b ? `<td><span class="badge ${b}">${esc(v)}</span></td>` : `<td>${esc(v)}</td>`;
+      }).join('')}</tr>`;
+    }
+    function paint() {
+      paintQueued = false;
+      const vis = visibleRows();
+      const shown = vis.slice(0, MAX_ROWS);
+      tbody.innerHTML = shown.map(rowHtml).join('');
+      liveCount.textContent = rows.length ? `${vis.length} of ${rows.length} row(s)` : '';
+      hint.hidden = vis.length <= MAX_ROWS;
+      hint.textContent = `Showing the first ${MAX_ROWS} of ${vis.length}. Filter to narrow it down; the export has every row.`;
       table.querySelectorAll('.th-btn').forEach((btn) => {
         const key = btn.dataset.colKey;
-        const hasFilter = !!(columnFilters.get(key) && columnFilters.get(key).size);
-        const isSort = sortState.key === key && sortState.dir;
-        btn.classList.toggle('filtered', hasFilter);
-        btn.classList.toggle('sorted', !!isSort);
-        const caret = btn.querySelector('.th-caret');
-        if (!caret) return;
-        if (isSort && sortState.dir === 'asc') caret.textContent = '↑';
-        else if (isSort && sortState.dir === 'desc') caret.textContent = '↓';
-        else caret.textContent = '▾';
+        const sel = columnFilters.get(key);
+        btn.classList.toggle('filtered', !!sel);
+        btn.classList.toggle('sorted', sort.key === key);
+        const ico = sort.key === key ? (sort.dir === 'asc' ? 'i-arrow-up' : 'i-arrow-down') : 'i-sort';
+        const slot = btn.querySelector('.th-sort');
+        if (slot.dataset.icon !== ico) { slot.dataset.icon = ico; slot.innerHTML = iconHtml(ico, 'sm'); }
       });
     }
-
-    function renderColumnMenu(colKey, menu) {
-      const values = Array.from(new Set(rows.map(r => String(r[colKey] == null ? '' : r[colKey]))))
-        .sort((a, b) => compareValues(a, b));
-      const selected = columnFilters.get(colKey);
-      const allSelected = !selected;
-
-      menu.innerHTML = `
-        <div class="th-menu-actions">
-          <button type="button" class="th-menu-btn" data-action="sort-asc">Sort A -> Z</button>
-          <button type="button" class="th-menu-btn" data-action="sort-desc">Sort Z -> A</button>
-          <button type="button" class="th-menu-btn" data-action="clear-sort">Clear sort</button>
-        </div>
-        <div class="th-menu-actions">
-          <button type="button" class="th-menu-btn" data-action="select-all">Select all</button>
-          <button type="button" class="th-menu-btn" data-action="clear-filter">Clear filter</button>
-        </div>
-        <input type="search" class="th-menu-search" placeholder="Find value..." />
-        <div class="th-menu-values"></div>`;
-
-      const valuesWrap = menu.querySelector('.th-menu-values');
-      const search = menu.querySelector('.th-menu-search');
-
-      function repaintValues() {
-        const q = (search.value || '').trim().toLowerCase();
-        const html = values
-          .filter(v => !q || v.toLowerCase().includes(q))
-          .map(v => {
-            const checked = allSelected || (selected && selected.has(v));
-            const txt = v || '(blank)';
-            return `<label class="th-menu-check"><input type="checkbox" data-value="${escapeHtml(v)}" ${checked ? 'checked' : ''}/> <span>${escapeHtml(txt)}</span></label>`;
-          })
-          .join('');
-        valuesWrap.innerHTML = html || '<div class="muted">No values</div>';
-
-        valuesWrap.querySelectorAll('input[type="checkbox"]').forEach((cb) => {
-          cb.addEventListener('change', () => {
-            const cur = columnFilters.get(colKey);
-            let next;
-            if (!cur) next = new Set(values);
-            else next = new Set(cur);
-            const val = cb.dataset.value || '';
-            if (cb.checked) next.add(val);
-            else next.delete(val);
-            if (next.size >= values.length) columnFilters.set(colKey, null);
-            else columnFilters.set(colKey, next);
-            repaint();
-            updateHeaderState();
-          });
-        });
-      }
-
-      repaintValues();
-      search.addEventListener('input', repaintValues);
-
-      menu.querySelectorAll('.th-menu-btn').forEach((b) => {
-        b.addEventListener('click', () => {
-          const a = b.dataset.action;
-          if (a === 'sort-asc') sortState = { key: colKey, dir: 'asc' };
-          else if (a === 'sort-desc') sortState = { key: colKey, dir: 'desc' };
-          else if (a === 'clear-sort' && sortState.key === colKey) sortState = { key: null, dir: null };
-          else if (a === 'select-all') columnFilters.set(colKey, null);
-          else if (a === 'clear-filter') columnFilters.set(colKey, new Set());
-          repaint();
-          updateHeaderState();
-          renderColumnMenu(colKey, menu);
-        });
-      });
-
-      if (menu._anchorBtn) positionMenuForButton(menu._anchorBtn, menu);
-    }
-
-    function badgeClassForCell(key, value, r) {
-      if (key === 'riskLevel') {
-        const v = String(value || '').toLowerCase();
-        if (v === 'high') return 'badge-risk-high';
-        if (v === 'medium') return 'badge-risk-medium';
-        if (v === 'low') return 'badge-risk-low';
-        return 'badge-risk-info';
-      }
-      if (key === 'credentialState') {
-        const s = (r.credentialSeverity || '').toLowerCase();
-        if (s === 'critical') return 'badge-risk-high';
-        if (s === 'high') return 'badge-risk-medium';
-        if (s === 'ok') return 'badge-risk-low';
-        return 'badge-risk-info';
-      }
-      if (key === 'permissionMode') {
-        const m = String(value || '').toLowerCase();
-        if (m === 'application') return 'badge-mode-app';
-        if (m === 'delegated') return 'badge-mode-delegated';
-      }
-      return '';
-    }
-
-    function appendDom(r) {
-      const ft = filter.value.trim().toLowerCase();
-      if (!rowMatchesFilter(r, ft)) return;
-      const tr = document.createElement('tr');
-      tr.innerHTML = columns.map(c => {
-        const val = r[c.key] == null ? '' : String(r[c.key]);
-        const badgeClass = badgeClassForCell(c.key, val, r);
-        if (badgeClass && val) return `<td><span class="badge ${badgeClass}">${escapeHtml(val)}</span></td>`;
-        return `<td>${escapeHtml(val)}</td>`;
-      }).join('');
-      tbody.appendChild(tr);
-    }
-
+    // Rows stream in fast; paint at most once per frame.
     function repaint() {
-      tbody.innerHTML = '';
-      const vis = getVisibleRows();
-      for (const r of vis) appendDom(r);
-      updateCount();
+      if (paintQueued) return;
+      paintQueued = true;
+      requestAnimationFrame(paint);
     }
-
-    function updateCount() {
-      const visible = tbody.children.length;
-      liveCount.textContent = rows.length ? `${visible} / ${rows.length} row(s)` : '';
-    }
-
     filter.addEventListener('input', repaint);
 
-    function setEntity(e) {
-      if (!e) return;
-      Object.assign(entity, e);
-      title.textContent = entity.name || provider.name;
-      sub.textContent = entity.sub || '';
+    function exportRows(kind) {
+      const name = String(entity.name || provider.name).replace(/[^a-z0-9]+/gi, '_').replace(/^_|_$/g, '');
+      const base = `PermView-${name}-${Export.stamp()}`;
+      const cols = columns.map((c) => ({ key: c.key, label: c.label }));
+      if (kind === 'csv') Export.csv(rows, { columns: cols, filename: `${base}.csv` });
+      else return Export.xlsx([{ name: provider.name, rows, columns: cols }], `${base}.xlsx`);
+      return null;
+    }
+    xlsxBtn.addEventListener('click', () => busy(xlsxBtn, async () => {
+      try { await exportRows('xlsx'); } catch (e) { Log.err('Excel export failed:', e); toast(`Excel export failed: ${e.message}`, 'err'); }
+    }));
+    csvBtn.addEventListener('click', () => exportRows('csv'));
+
+    function endRun() {
+      cancelBtn.hidden = true;
+      bar.classList.remove('indeterminate');
+      fill.style.width = '100%';
+      progressEta.textContent = '';
+      xlsxBtn.disabled = csvBtn.disabled = rows.length === 0;
+      paint();
     }
 
-    function addRow(r) {
-      if (!r) return;
-      const k = rowKey(r);
-      if (seen.has(k)) return;
-      seen.add(k);
-      rows.push(r);
-      repaint();
-      updateHeaderState();
-    }
-    function addRowIfMissing(r) { addRow(r); }
-
-    function setProgress(p) {
-      if (!p) return;
-      if (p.label) progressLabel.textContent = p.label;
-      if (typeof p.total === 'number' && p.total > 0) {
-        progressBox.classList.remove('indeterminate');
-        const cur = Math.min(p.current || 0, p.total);
-        const pct = Math.round((cur / p.total) * 100);
-        progressFill.style.width = pct + '%';
-        progressCount.textContent = `${cur} / ${p.total}`;
-      } else if (typeof p.current === 'number') {
-        progressCount.textContent = `${p.current}`;
-      }
-    }
-
-    function finish() {
-      progressBox.classList.remove('indeterminate');
-      progressFill.style.width = '100%';
-      progressLabel.textContent = `Done. ${rows.length} row(s).`;
-      progressCount.textContent = '';
-      // Hide progress block after a short delay.
-      setTimeout(() => progressBox.classList.add('hidden'), 600);
-      exportBtn.disabled = false;
-      const snap = snapshot();
-      exportBtn.onclick = () => exportCsv(snap);
-      if (!rows.length) emptyEl.classList.remove('hidden');
-    }
-
-    function fail(msg) {
-      progressBox.classList.remove('indeterminate');
-      progressFill.style.width = '100%';
-      progressLabel.textContent = 'Failed: ' + (msg || 'unknown error');
-      progressLabel.style.color = 'var(--danger)';
-    }
-
-    function snapshot() {
-      return { entity: { ...entity }, rows: rows.slice(), columns: columns.slice() };
-    }
-
-    return { setEntity, addRow, addRowIfMissing, setProgress, finish, fail, snapshot };
+    return {
+      count: () => rows.length,
+      setEntity(en) {
+        if (!en) return;
+        Object.assign(entity, en);
+        title.textContent = entity.name || provider.name;
+        sub.textContent = entity.sub || '';
+      },
+      addRow(r) {
+        if (!r) return;
+        const k = columns.map((c) => cell(r, c.key)).join('|');
+        if (seen.has(k)) return;
+        seen.add(k);
+        rows.push(r);
+        repaint();
+      },
+      setProgress(p) {
+        if (!p) return;
+        if (p.label) progressLabel.textContent = p.label;
+        if (typeof p.total === 'number' && p.total > 0) {
+          bar.classList.remove('indeterminate');
+          const cur = Math.min(p.current || 0, p.total);
+          fill.style.width = `${Math.round((cur / p.total) * 100)}%`;
+          progressCount.textContent = `${cur} of ${p.total}`;
+          progressEta.textContent = Concurrency.eta(startedAt, cur, p.total);
+        } else {
+          bar.classList.add('indeterminate');
+          progressCount.textContent = typeof p.current === 'number' ? `${p.current} done` : '';
+          progressEta.textContent = '';
+        }
+      },
+      finish() {
+        endRun();
+        progressLabel.textContent = `Done, ${rows.length} row(s) in ${((Date.now() - startedAt) / 1000).toFixed(1)}s.`;
+        progressCount.textContent = '';
+        setTimeout(() => { progressBox.hidden = true; }, 800);
+        empty.hidden = rows.length > 0;
+        Log.info(`${provider.name}: ${rows.length} row(s) for ${entity.sub || entity.name}`);
+      },
+      fail(msg, stopped) {
+        endRun();
+        progressBox.classList.add(stopped ? 'is-stopped' : 'is-failed');
+        progressLabel.textContent = stopped ? msg : `Failed: ${msg || 'unknown error'}`;
+      },
+    };
   }
 
-  function exportCsv(res) {
-    const columns = Array.isArray(res.columns) && res.columns.length
-      ? res.columns
-      : [
-          { key: 'principal', label: 'Principal' },
-          { key: 'principalType', label: 'Type' },
-          { key: 'role', label: 'Role / Permission' },
-          { key: 'scope', label: 'Scope' },
-          { key: 'source', label: 'Source' },
-        ];
-    const headers = columns.map(c => c.label);
-    const lines = [headers.join(',')];
-    for (const r of res.rows) {
-      lines.push(columns.map(c => csvEscape(r[c.key])).join(','));
-    }
-    const blob = new Blob([lines.join('\n')], { type: 'text/csv;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `permview-${(res.entity.name || 'export').replace(/[^a-z0-9]+/gi, '_')}.csv`;
-    document.body.appendChild(a);
-    a.click();
-    setTimeout(() => { URL.revokeObjectURL(url); a.remove(); }, 200);
-  }
-
-  function csvEscape(v) {
-    const s = (v == null ? '' : String(v));
-    if (/[",\r\n]/.test(s)) return '"' + s.replace(/"/g, '""') + '"';
-    return s;
-  }
-
-  function escapeHtml(s) {
-    return String(s == null ? '' : s)
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;')
-      .replace(/'/g, '&#39;');
-  }
-
-  // --------- BOOT ---------
-
+  // ---------- boot ----------
   async function boot() {
-    initTheme();
-    document.getElementById('darkToggle').addEventListener('click', toggleTheme);
-    document.getElementById('signInBtn').addEventListener('click', onSignIn);
-    document.getElementById('signOutBtn').addEventListener('click', onSignOut);
-    document.getElementById('verboseLog').addEventListener('change', (e) => Log.setVerbose(e.target.checked));
-    document.getElementById('clearLogBtn').addEventListener('click', () => Log.clear());
-
-    // Top-level tabs (Workloads / Debug / About).
-    document.querySelectorAll('.top-tab').forEach(t => {
-      t.addEventListener('click', () => {
-        document.querySelectorAll('.top-tab').forEach(x => x.classList.toggle('active', x === t));
-        document.querySelectorAll('.top-panel').forEach(p => p.classList.toggle('active', p.id === `top-${t.dataset.top}`));
-      });
-    });
-
-    try {
-      await Auth.init();
-    } catch (e) {
-      Log.err('Auth init failed:', e);
-      toast('Auth init failed: ' + e.message, 'err');
-    }
-    await refreshAuthUI();
+    if (ToolkitAuth.isAuthPopup()) return;
+    Toolkit.tabs('#tabs');
+    $('signInBtn').addEventListener('click', onSignIn);
+    try { await Auth.init(); }
+    catch (e) { Log.err('Auth init failed:', e); toast(`Sign-in is not available: ${e.message}`, 'err'); }
+    refreshAuthUI();
   }
 
   document.addEventListener('DOMContentLoaded', boot);

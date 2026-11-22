@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>LC Toolkit shared modules - tests</title>
+  <style>
+    body { font: 14px/1.4 "Segoe UI", sans-serif; padding: 20px; max-width: 900px; margin: 0 auto; }
+    .pass { color: #1f7a3a; } .fail { color: #b32026; font-weight: bold; }
+    pre { background: #f4f4f6; padding: 10px; border-radius: 6px; overflow: auto; }
+  </style>
+  <script src="../registry.js"></script>
+  <script src="../toolkit.js"></script>
+</head>
+<body>
+  <h1>Shared modules - unit tests</h1>
+  <div id="out"></div>
+  <script src="../log.js"></script>
+  <script src="../concurrency.js"></script>
+  <script src="../http.js"></script>
+  <script src="../export.js"></script>
+  <script src="../auth.js"></script>
+  <script>
+    const out = document.getElementById('out');
+    let pass = 0, fail = 0;
+    const pending = [];
+    function test(name, fn) {
+      const run = async () => {
+        try { await fn(); out.insertAdjacentHTML('beforeend', `<div class="pass">PASS ${Toolkit.esc(name)}</div>`); pass++; }
+        catch (e) { out.insertAdjacentHTML('beforeend', `<div class="fail">FAIL ${Toolkit.esc(name)}<pre>${Toolkit.esc(e.stack || e.message)}</pre></div>`); fail++; }
+      };
+      pending.push(run);
+    }
+    function eq(a, b, m = '') {
+      const A = JSON.stringify(a), B = JSON.stringify(b);
+      if (A !== B) throw new Error(`${m} expected ${B}, got ${A}`);
+    }
+
+    // ---------- toolkit ----------
+    test('esc escapes all five characters', () => eq(Toolkit.esc(`<a href="x" onclick='y'>&</a>`), '&lt;a href=&quot;x&quot; onclick=&#39;y&#39;&gt;&amp;&lt;/a&gt;'));
+    test('esc handles null and numbers', () => { eq(Toolkit.esc(null), ''); eq(Toolkit.esc(5), '5'); });
+    test('safeUrl blocks javascript and data URLs', () => {
+      eq(Toolkit.safeUrl('javascript:alert(1)'), '#');
+      eq(Toolkit.safeUrl(' JaVaScRiPt:alert(1)'), '#');
+      eq(Toolkit.safeUrl('data:text/html,<script>'), '#');
+      eq(Toolkit.safeUrl('https://contoso.sharepoint.com/sites/a'), 'https://contoso.sharepoint.com/sites/a');
+    });
+    test('h sets text, never parses it as HTML', () => {
+      const el = Toolkit.h('div.a#b', { text: '<img src=x onerror=alert(1)>' });
+      eq(el.children.length, 0); eq(el.id, 'b'); eq(el.className, 'a');
+    });
+    test('h sanitises href', () => eq(Toolkit.h('a', { href: 'javascript:alert(1)' }).getAttribute('href'), '#'));
+    test('initials', () => { eq(Toolkit.initials('Jos Lieben'), 'JL'); eq(Toolkit.initials('jos@lieben.nu'), 'J'); });
+    test('registry: every related id exists', () => {
+      const R = window.ToolkitRegistry;
+      for (const t of R.TOOLS) for (const r of t.related) if (!R.byId(r)) throw new Error(`${t.id} -> ${r}`);
+    });
+    test('registry: every tool has a group and an icon symbol id', () => {
+      const R = window.ToolkitRegistry;
+      for (const t of R.TOOLS) if (!R.GROUPS.some((g) => g.id === t.group)) throw new Error(t.id);
+    });
+
+    // ---------- log ----------
+    test('Log redacts bearer tokens and JWTs', () => {
+      Log.clear();
+      Log.info('Authorization: Bearer abc.def-ghi', 'eyJhbGciOiJSUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.signaturepart');
+      const t = Log.text();
+      if (/abc\.def/.test(t) || /eyJhbGci/.test(t)) throw new Error(t);
+    });
+    test('Log redacts token query parameters and JSON fields', () => {
+      eq(Log.redact('x?code=SECRET&state=1'), 'x?code=[redacted]&state=1');
+      eq(Log.redact('{"access_token":"SECRET"}'), '{"access_token":"[redacted]"}');
+    });
+
+    // ---------- export ----------
+    test('neutralise prefixes formula starters', () => {
+      eq(Export.neutralise('=HYPERLINK("x")'), `'=HYPERLINK("x")`);
+      eq(Export.neutralise('+31 6'), `'+31 6`);
+      eq(Export.neutralise('-1'), `'-1`);
+      eq(Export.neutralise('@SUM(A1)'), `'@SUM(A1)`);
+      eq(Export.neutralise('Alice'), 'Alice');
+      eq(Export.neutralise(-1), -1);
+    });
+    test('table applies columns and formats', () => {
+      const t = Export.table([{ a: true, b: '=1', c: new Date('2026-01-02T03:04:05Z') }], [{ key: 'a', label: 'A' }, { key: 'b', label: 'B' }, { key: 'c', label: 'C' }]);
+      eq(t.header, ['A', 'B', 'C']);
+      eq(t.body[0], ['Yes', `'=1`, '2026-01-02 03:04:05']);
+    });
+
+    test('xlsx library loads and writes a workbook', async () => {
+      const X = await Export.loadXlsx();
+      if (!X || X.version !== '0.20.3') throw new Error(`version ${X && X.version}`);
+      const wb = X.utils.book_new();
+      X.utils.book_append_sheet(wb, X.utils.aoa_to_sheet([['a'], ["'=1"]]), 'S');
+      const out = X.write(wb, { type: 'array', bookType: 'xlsx' });
+      if (!out || !out.byteLength) throw new Error('empty workbook');
+    });
+
+    // ---------- http ----------
+    test('url encodes interpolations but not raw()', () => {
+      eq(Http.url`${Http.raw('https://graph.microsoft.com/v1.0')}/users/${'a/../b?x=1'}`, 'https://graph.microsoft.com/v1.0/users/a%2F..%2Fb%3Fx%3D1');
+    });
+    test('odataString doubles quotes', () => eq(Http.odataString("O'Brien"), "'O''Brien'"));
+    test('isGuid', () => { eq(Http.isGuid('5ead7eeb-c250-472b-8e37-f59ef93e197d'), true); eq(Http.isGuid('x'), false); });
+    test('errorMessage reads Graph errors', () => {
+      eq(Http.errorMessage(403, 'Forbidden', '{"error":{"code":"Authorization_RequestDenied","message":"Insufficient privileges"}}'),
+        'HTTP 403 Forbidden: Insufficient privileges (Authorization_RequestDenied)');
+    });
+
+    // ---------- auth ----------
+    test('parseAuthFile', () => {
+      const c = ToolkitAuth.parseAuthFile('clientId:abc\n# comment\nredirect-url-web: https://x/y\n');
+      eq(c.clientId, 'abc'); eq(c['redirect-url-web'], 'https://x/y');
+    });
+    test('pickRedirectUriForOrigin', () => {
+      const c = { 'redirect-url-local': 'L', 'redirect-url-web': 'W' };
+      eq(ToolkitAuth.pickRedirectUriForOrigin(c, 'http://localhost:1985'), 'L');
+      eq(ToolkitAuth.pickRedirectUriForOrigin(c, 'https://lieben.nu'), 'W');
+    });
+    test('create resolves short scopes to Graph', () => {
+      const a = ToolkitAuth.create({ scopes: { read: ['User.Read.All', 'https://management.azure.com/user_impersonation'] } });
+      eq(a.resolve('read'), ['https://graph.microsoft.com/User.Read.All', 'https://management.azure.com/user_impersonation']);
+    });
+
+    test('create leaves resource-qualified scopes alone', () => {
+      const a = ToolkitAuth.create({ scopes: { devops: ['499b84ac-1321-427f-aa17-267ca6975798/user_impersonation', 'api://x/y'] } });
+      eq(a.resolve('devops'), ['499b84ac-1321-427f-aa17-267ca6975798/user_impersonation', 'api://x/y']);
+    });
+    test('pageAll refuses a next link on another host', async () => {
+      const realFetch = window.fetch;
+      window.fetch = async () => new Response(JSON.stringify({ value: [1], '@odata.nextLink': 'https://evil.example/next' }), { headers: { 'Content-Type': 'application/json' } });
+      try {
+        await Http.pageAll('https://graph.microsoft.com/v1.0/x', { retries: 0 });
+        throw new Error('should have refused');
+      } catch (e) { if (!/another host/.test(e.message)) throw e; }
+      finally { window.fetch = realFetch; }
+    });
+
+    test('purgeLegacyCache removes MSAL entries only', () => {
+      const keep = { 'spotrim-elevations': '[{"site":"x"}]', 'spomove-jobs': '{"jobs":[]}', 'lctk-theme': 'dark' };
+      const drop = {
+        'msal.account.keys': '["a"]',
+        'uid.utid-login.windows.net-refreshtoken-5ead7eeb-c250-472b-8e37-f59ef93e197d----': '{"credentialType":"RefreshToken","secret":"x"}',
+        'some-odd-key': '{"homeAccountId":"a","environment":"login.windows.net"}',
+      };
+      for (const [k, v] of Object.entries({ ...keep, ...drop })) localStorage.setItem(k, v);
+      ToolkitAuth.purgeLegacyCache();
+      for (const k of Object.keys(drop)) if (localStorage.getItem(k) !== null) throw new Error(`kept ${k}`);
+      for (const k of Object.keys(keep)) { if (localStorage.getItem(k) === null) throw new Error(`removed ${k}`); localStorage.removeItem(k); }
+    });
+
+    // ---------- concurrency ----------
+    test('pmap respects concurrency and collects errors', async () => {
+      let live = 0, peak = 0;
+      const r = await Concurrency.pmap([1, 2, 3, 4, 5, 6], async (n) => {
+        live++; peak = Math.max(peak, live);
+        await Concurrency.sleep(5);
+        live--;
+        if (n === 3) throw new Error('boom');
+        return n * 2;
+      }, { concurrency: 2 });
+      eq(peak, 2); eq(r.errors.length, 1); eq(r.results[5], 12);
+    });
+
+    (async () => {
+      for (const run of pending) await run();
+      out.insertAdjacentHTML('beforeend', `<h2>${pass} passed, ${fail} failed</h2><p id="result">TEST-RESULT: ${fail ? 'FAIL' : 'PASS'} ${pass}/${pass + fail}</p>`);
+    })();
+  </script>
+</body>
+</html>

@@ -21,8 +21,8 @@
     return Graph.graphAll('directoryRoles', { apiVersion: 'v1.0' });
   }
   async function getRoleMembers(roleId) {
-    try { return await Graph.graphAll(`directoryRoles/${roleId}/members`, { apiVersion: 'v1.0' }); }
-    catch (e) { Log.debug('roleMembers failed', roleId, e.message); return []; }
+    try { return await Graph.graphAll(`directoryRoles/${encodeURIComponent(roleId)}/members`, { apiVersion: 'v1.0' }); }
+    catch (e) { Log.dbg('roleMembers failed', roleId, e.message); return []; }
   }
   // Bulk flatten of all members of all "privileged" Entra roles.
   // Maester uses a curated list of templateIds; we use the same shortlist.
@@ -112,9 +112,9 @@
         for (const m of members) {
           if (m['@odata.type'] !== '#microsoft.graph.user') continue;
           try {
-            const u = await Graph.graph(`users/${m.id}?$select=onPremisesSyncEnabled,userPrincipalName`, { apiVersion: 'v1.0' });
+            const u = await Graph.graph(`users/${encodeURIComponent(m.id)}?$select=onPremisesSyncEnabled,userPrincipalName`, { apiVersion: 'v1.0' });
             if (u.onPremisesSyncEnabled) synced.push(u.userPrincipalName);
-          } catch (e) { Log.debug('user lookup failed', e.message); }
+          } catch (e) { Log.dbg('user lookup failed', e.message); }
         }
         if (synced.length === 0) return { id:'CIS.M365.1.1.1', status:'Passed', reason:'All Global Administrators are cloud-only.', actual: 0, durationMs: ms(start) };
         return { id:'CIS.M365.1.1.1', status:'Failed', reason:`${synced.length} synced account(s) hold the Global Administrator role: ${synced.join(', ')}`, actual: synced.length, durationMs: ms(start) };
@@ -214,11 +214,11 @@
       try {
         const apps = await Graph.graphAll('applications?$select=appId,displayName&$top=999', { apiVersion: 'v1.0' });
         const ownerIds = new Set();
-        await Concurrency.pmap(apps, 8, async (a) => {
-          try { const owners = await Graph.graphAll(`applications(appId='${a.appId}')/owners`, { apiVersion: 'v1.0' });
+        await Concurrency.pmap(apps, async (a) => {
+          try { const owners = await Graph.graphAll(`applications(appId=${Http.odataString(a.appId)})/owners`, { apiVersion: 'v1.0' });
             for (const o of owners) if (o['@odata.type'] === '#microsoft.graph.user') ownerIds.add(o.id);
-          } catch (e) { Log.debug('owner lookup', a.displayName, e.message); }
-        });
+          } catch (e) { Log.dbg('owner lookup', a.displayName, e.message); }
+        }, { concurrency: 8 });
         if (ownerIds.size === 0) return { id:'MT.1063', status:'Skipped', reason:'No user app owners found.', durationMs: ms(start) };
         const reg = await Graph.graphAll('reports/authenticationMethods/userRegistrationDetails?$top=999', { apiVersion: 'v1.0' });
         const map = new Map(reg.map(u => [u.id, u]));
@@ -455,7 +455,7 @@
         const graphSpn = await Graph.graph(`servicePrincipals?$filter=appId eq '00000003-0000-0000-c000-000000000000'&$select=id`, { apiVersion: 'v1.0' });
         const graphSpnId = graphSpn.value?.[0]?.id;
         if (!graphSpnId) return { id:'SM.1070', status:'Skipped', reason:'Could not resolve Microsoft Graph service principal.', durationMs: ms(start) };
-        const grants = await Graph.graphAll(`servicePrincipals/${graphSpnId}/appRoleAssignedTo?$top=999`, { apiVersion: 'v1.0' });
+        const grants = await Graph.graphAll(`servicePrincipals/${encodeURIComponent(graphSpnId)}/appRoleAssignedTo?$top=999`, { apiVersion: 'v1.0' });
         const risky = grants.filter(g => HIGH.has(g.appRoleId));
         if (risky.length === 0) return { id:'SM.1070', status:'Passed', reason:'No service principals hold high-risk Graph application permissions.', actual: 0, durationMs: ms(start) };
         return { id:'SM.1070', status:'Failed', actual: risky.length,
@@ -906,7 +906,7 @@
         const bad = [];
         for (const a of permPriv.slice(0, 50)) {
           try {
-            const u = await Graph.graph(`users/${a.principalId}?$select=onPremisesSyncEnabled,userPrincipalName`, { apiVersion: 'v1.0' });
+            const u = await Graph.graph(`users/${encodeURIComponent(a.principalId)}?$select=onPremisesSyncEnabled,userPrincipalName`, { apiVersion: 'v1.0' });
             if (u.onPremisesSyncEnabled) bad.push(u.userPrincipalName);
           } catch (_) { /* skip */ }
         }
@@ -925,7 +925,7 @@
     id: 'MT.1027', title: 'No Service Principal with Client Secret and permanent role assignment on Control Plane',
     severity: 'High', tag: 'Maester', category: 'Maester',
     docUrl: 'https://maester.dev/docs/tests/MT.1027',
-    description: 'Service principals with client secrets (not certificates) holding permanent privileged roles are risky — secret leaks are easier and harder to detect.',
+    description: 'Service principals with client secrets (not certificates) holding permanent privileged roles are risky - secret leaks are easier and harder to detect.',
     implemented: true,
     async run() {
       const start = performance.now();
@@ -938,8 +938,8 @@
         const bad = [];
         for (const a of permSpns.slice(0, 30)) {
           try {
-            const app = await Graph.graph(`servicePrincipals/${a.principalId}?$select=displayName,appId`, { apiVersion: 'v1.0' });
-            const appReg = await Graph.graph(`applications?$filter=appId eq '${app.appId}'&$select=passwordCredentials`, { apiVersion: 'v1.0' });
+            const app = await Graph.graph(`servicePrincipals/${encodeURIComponent(a.principalId)}?$select=displayName,appId`, { apiVersion: 'v1.0' });
+            const appReg = await Graph.graph(`applications?$filter=appId eq ${Http.odataString(app.appId)}&$select=passwordCredentials`, { apiVersion: 'v1.0' });
             if ((appReg.value?.[0]?.passwordCredentials || []).length > 0) bad.push(app.displayName);
           } catch (_) { /* skip */ }
         }
@@ -971,7 +971,7 @@
         const bad = [];
         for (const a of permUsers.slice(0, 50)) {
           try {
-            const u = await Graph.graph(`users/${a.principalId}?$select=userPrincipalName,mail,assignedLicenses`, { apiVersion: 'v1.0' });
+            const u = await Graph.graph(`users/${encodeURIComponent(a.principalId)}?$select=userPrincipalName,mail,assignedLicenses`, { apiVersion: 'v1.0' });
             if (u.mail || (u.assignedLicenses || []).length > 0) bad.push(u.userPrincipalName);
           } catch (_) { /* skip */ }
         }
@@ -1011,7 +1011,7 @@
 
         for (const userId of uniqueUserIds.slice(0, 250)) {
           try {
-            const user = await Graph.graph(`users/${userId}?$select=id,userPrincipalName,accountEnabled,signInActivity`, { apiVersion: 'beta' });
+            const user = await Graph.graph(`users/${encodeURIComponent(userId)}?$select=id,userPrincipalName,accountEnabled,signInActivity`, { apiVersion: 'beta' });
             const last = user?.signInActivity?.lastSignInDateTime || user?.signInActivity?.lastSuccessfulSignInDateTime;
             if (!user?.accountEnabled) continue;
             if (!last || Date.parse(last) < cutoffMs) stale++;
@@ -1122,7 +1122,7 @@
         if (allGroupIds.size === 0) return { id: 'MT.1038', status: 'Passed', reason: 'No groups referenced in CA policies.', durationMs: ms(start) };
         const missing = [];
         for (const gid of allGroupIds) {
-          try { await Graph.graph(`groups/${gid}?$select=id`, { apiVersion: 'v1.0' }); }
+          try { await Graph.graph(`groups/${encodeURIComponent(gid)}?$select=id`, { apiVersion: 'v1.0' }); }
           catch (e) { if (e.status === 404) missing.push(gid); }
         }
         if (missing.length === 0) return { id: 'MT.1038', status: 'Passed', reason: `All ${allGroupIds.size} group(s) referenced in CA policies exist.`, durationMs: ms(start) };
@@ -1228,7 +1228,7 @@
         const p = policies[0];
         const days = Number(p.groupLifetimeInDays || 0);
         if (days > 0 && days <= 730) return { id: 'MT.1058', status: 'Passed', reason: `Group Lifecycle Policy set to ${days} days expiration.`, durationMs: ms(start) };
-        return { id: 'MT.1058', status: 'Failed', reason: `Group Lifecycle Policy expiration is ${days || 'not set'} days — set to 180 or 365 days.`, durationMs: ms(start) };
+        return { id: 'MT.1058', status: 'Failed', reason: `Group Lifecycle Policy expiration is ${days || 'not set'} days - set to 180 or 365 days.`, durationMs: ms(start) };
       } catch (e) { return errRow('MT.1058', e, start); }
     },
   });
@@ -1361,7 +1361,7 @@
     id: 'MT.1077', title: 'App registrations with privileged API permissions should not have owners',
     severity: 'Medium', tag: 'Maester', category: 'Maester',
     docUrl: 'https://maester.dev/docs/tests/MT.1077',
-    description: 'App owners can rotate secrets and effectively impersonate the app. Apps with high-risk permissions (like Directory.ReadWrite.All) should have no owners — use access reviews or managed identities instead.',
+    description: 'App owners can rotate secrets and effectively impersonate the app. Apps with high-risk permissions (like Directory.ReadWrite.All) should have no owners - use access reviews or managed identities instead.',
     implemented: true,
     async run() {
       const start = performance.now();
@@ -1375,17 +1375,17 @@
         const spns = await Graph.graphAll('servicePrincipals?$select=id,appId,displayName,appRoles&$top=999', { apiVersion: 'v1.0' });
         const graphSpn = spns.find(s => s.appId === '00000003-0000-0000-c000-000000000000');
         if (!graphSpn) return { id: 'MT.1077', status: 'Skipped', reason: 'Graph SPN not found.', durationMs: ms(start) };
-        const grants = await Graph.graphAll(`servicePrincipals/${graphSpn.id}/appRoleAssignedTo?$top=999`, { apiVersion: 'v1.0' });
+        const grants = await Graph.graphAll(`servicePrincipals/${encodeURIComponent(graphSpn.id)}/appRoleAssignedTo?$top=999`, { apiVersion: 'v1.0' });
         const highRiskAppIds = new Set(grants.filter(g => HIGH_PERMS.has(g.appRoleId)).map(g => g.principalId));
         if (highRiskAppIds.size === 0) return { id: 'MT.1077', status: 'Passed', reason: 'No service principals with high-risk API permissions found.', durationMs: ms(start) };
         const withOwners = [];
         for (const spId of [...highRiskAppIds].slice(0, 20)) {
           try {
             const sp = spns.find(s => s.id === spId);
-            const appFilter = await Graph.graph(`applications?$filter=appId eq '${sp?.appId}'&$select=id,displayName`, { apiVersion: 'v1.0' });
+            const appFilter = await Graph.graph(`applications?$filter=appId eq ${Http.odataString(sp?.appId)}&$select=id,displayName`, { apiVersion: 'v1.0' });
             const app = appFilter.value?.[0];
             if (!app) continue;
-            const owners = await Graph.graphAll(`applications/${app.id}/owners?$select=id`, { apiVersion: 'v1.0' });
+            const owners = await Graph.graphAll(`applications/${encodeURIComponent(app.id)}/owners?$select=id`, { apiVersion: 'v1.0' });
             if (owners.length > 0) withOwners.push(app.displayName || spId);
           } catch (_) { /* skip */ }
         }
@@ -1412,7 +1412,7 @@
         const bad = [];
         for (const a of userAssignments.slice(0, 50)) {
           try {
-            const u = await Graph.graph(`users/${a.principalId}?$select=onPremisesSyncEnabled,userPrincipalName`, { apiVersion: 'v1.0' });
+            const u = await Graph.graph(`users/${encodeURIComponent(a.principalId)}?$select=onPremisesSyncEnabled,userPrincipalName`, { apiVersion: 'v1.0' });
             if (u.onPremisesSyncEnabled) bad.push(u.userPrincipalName);
           } catch (_) { /* skip */ }
         }
@@ -1436,14 +1436,14 @@
         const domains = await Graph.graphAll('domains?$select=id,authenticationType,isVerified', { apiVersion: 'v1.0' });
         const federated = domains.filter(d => d.isVerified && d.authenticationType === 'Federated');
         if (federated.length === 0) {
-          return { id: 'MT.1084', status: 'Passed', reason: 'No federated domains found — Seamless SSO is not applicable.', durationMs: ms(start) };
+          return { id: 'MT.1084', status: 'Passed', reason: 'No federated domains found - Seamless SSO is not applicable.', durationMs: ms(start) };
         }
         // Check for AZUREADSSOACC service principal which indicates SeamlessSSO is configured
         const ssoacc = await Graph.graph(`servicePrincipals?$filter=displayName eq 'AZUREADSSOACC'&$select=id,displayName`, { apiVersion: 'v1.0' });
         if ((ssoacc.value || []).length === 0) {
-          return { id: 'MT.1084', status: 'Passed', reason: 'No AZUREADSSOACC service principal found — Seamless SSO does not appear to be configured.', durationMs: ms(start) };
+          return { id: 'MT.1084', status: 'Passed', reason: 'No AZUREADSSOACC service principal found - Seamless SSO does not appear to be configured.', durationMs: ms(start) };
         }
-        return { id: 'MT.1084', status: 'Failed', reason: `AZUREADSSOACC service principal found — Seamless SSO appears to be configured. Disable it via Azure AD Connect if not needed.`, durationMs: ms(start) };
+        return { id: 'MT.1084', status: 'Failed', reason: `AZUREADSSOACC service principal found - Seamless SSO appears to be configured. Disable it via Azure AD Connect if not needed.`, durationMs: ms(start) };
       } catch (e) { return errRow('MT.1084', e, start); }
     },
   });
@@ -1481,12 +1481,7 @@
         const missing = [], found = [];
         for (const domain of allDomains) {
           try {
-            const res = await fetch(
-              `https://cloudflare-dns.com/dns-query?name=${encodeURIComponent(domain.id)}&type=TXT`,
-              { headers: { Accept: 'application/dns-json' } }
-            );
-            const data = await res.json();
-            const records = (data.Answer || []).map(a => (a.data || '').replace(/"/g, '').toLowerCase());
+            const records = (await Graph.dns(domain.id, 'TXT')).map(r => r.toLowerCase());
             const hasSpf = records.some(r => r.startsWith('v=spf1'));
             if (hasSpf) found.push(domain.id); else missing.push(domain.id);
           } catch { missing.push(`${domain.id} (DNS error)`); }
@@ -1514,12 +1509,7 @@
         const missing = [], found = [], weak = [];
         for (const domain of allDomains) {
           try {
-            const res = await fetch(
-              `https://cloudflare-dns.com/dns-query?name=${encodeURIComponent('_dmarc.' + domain.id)}&type=TXT`,
-              { headers: { Accept: 'application/dns-json' } }
-            );
-            const data = await res.json();
-            const records = (data.Answer || []).map(a => (a.data || '').replace(/"/g, '').toLowerCase());
+            const records = (await Graph.dns('_dmarc.' + domain.id, 'TXT')).map(r => r.toLowerCase());
             const dmarcRec = records.find(r => r.startsWith('v=dmarc1'));
             if (dmarcRec) {
               const pMatch = dmarcRec.match(/\bp=(\w+)/);

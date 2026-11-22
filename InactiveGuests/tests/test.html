@@ -13,7 +13,9 @@
 <body>
   <h1>InactiveGuests - unit tests</h1>
   <div id="out"></div>
-  <script src="../src/log.js"></script>
+  <script src="../../shared/log.js"></script>
+  <script src="../../shared/export.js"></script>
+  <script src="../../shared/http.js"></script>
   <script src="../src/guests.js"></script>
   <script>
     const out = document.getElementById('out');
@@ -91,7 +93,7 @@
       eq(Guests.fmtDate(null), '');
     });
 
-    out.insertAdjacentHTML('beforeend', `<h2>${pass} passed, ${fail} failed</h2>`);
+    out.insertAdjacentHTML('beforeend', `<h2>${pass} passed, ${fail} failed</h2><p id="result">TEST-RESULT: ${fail ? 'FAIL' : 'PASS'} ${pass}/${pass + fail}</p>`);
   </script>
 </body>
 </html>

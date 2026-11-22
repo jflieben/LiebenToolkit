@@ -46,13 +46,13 @@
     try {
       localStorage.setItem('SimpleMaester:scans', JSON.stringify(arr));
     } catch (e) {
-      // QuotaExceededError — force-prune half the scans and retry once
+      // QuotaExceededError - force-prune half the scans and retry once
       Log.warn('localStorage quota hit, pruning oldest half of scans');
       const pruned = arr.slice(Math.ceil(arr.length / 2));
       try { localStorage.setItem('SimpleMaester:scans', JSON.stringify(pruned)); }
       catch (e2) { Log.err('localStorage save failed even after pruning:', e2.message); }
       window.dispatchEvent(new CustomEvent('SimpleMaester:storageWarning', {
-        detail: { reason: 'quota', message: 'localStorage almost full — older scans were pruned automatically.' },
+        detail: { reason: 'quota', message: 'localStorage almost full - older scans were pruned automatically.' },
       }));
     }
   }
@@ -168,12 +168,12 @@
       if (!est.quota) return;
       const pct = (est.usage || 0) / est.quota;
       if (pct >= PRUNE_HIGH_PCT) {
-        Log.warn(`Storage at ${Math.round(pct * 100)}% — auto-pruning old scans`);
+        Log.warn(`Storage at ${Math.round(pct * 100)}% - auto-pruning old scans`);
         const pruned = await pruneOldScans();
         window.dispatchEvent(new CustomEvent('SimpleMaester:storageWarning', {
           detail: {
             reason: 'auto-prune',
-            message: `Storage was at ${Math.round(pct * 100)}% — ${pruned} old scan(s) were removed automatically.`,
+            message: `Storage was at ${Math.round(pct * 100)}% - ${pruned} old scan(s) were removed automatically.`,
             pct: Math.round(pct * 100),
           },
         }));
@@ -181,7 +181,7 @@
         window.dispatchEvent(new CustomEvent('SimpleMaester:storageWarning', {
           detail: {
             reason: 'warning',
-            message: `Storage is at ${Math.round(pct * 100)}% — consider clearing old scans from the History tab.`,
+            message: `Storage is at ${Math.round(pct * 100)}% - consider clearing old scans from the History tab.`,
             pct: Math.round(pct * 100),
           },
         }));
@@ -193,10 +193,30 @@
 
   // ── Public CRUD ─────────────────────────────────────────────────────────────
 
+  // What is kept per scan: results plus a short preview of the API calls per test.
+  // Markdown descriptions are not stored; they come from the bundled catalog.
+  const STORE_MAX_CALLS = 5;
+  const STORE_MAX_CHARS = 500;
+  function compactForStorage(scan) {
+    const safe = JSON.parse(JSON.stringify(scan));
+    for (const r of safe.results || []) {
+      delete r.detailMd;
+      if (!Array.isArray(r.graphCalls)) continue;
+      const real = r.graphCalls.filter((c) => c.method !== 'INFO');
+      const calls = real.slice(0, STORE_MAX_CALLS).map((c) => {
+        const long = typeof c.response === 'string' && c.response.length > STORE_MAX_CHARS;
+        return { ...c, response: long ? c.response.substring(0, STORE_MAX_CHARS) : (c.response || ''), truncated: !!c.truncated || long };
+      });
+      const hidden = r.graphCalls.length - calls.length;
+      if (hidden > 0) calls.push({ method: 'INFO', url: `... and ${hidden} more call(s) not stored`, status: 0, durationMs: 0, fromCache: false, response: '', truncated: false });
+      r.graphCalls = calls;
+    }
+    return safe;
+  }
+
   async function saveScan(scan) {
-    // Strip functions / non-cloneable refs (e.g. test.run) so structured-clone won't choke.
     let safe;
-    try { safe = JSON.parse(JSON.stringify(scan)); }
+    try { safe = compactForStorage(scan); }
     catch (e) { Log.err('saveScan: could not serialise scan:', e.message); return; }
     const db = await openDB();
     if (!db) {
@@ -249,7 +269,8 @@
 
   async function clearAll() {
     const db = await openDB();
-    if (!db) { localStorage.removeItem('SimpleMaester:scans'); return; }
+    try { localStorage.removeItem('SimpleMaester:scans'); } catch { /* storage blocked */ }
+    if (!db) return;
     return new Promise((resolve, reject) => {
       const tx = db.transaction(STORE, 'readwrite');
       tx.objectStore(STORE).clear();
@@ -258,6 +279,6 @@
     });
   }
 
-  window.History = { saveScan, getAllScans, getScan, deleteScan, clearAll, getStorageStats, pruneOldScans };
+  window.History = { compactForStorage, saveScan, getAllScans, getScan, deleteScan, clearAll, getStorageStats, pruneOldScans };
 })();
 

@@ -5,8 +5,7 @@
   <title>InactiveDevices - tests</title>
   <style>
     body { font: 14px/1.4 -apple-system,Segoe UI,sans-serif; padding: 20px; max-width: 900px; margin: 0 auto; }
-    .pass { color: #1f7a3a; }
-    .fail { color: #b32026; font-weight: bold; }
+    .pass { color: #1f7a3a; } .fail { color: #b32026; font-weight: bold; }
     pre { background: #f4f4f6; padding: 10px; border-radius: 6px; overflow: auto; }
     h1 { font-size: 18px; }
   </style>
@@ -14,119 +13,167 @@
 <body>
   <h1>InactiveDevices - unit tests</h1>
   <div id="out"></div>
-  <script src="../src/log.js"></script>
+  <script src="../../shared/log.js"></script>
+  <script src="../../shared/http.js"></script>
+  <script src="../../shared/export.js"></script>
   <script src="../src/devices.js"></script>
   <script>
     const out = document.getElementById('out');
-    let pass = 0;
-    let fail = 0;
-
+    let pass = 0, fail = 0;
     function test(name, fn) {
-      try {
-        fn();
-        out.insertAdjacentHTML('beforeend', `<div class="pass">PASS ${name}</div>`);
-        pass++;
-      } catch (e) {
-        out.insertAdjacentHTML('beforeend', `<div class="fail">FAIL ${name}<br><pre>${e.stack || e.message}</pre></div>`);
-        fail++;
-      }
+      try { fn(); out.insertAdjacentHTML('beforeend', `<div class="pass">PASS ${name}</div>`); pass++; }
+      catch (e) { out.insertAdjacentHTML('beforeend', `<div class="fail">FAIL ${name}<br><pre>${e.stack || e.message}</pre></div>`); fail++; }
     }
-
     function eq(a, b, m = '') {
-      const A = JSON.stringify(a);
-      const B = JSON.stringify(b);
+      const A = JSON.stringify(a), B = JSON.stringify(b);
       if (A !== B) throw new Error(`${m} expected ${B}, got ${A}`);
     }
 
     const NOW = new Date('2026-01-01T00:00:00Z');
+    const DAY = 86400000;
+    const ago = (days) => new Date(NOW.getTime() - days * DAY);
+    const stamp = (days) => Devices.buildDisableStampValue(ago(days));
 
-    test('isAutopilot uses managed.autopilotEnrolled when available', () => {
+    test('isAutopilot: Intune flag first, [ZTDId] in physicalIds as fallback', () => {
       eq(Devices.isAutopilot({}, { autopilotEnrolled: true }), true);
       eq(Devices.isAutopilot({}, { autopilotEnrolled: false }), false);
-      // fallback: devicePhysicalIds ZTDId check for unmanaged devices
+      eq(Devices.isAutopilot({ physicalIds: ['[ZTDId]:123'] }, null), true);
       eq(Devices.isAutopilot({ devicePhysicalIds: ['[ZTDId]:123'] }, null), true);
-      eq(Devices.isAutopilot({ devicePhysicalIds: ['[OrderId]:ABC'] }, null), false);
+      eq(Devices.isAutopilot({ physicalIds: ['[OrderId]:ABC'] }, null), false);
       eq(Devices.isAutopilot({}, null), false);
     });
-      const map = Devices.buildManagedMap([
-        { azureADDeviceId: 'ABC', userPrincipalName: 'u@contoso.com' },
-      ]);
+
+    test('buildManagedMap indexes by azureADDeviceId, case-insensitive', () => {
+      const map = Devices.buildManagedMap([{ azureADDeviceId: 'ABC', userPrincipalName: 'u@contoso.com' }]);
       eq(map.get('abc').userPrincipalName, 'u@contoso.com');
     });
 
-    test('enrich computes lastActive from max(lastSignIn,lastSync) and uses Autopilot flag', () => {
-      const managedMap = Devices.buildManagedMap([
-        {
-          azureADDeviceId: 'D1',
-          userPrincipalName: 'user@contoso.com',
-          lastSyncDateTime: '2025-12-15T00:00:00Z',
-          autopilotEnrolled: true,
-        },
-      ]);
+    test('enrich: lastActive is max(lastSignIn, lastSync), Autopilot from Intune', () => {
+      const managedMap = Devices.buildManagedMap([{ azureADDeviceId: 'D1', userPrincipalName: 'user@contoso.com', lastSyncDateTime: '2025-12-15T00:00:00Z', autopilotEnrolled: true }]);
       const r = Devices.enrich({
-        id: 'x',
-        deviceId: 'D1',
-        displayName: 'PC-01',
-        createdDateTime: '2025-01-01T00:00:00Z',
-        approximateLastSignInDateTime: '2025-12-01T00:00:00Z',
-        operatingSystem: 'Windows',
-        trustType: 'AzureAD',
-        isManaged: false,
-        devicePhysicalIds: [],
+        id: 'x', deviceId: 'D1', displayName: 'PC-01', createdDateTime: '2025-01-01T00:00:00Z',
+        approximateLastSignInDateTime: '2025-12-01T00:00:00Z', operatingSystem: 'Windows', trustType: 'AzureAD', isManaged: false, physicalIds: [],
       }, managedMap, NOW);
-
       eq(Devices.fmtDate(r.lastActive), '2025-12-15');
       eq(r.primaryUser, 'user@contoso.com');
       eq(r.isManagedEffective, true);
-      eq(r.isAutopilot, true);  // matched via managed.autopilotEnrolled
-      eq(r.joinType, 'Azure AD joined');
+      eq(r.isAutopilot, true);
+      eq(r.joinType, 'Entra joined');
       eq(r.inactiveDays, 17);
       eq(r.deviceAgeDays, 365);
     });
 
-    test('enrich falls back to creation date if no activity', () => {
-      const r = Devices.enrich({
-        id: 'x2',
-        deviceId: 'D2',
-        createdDateTime: '2025-11-01T00:00:00Z',
-        trustType: 'Workplace',
-      }, new Map(), NOW);
+    test('enrich: falls back to creation date without activity', () => {
+      const r = Devices.enrich({ id: 'x2', deviceId: 'D2', createdDateTime: '2025-11-01T00:00:00Z', trustType: 'Workplace' }, new Map(), NOW);
       eq(r.neverActive, true);
       eq(r.inactiveDays, 61);
-      eq(r.joinType, 'Azure AD registered');
+      eq(r.joinType, 'Entra registered');
     });
 
-    test('passesFilter supports key dimensions', () => {
+    test('normalizeJoinType', () => {
+      eq(Devices.normalizeJoinType('ServerAd'), 'Hybrid joined');
+      eq(Devices.normalizeJoinType(null), 'Unknown');
+    });
+
+    test('passesFilter supports every dimension', () => {
       const d = {
-        displayName: 'Laptop-01',
-        deviceId: 'abc',
-        id: 'id1',
-        primaryUser: 'alice@contoso.com',
-        operatingSystem: 'Windows',
-        operatingSystemVersion: '11',
-        osBucket: 'windows',
-        inactiveDays: 120,
-        deviceAgeDays: 340,
-        joinType: 'Azure AD joined',
-        isAutopilot: true,
-        isManagedEffective: true,
-        accountEnabled: true,
+        displayName: 'Laptop-01', deviceId: 'abc', id: 'id1', primaryUser: 'alice@contoso.com',
+        operatingSystem: 'Windows', operatingSystemVersion: '11', osBucket: 'windows', inactiveDays: 120, deviceAgeDays: 340,
+        joinType: 'Entra joined', isAutopilot: true, isManagedEffective: true, accountEnabled: true,
       };
       eq(Devices.passesFilter(d, { search: 'alice' }), true);
       eq(Devices.passesFilter(d, { search: 'bob' }), false);
       eq(Devices.passesFilter(d, { minInactive: 130 }), false);
       eq(Devices.passesFilter(d, { minInactive: 90 }), true);
+      eq(Devices.passesFilter(d, { minAge: 400 }), false);
       eq(Devices.passesFilter(d, { osFilter: 'windows' }), true);
       eq(Devices.passesFilter(d, { osFilter: 'android' }), false);
-      eq(Devices.passesFilter(d, { joinType: 'Azure AD joined' }), true);
+      eq(Devices.passesFilter(d, { joinType: 'Entra joined' }), true);
+      eq(Devices.passesFilter(d, { joinType: 'Hybrid joined' }), false);
       eq(Devices.passesFilter(d, { autopilot: 'yes' }), true);
       eq(Devices.passesFilter(d, { autopilot: 'no' }), false);
       eq(Devices.passesFilter(d, { managed: 'managed' }), true);
+      eq(Devices.passesFilter(d, { managed: 'unmanaged' }), false);
       eq(Devices.passesFilter(d, { hasPrimaryUser: 'yes' }), true);
+      eq(Devices.passesFilter(d, { hasPrimaryUser: 'no' }), false);
       eq(Devices.passesFilter(d, { enabled: 'disabled' }), false);
     });
 
-    out.insertAdjacentHTML('beforeend', `<h2>${pass} passed, ${fail} failed</h2>`);
+    test('trimSelection drops selections hidden by the filter', () => {
+      const sel = new Set(['a', 'b', 'c']);
+      eq(Devices.trimSelection(sel, new Set(['b'])), 2);
+      eq([...sel], ['b']);
+    });
+
+    test('splitActionable skips Autopilot for disable and delete, not for enable', () => {
+      const rows = [{ id: '1', isAutopilot: true }, { id: '2', isAutopilot: false }];
+      eq(Devices.splitActionable(rows, 'delete').actionable.map((d) => d.id), ['2']);
+      eq(Devices.splitActionable(rows, 'disable').skipped.map((d) => d.id), ['1']);
+      eq(Devices.splitActionable(rows, 'enable').actionable.map((d) => d.id), ['1', '2']);
+    });
+
+    test('describe lists name, OS and last activity', () => {
+      const d = Devices.enrich({ id: 'x', deviceId: 'D3', displayName: 'PC-3', operatingSystem: 'Windows', operatingSystemVersion: '10.0', approximateLastSignInDateTime: '2025-03-04T10:00:00Z' }, null, NOW);
+      eq(Devices.describe(d), 'PC-3  |  Windows 10.0  |  last active 2025-03-04');
+      eq(Devices.describe({ deviceId: 'D4' }), 'D4  |  unknown OS  |  never active');
+    });
+
+    test('stamp roundtrip, foreign stamps ignored', () => {
+      eq(Devices.buildDisableStampValue(NOW), 'InactiveDevices:disabled:2026-01-01T00:00:00.000Z');
+      eq(Devices.parseDisableStamp(Devices.buildDisableStampValue(NOW)).toISOString(), NOW.toISOString());
+      eq(Devices.parseDisableStamp('DupedDevices:disabled:2025-01-01T00:00:00Z'), null);
+      eq(Devices.parseDisableStamp('InactiveDevices:disabled:junk'), null);
+      eq(Devices.parseDisableStamp(undefined), null);
+    });
+
+    test('parseGraceDays refuses 0, negatives, fractions and junk', () => {
+      eq(Devices.parseGraceDays('0'), null);
+      eq(Devices.parseGraceDays(0), null);
+      eq(Devices.parseGraceDays('-1'), null);
+      eq(Devices.parseGraceDays('2.5'), null);
+      eq(Devices.parseGraceDays(''), null);
+      eq(Devices.parseGraceDays('3651'), null);
+      eq(Devices.parseGraceDays('1'), 1);
+      eq(Devices.parseGraceDays('30'), 30);
+    });
+
+    test('findExpiredDisabled: disabled, own stamp, past grace only', () => {
+      const devices = [
+        { id: '1', accountEnabled: false, extensionAttributes: { extensionAttribute2: stamp(45) } },
+        { id: '2', accountEnabled: false, extensionAttributes: { extensionAttribute2: stamp(3) } },
+        { id: '3', accountEnabled: true, extensionAttributes: { extensionAttribute2: stamp(45) } },
+        { id: '4', accountEnabled: false, extensionAttributes: { extensionAttribute2: 'DupedDevices:disabled:2020-01-01T00:00:00Z' } },
+        { id: '5', accountEnabled: false },
+      ];
+      const r = Devices.findExpiredDisabled(devices, 'extensionAttribute2', 30, NOW);
+      eq(r.map((e) => e.device.id), ['1']);
+      eq(r[0].daysDisabled, 45);
+      eq(r[0].stampValue, stamp(45));
+      eq(Devices.findExpiredDisabled(devices, 'extensionAttribute2', 0, NOW).length, 0, 'grace 0');
+    });
+
+    test('recheckExpired: fresh state decides, not the cached list', () => {
+      const attr = 'extensionAttribute2';
+      const v = stamp(45);
+      const cutoff = NOW.getTime() - 30 * DAY;
+      eq(Devices.recheckExpired({ accountEnabled: false, extensionAttributes: { [attr]: v }, physicalIds: [] }, attr, v, cutoff), { ok: true });
+      eq(Devices.recheckExpired(null, attr, v, cutoff).ok, false);
+      eq(Devices.recheckExpired({ accountEnabled: true, extensionAttributes: { [attr]: v } }, attr, v, cutoff).reason, 'enabled again since the search');
+      eq(Devices.recheckExpired({ accountEnabled: false, extensionAttributes: { [attr]: stamp(2) } }, attr, v, cutoff).ok, false);
+      eq(Devices.recheckExpired({ accountEnabled: false, extensionAttributes: { [attr]: v }, physicalIds: ['[ZTDId]:x'] }, attr, v, cutoff).reason, 'Autopilot device');
+    });
+
+    test('export neutralises formulas in device names', () => {
+      const t = Export.table([{ displayName: '+cmd|calc', operatingSystem: '@SUM(1)' }], [{ key: 'displayName' }, { key: 'operatingSystem' }]);
+      eq(t.body[0], [`'+cmd|calc`, `'@SUM(1)`]);
+    });
+
+    test('object ids are checked before they go into a URL', () => {
+      eq(Http.isGuid('7c06cd31-7c30-4f3b-a5c3-444cd8dd63ac'), true);
+      eq(Http.isGuid('x/../../users'), false);
+    });
+
+    out.insertAdjacentHTML('beforeend', `<h2>${pass} passed, ${fail} failed</h2><p id="result">TEST-RESULT: ${fail ? 'FAIL' : 'PASS'} ${pass}/${pass + fail}</p>`);
   </script>
 </body>
 </html>

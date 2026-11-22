@@ -1,30 +1,43 @@
-// Main orchestration & UI wiring
+// SPOTrim UI: discovery, analysis, force scan, results.
 (() => {
+  const { esc, h, toast, confirm, busy, setUser } = Toolkit;
+
+  window.Auth = ToolkitAuth.create({ scopes: { read: ['User.Read', 'Sites.Read.All'] } });
+
+  const $ = (id) => document.getElementById(id);
+  const store = (() => { try { return window.localStorage; } catch { return null; } })();
+  const plural = (n, word, many) => `${n} ${n === 1 ? word : (many || `${word}s`)}`;
+  const dash = (v) => (v == null || v === '' ? '-' : v);
+  const fmtDate = (d) => Sites.fmtDate(d) || '-';
+
   const state = {
-    sites: [],         // discovered sites
-    selected: new Set(), // selected site IDs
-    results: [],       // analysis results
+    sites: [],
+    selected: new Set(),
+    results: [],
+    shownResults: [],
+    forceReport: null,
     cancelToken: null,
-    sortSites:   { key: null, dir: 1 },
-    sortResults: { key: null, dir: 1 },
-    // Excel-style column filters: per-column, set of values to HIDE.
-    // Empty set = show all (default).
+    running: false,
+    elevationStarted: false,
+    sortSites: { key: null, dir: 1, type: 'string' },
+    sortResults: { key: null, dir: 1, type: 'string' },
+    // Column filters: values to hide per column. Empty = show all.
     colFilters: { type: new Set(), advice: new Set() },
   };
+  let activateTab = () => {};
 
-  // ---------- Generic table sort ----------
-  // Reads `data-sort` (key) and optional `data-sort-type` ('date'|'number'|'string')
-  // from a <th>, then re-renders the bound table.
+  // ---------- sorting ----------
   function wireSortHeaders(tableSelector, sortState, rerender) {
     const ths = document.querySelectorAll(`${tableSelector} thead th[data-sort]`);
-    ths.forEach(th => {
+    ths.forEach((th) => {
       th.classList.add('sortable-col');
-      th.addEventListener('click', () => {
+      th.addEventListener('click', (e) => {
+        if (e.target.closest('.col-filter-btn')) return;
         const key = th.dataset.sort;
         if (sortState.key === key) sortState.dir = -sortState.dir;
-        else { sortState.key = key; sortState.dir = 1; sortState.type = th.dataset.sortType || 'string'; }
+        else { sortState.key = key; sortState.dir = 1; }
         sortState.type = th.dataset.sortType || 'string';
-        ths.forEach(x => { x.classList.remove('sort-asc', 'sort-desc'); });
+        ths.forEach((x) => x.classList.remove('sort-asc', 'sort-desc'));
         th.classList.add(sortState.dir === 1 ? 'sort-asc' : 'sort-desc');
         rerender();
       });
@@ -32,23 +45,16 @@
   }
   function applySort(items, sortState, valueOf) {
     if (!sortState.key) return items;
-    const dir = sortState.dir;
-    const t = sortState.type || 'string';
-    const arr = items.slice();
-    arr.sort((a, b) => {
+    const { dir, type } = sortState;
+    const num = (v) => (type === 'date' ? (v instanceof Date ? v.getTime() : new Date(v).getTime()) : Number(v));
+    return items.slice().sort((a, b) => {
       let av = valueOf(a, sortState.key);
       let bv = valueOf(b, sortState.key);
       if (av == null && bv == null) return 0;
-      if (av == null) return 1;            // nulls last
+      if (av == null) return 1;
       if (bv == null) return -1;
-      if (t === 'date') {
-        av = av instanceof Date ? av.getTime() : new Date(av).getTime();
-        bv = bv instanceof Date ? bv.getTime() : new Date(bv).getTime();
-        if (isNaN(av) && isNaN(bv)) return 0;
-        if (isNaN(av)) return 1;
-        if (isNaN(bv)) return -1;
-      } else if (t === 'number') {
-        av = Number(av); bv = Number(bv);
+      if (type === 'date' || type === 'number') {
+        av = num(av); bv = num(bv);
         if (isNaN(av) && isNaN(bv)) return 0;
         if (isNaN(av)) return 1;
         if (isNaN(bv)) return -1;
@@ -58,780 +64,712 @@
       }
       return av < bv ? -dir : av > bv ? dir : 0;
     });
-    return arr;
-  }
-  function populateSelectOptions(selectEl, values, currentValue) {
-    const cur = currentValue ?? selectEl.value;
-    // Keep the first <option> (the "All ..." entry); replace the rest
-    while (selectEl.options.length > 1) selectEl.remove(1);
-    [...new Set(values.filter(v => v != null && v !== ''))].sort().forEach(v => {
-      const o = document.createElement('option');
-      o.value = v; o.textContent = v;
-      selectEl.appendChild(o);
-    });
-    if (cur && [...selectEl.options].some(o => o.value === cur)) selectEl.value = cur;
   }
 
-  // ---------- Tabs ----------
-  document.querySelectorAll('.tab').forEach(t => {
-    t.addEventListener('click', () => {
-      document.querySelectorAll('.tab').forEach(x => x.classList.remove('active'));
-      document.querySelectorAll('.tab-panel').forEach(x => x.classList.remove('active'));
-      t.classList.add('active');
-      document.getElementById(`tab-${t.dataset.tab}`).classList.add('active');
-    });
-  });
-
-  // ---------- Dark mode ----------
-  const saved = localStorage.getItem('spotrim-theme');
-  if (saved === 'dark') document.documentElement.setAttribute('data-theme', 'dark');
-  document.getElementById('darkToggle').addEventListener('click', () => {
-    const cur = document.documentElement.getAttribute('data-theme') === 'dark' ? '' : 'dark';
-    if (cur === 'dark') document.documentElement.setAttribute('data-theme', 'dark');
-    else document.documentElement.removeAttribute('data-theme');
-    localStorage.setItem('spotrim-theme', cur);
-  });
-
-  // ---------- Verbose log ----------
-  document.getElementById('verboseLog').addEventListener('change', (e) => Log.setVerbose(e.target.checked));
-  document.getElementById('clearLogBtn').addEventListener('click', () => Log.clear());
-
-  // ---------- Toast ----------
-  let toastTimer = null;
-  function toast(msg, ms = 4000) {
-    const t = document.getElementById('toast');
-    t.textContent = msg;
-    t.classList.remove('hidden');
-    clearTimeout(toastTimer);
-    toastTimer = setTimeout(() => t.classList.add('hidden'), ms);
+  // ---------- auth and tokens ----------
+  function refreshAuthUI() {
+    const signedIn = !!Auth.getAccount();
+    setUser(Auth.userInfo(onSignOut));
+    $('connectCard').hidden = signedIn;
+    $('discoveryCard').hidden = !signedIn;
   }
-
-  // ---------- Auth ----------
-  function setSignedInUI(account) {
-    if (account) {
-      document.getElementById('connectCard').classList.add('hidden');
-      document.getElementById('discoveryCard').classList.remove('hidden');
-      document.getElementById('userBox').classList.remove('hidden');
-      document.getElementById('userName').textContent = account.username || account.name || 'Signed in';
-    } else {
-      document.getElementById('connectCard').classList.remove('hidden');
-      document.getElementById('discoveryCard').classList.add('hidden');
-      document.getElementById('userBox').classList.add('hidden');
+  async function onSignIn() {
+    try { await Auth.signIn('read'); }
+    catch (e) { Log.err('Sign-in failed:', e); toast(`Sign-in failed: ${e.message}`, 'err'); }
+  }
+  async function onSignOut() {
+    const t = Auth.tenantInfo();
+    const left = store && t ? Elevation.mine(Elevation.load(store), t.upn, t.tenantId) : [];
+    if (left.length) {
+      const ok = await confirm({
+        title: 'Sign out with admin rights still in place?',
+        body: `${plural(left.length, 'site')} still ${left.length === 1 ? 'has' : 'have'} the admin rights a force scan added for ${t.upn}. You can remove them after signing in again.`,
+        items: left.map((e) => e.siteUrl),
+        okLabel: 'Sign out anyway',
+      });
+      if (!ok) return;
     }
-  }
-
-  document.getElementById('signInBtn').addEventListener('click', async () => {
-    try {
-      const acc = await Auth.signIn();
-      if (acc) {
-        Log.info(`Signed in as ${acc.username}`);
-        setSignedInUI(acc);
-      }
-    } catch (e) {
-      Log.err('Sign-in failed:', e);
-      toast(`Sign-in failed: ${e.message}`);
-    }
-  });
-
-  document.getElementById('signOutBtn').addEventListener('click', async () => {
+    state.sites = []; state.results = []; state.selected.clear();
     await Auth.signOut();
-    setSignedInUI(null);
-  });
+  }
 
-  // ---------- Discovery ----------
-  document.getElementById('discoverBtn').addEventListener('click', discover);
-  document.getElementById('analyzeBtn').addEventListener('click', analyze);
-  document.getElementById('cancelBtn').addEventListener('click', () => {
-    if (state.cancelToken) { state.cancelToken.cancel(); toast('Cancelling...'); }
-  });
-  document.getElementById('selectAllBtn').addEventListener('click', () => {
-    state.sites.forEach(s => state.selected.add(s.id));
-    renderSites();
-  });
-  document.getElementById('selectNoneBtn').addEventListener('click', () => {
-    state.selected.clear();
-    renderSites();
-  });
-  document.getElementById('selAll').addEventListener('change', (e) => {
-    if (e.target.checked) filteredSites().forEach(s => state.selected.add(s.id));
-    else                  filteredSites().forEach(s => state.selected.delete(s.id));
-    renderSites();
-  });
-  document.getElementById('siteFilter').addEventListener('input', renderSites);
-  document.getElementById('typeFilter').addEventListener('change', renderSites);
-  document.getElementById('includeOneDrive').addEventListener('change', renderSites);
-  document.getElementById('includeSharePoint').addEventListener('change', renderSites);
-  wireSortHeaders('#siteTable', state.sortSites, renderSites);
+  async function ensureHosts() {
+    if (SharePoint.getHosts()) return SharePoint.getHosts();
+    const hosts = await Graph.detectHosts();
+    SharePoint.setHosts(hosts);
+    Log.info(`SharePoint host ${hosts.tenant}, OneDrive host ${hosts.my}`);
+    return hosts;
+  }
 
-  function classify(site) { return Exporter.classify(site); }
-  function classifyType(site) { return Exporter.classifyType(site); }
+  // Silent check first. For what is missing a dialog asks first, then one Microsoft popup
+  // consents to every resource at once (Auth.consent), on a fresh click so it is not
+  // blocked. Runs take tokens silently afterwards and never navigate away.
+  async function ensureConsent(sets, what) {
+    const missing = [];
+    for (const s of sets) if (!(await Auth.hasConsent(s))) missing.push(s);
+    if (!missing.length) return true;
+    const ok = await confirm({
+      title: 'Permission needed',
+      body: `${what} needs the delegated permissions below. One Microsoft window opens to sign in or consent.`,
+      items: missing.flat(),
+      okLabel: 'Continue',
+    });
+    if (!ok) return false;
+    await Auth.consent(missing, { noRedirect: true });
+    return true;
+  }
 
+  // Graph first (it gives the SharePoint host), then all SharePoint resources in one popup.
+  async function prepare({ spo = true, admin = false, what = 'SPOTrim' } = {}) {
+    if (!(await ensureConsent([Auth.resolve('read')], 'Microsoft Graph'))) return false;
+    await ensureHosts();
+    const sets = [];
+    if (spo) sets.push(SharePoint.readScopes());
+    if (admin) sets.push(SharePoint.adminScopes());
+    return sets.length ? ensureConsent(sets, what) : true;
+  }
+
+  // ---------- progress ----------
+  let progressStart = 0;
+  function showProgress(label, total, { cancellable = true } = {}) {
+    $('progressBox').hidden = false;
+    $('progressLabel').textContent = label;
+    $('progressEta').textContent = '';
+    $('cancelBtn').hidden = !cancellable;
+    $('progressBar').classList.toggle('indeterminate', total == null);
+    progressStart = Date.now();
+    if (total == null) { $('progressFill').style.width = ''; $('progressCount').textContent = ''; }
+    else updateProgress(0, total);
+  }
+  function updateProgress(done, total) {
+    const pct = total > 0 ? Math.round((done / total) * 100) : 0;
+    $('progressFill').style.width = `${pct}%`;
+    $('progressCount').textContent = `${done} of ${total} (${pct}%)`;
+    $('progressEta').textContent = Concurrency.eta(progressStart, done, total);
+  }
+  function hideProgress() { $('progressBox').hidden = true; }
+
+  function setRunning(on) {
+    state.running = on;
+    ['discoverBtn', 'selectAllBtn', 'selectNoneBtn', 'forceScan', 'forceScanOneDrive', 'recoverBtn', 'forgetBtn'].forEach((id) => { $(id).disabled = on; });
+    if (!on) {
+      $('selectAllBtn').disabled = !state.sites.length;
+      $('selectNoneBtn').disabled = !state.sites.length;
+      $('forceScanOneDrive').disabled = !$('forceScan').checked;
+    }
+    updateSelCount();
+  }
+
+  function warnUnload(e) { e.preventDefault(); e.returnValue = ''; }
+
+  // ---------- discovery ----------
   function filteredSites() {
-    const q = (document.getElementById('siteFilter').value || '').toLowerCase();
-    const tf = document.getElementById('typeFilter').value;
-    const incOd = document.getElementById('includeOneDrive').checked;
-    const incSp = document.getElementById('includeSharePoint').checked;
-    return state.sites.filter(s => {
-      const cat = classify(s);
-      const t = classifyType(s);
+    const q = ($('siteFilter').value || '').toLowerCase();
+    const tf = $('typeFilter').value;
+    const incOd = $('includeOneDrive').checked;
+    const incSp = $('includeSharePoint').checked;
+    return state.sites.filter((s) => {
+      const cat = Sites.categoryOf(s);
       if (cat === 'OneDrive' && !incOd) return false;
       if (cat === 'SharePoint' && !incSp) return false;
-      if (tf && t !== tf) return false;
+      if (tf && Sites.classifyType(s) !== tf) return false;
       if (q && !((s.displayName || '').toLowerCase().includes(q) || (s.webUrl || '').toLowerCase().includes(q))) return false;
       return true;
     });
   }
+  const selectedVisible = () => filteredSites().filter((s) => state.selected.has(s.id));
 
   async function discover() {
-    document.getElementById('discoverBtn').disabled = true;
-    document.getElementById('analyzeBtn').disabled = true;
-    state.cancelToken = new Concurrency.CancelToken();
-    const incOd = document.getElementById('includeOneDrive').checked;
-    const incSp = document.getElementById('includeSharePoint').checked;
-    if (!incOd && !incSp) { toast('Select at least one site type.'); document.getElementById('discoverBtn').disabled = false; return; }
-    showProgress('Discovering sites...', null);
-    try {
-      const collected = [];
-      const seen = new Set(); // by normalized URL
+    const incOd = $('includeOneDrive').checked;
+    const incSp = $('includeSharePoint').checked;
+    if (!incOd && !incSp) { toast('Pick SharePoint sites, OneDrive sites or both.', 'warn'); return; }
+    await busy($('discoverBtn'), async () => {
+      let odAllowed = incOd;
+      try {
+        let ready = false;
+        try { ready = await prepare({ admin: incOd, what: 'Discovery' }); }
+        catch (e) { if (!incOd) throw e; Log.warn(`Consent for discovery with OneDrive listing failed: ${e.message}`); }
+        // Without the admin permission, discovery still works through search.
+        if (!ready && incOd) {
+          odAllowed = false;
+          if (!(await prepare({ what: 'Discovery' }))) return;
+          toast('Without the admin permission only OneDrives you can open are listed.', 'warn');
+        } else if (!ready) return;
+      } catch (e) {
+        Log.err('Preparing discovery failed:', e);
+        toast(`Could not get started: ${e.message}`, 'err');
+        return;
+      }
 
-      // 1. SharePoint sites (and any personal sites the search index decides to surface) via SP Search.
-      if (incSp || incOd) {
-        Log.info(`Discovering sites via SharePoint Search (include SP=${incSp}, include OD=${incOd})...`);
-        try {
-          const searchSites = await SharePoint.searchAllSites({
-            includeOneDrive: incOd,
-            includeSharePoint: incSp,
-            onProgress: (n) => updateProgress(n, n, 0),
-          });
-          for (const s of searchSites) {
+      setRunning(true);
+      state.cancelToken = new Concurrency.CancelToken();
+      const signal = state.cancelToken.signal;
+      showProgress('Discovering sites', null);
+      try {
+        const collected = [];
+        const seen = new Set();
+        const addAll = (list) => {
+          let added = 0;
+          for (const s of list) {
             const k = (s.webUrl || '').toLowerCase().replace(/\/+$/, '');
             if (!k || seen.has(k)) continue;
             seen.add(k);
             collected.push(s);
+            added++;
           }
-          Log.info(`SharePoint Search returned ${searchSites.length} sites (SP=${searchSites.filter(s => !s.isPersonalSite).length}, OD=${searchSites.filter(s => s.isPersonalSite).length}).`);
-        } catch (e) {
-          Log.warn(`SharePoint Search discovery failed: ${e.message}`);
-        }
-      }
+          return added;
+        };
 
-      // 2. OneDrive sites - SharePoint Search trims results to what the user can access,
-      //    so it never returns *other users'* OneDrives. We use the SharePoint Admin
-      //    Tenant REST API which works directly from the browser (CORS-OK) and requires
-      //    the SharePoint Administrator role.
-      if (incOd) {
-        let odSites = [];
-        Log.info('Discovering OneDrive sites via SharePoint Admin Tenant API (requires SP Admin role)...');
+        Log.info(`Discovering via SharePoint Search (SharePoint=${incSp}, OneDrive=${incOd})`);
         try {
-          odSites = await SharePoint.listOneDriveSitesViaTenantApi();
-          Log.info(`SP Admin tenant API returned ${odSites.length} OneDrive sites.`);
+          const found = await SharePoint.searchAllSites({
+            includeOneDrive: incOd, includeSharePoint: incSp, signal,
+            onProgress: (n, total) => { $('progressCount').textContent = `${n} found by search${total ? ` of about ${total}` : ''}`; },
+          });
+          addAll(found);
+          Log.info(`Search returned ${found.length} sites.`);
         } catch (e) {
-          Log.warn(`SP Admin tenant API failed: ${e.message}`);
-          toast(`OneDrive enumeration failed (SharePoint Administrator role required): ${e.message}`, 10000);
+          if (e.message === 'Cancelled') throw e;
+          Log.warn(`SharePoint Search discovery failed: ${e.message}`);
+          toast(`Search discovery failed: ${e.message}`, 'warn');
         }
-        let added = 0;
-        for (const s of odSites) {
-          const k = (s.webUrl || '').toLowerCase().replace(/\/+$/, '');
-          if (!k || seen.has(k)) continue;
-          seen.add(k);
-          collected.push(s);
-          added++;
-        }
-        Log.info(`OneDrive enumeration: ${odSites.length} returned, ${added} added.`);
-      }
 
-      state.sites = collected;
-      const spCount = collected.filter(s => !s.isPersonalSite).length;
-      const odCount = collected.filter(s => s.isPersonalSite).length;
-      Log.info(`Total discovered: ${collected.length} sites (SharePoint=${spCount}, OneDrive=${odCount}).`);
-      toast(`Discovered ${collected.length} sites (${spCount} SP, ${odCount} OD).`);
-      document.getElementById('siteListWrap').classList.remove('hidden');
-      document.getElementById('selectAllBtn').disabled = false;
-      document.getElementById('selectNoneBtn').disabled = false;
-      renderSites();
-    } catch (e) {
-      Log.err('Discovery failed:', e);
-      toast(`Discovery failed: ${e.message}`);
-    } finally {
-      document.getElementById('discoverBtn').disabled = false;
-      hideProgress();
-    }
+        if (incOd && odAllowed) {
+          $('progressLabel').textContent = 'Listing OneDrives through the tenant admin API';
+          try {
+            const od = await SharePoint.listOneDriveSitesViaTenantApi({ signal });
+            Log.info(`Tenant admin API returned ${od.length} OneDrives, ${addAll(od)} new.`);
+          } catch (e) {
+            if (e.message === 'Cancelled') throw e;
+            Log.warn(`OneDrive listing failed: ${e.message}`);
+            toast(`OneDrive listing failed: ${e.message}`, 'err');
+          }
+        }
+
+        state.sites = collected;
+        state.selected.clear();
+        const od = collected.filter((s) => s.isPersonalSite).length;
+        Log.info(`Discovered ${collected.length} sites (${collected.length - od} SharePoint, ${od} OneDrive).`);
+        toast(`Found ${collected.length} sites: ${collected.length - od} SharePoint, ${od} OneDrive.`, 'ok');
+        $('siteListWrap').hidden = false;
+        renderSites();
+      } catch (e) {
+        if (e.message === 'Cancelled') toast('Discovery cancelled', 'warn');
+        else { Log.err('Discovery failed:', e); toast(`Discovery failed: ${e.message}`, 'err'); }
+      } finally {
+        hideProgress();
+        setRunning(false);
+      }
+    });
+  }
+
+  function populateTypeFilter() {
+    const sel = $('typeFilter');
+    const cur = sel.value;
+    while (sel.options.length > 1) sel.remove(1);
+    [...new Set(state.sites.map(Sites.classifyType))].sort().forEach((v) => sel.appendChild(h('option', { value: v, text: v })));
+    if (cur && [...sel.options].some((o) => o.value === cur)) sel.value = cur;
   }
 
   function renderSites() {
-    const tbody = document.querySelector('#siteTable tbody');
-    tbody.innerHTML = '';
-    // Refresh type-filter options from the full discovered set (so the user can pick any present type)
-    populateSelectOptions(document.getElementById('typeFilter'),
-      state.sites.map(classifyType));
-    const list = applySort(filteredSites(), state.sortSites, (s, k) => {
+    populateTypeFilter();
+    const visible = filteredSites();
+    // Only what is visible stays selected.
+    const ids = new Set(visible.map((s) => s.id));
+    for (const id of [...state.selected]) if (!ids.has(id)) state.selected.delete(id);
+    const list = applySort(visible, state.sortSites, (s, k) => {
       switch (k) {
-        case 'title':    return s.displayName || s.name || '';
-        case 'url':      return s.webUrl || '';
-        case 'type':     return classifyType(s);
+        case 'title': return s.displayName || s.name || '';
+        case 'url': return s.webUrl || '';
+        case 'type': return Sites.classifyType(s);
         case 'template': return (s.root && s.root['@odata.type']) || '';
-        case 'created':  return s.createdDateTime || null;
+        case 'created': return s.createdDateTime || null;
         default: return '';
       }
     });
-    for (const s of list) {
-      const tr = document.createElement('tr');
-      const cat = classify(s);
-      const t = classifyType(s);
-      const checked = state.selected.has(s.id) ? 'checked' : '';
-      tr.innerHTML = `
-        <td><input type="checkbox" data-id="${esc(s.id)}" ${checked}></td>
+    document.querySelector('#siteTable tbody').innerHTML = list.map((s) => {
+      const url = s.webUrl || '';
+      return `<tr>
+        <td class="col-check"><input type="checkbox" data-id="${esc(s.id)}" aria-label="Select ${esc(s.displayName || url)}" ${state.selected.has(s.id) ? 'checked' : ''}/></td>
         <td>${esc(s.displayName || s.name || '')}</td>
-        <td class="url-cell" title="${esc(s.webUrl || '')}"><a href="${esc(s.webUrl || '')}" target="_blank">${esc(s.webUrl || '')}</a></td>
-        <td><span class="badge ${cat === 'OneDrive' ? 'od' : 'spo'}">${esc(t)}</span></td>
+        <td class="url-cell" title="${esc(url)}"><a href="${esc(Toolkit.safeUrl(url))}" target="_blank" rel="noopener">${esc(url)}</a></td>
+        <td><span class="badge ${Sites.categoryOf(s) === 'OneDrive' ? 'od' : 'spo'}">${esc(Sites.classifyType(s))}</span></td>
         <td>${esc((s.root && s.root['@odata.type']) || '')}</td>
-        <td>${fmtDate(s.createdDateTime)}</td>`;
-      tbody.appendChild(tr);
-    }
-    tbody.querySelectorAll('input[type=checkbox]').forEach(cb => {
-      cb.addEventListener('change', (e) => {
-        const id = e.target.dataset.id;
-        if (e.target.checked) state.selected.add(id);
-        else state.selected.delete(id);
-        updateSelCount();
-      });
-    });
+        <td class="nowrap">${esc(fmtDate(s.createdDateTime))}</td>
+      </tr>`;
+    }).join('');
+    $('siteHint').textContent = `${plural(visible.length, 'site')} shown of ${state.sites.length} discovered.`;
+    $('selAll').checked = list.length > 0 && list.every((s) => state.selected.has(s.id));
     updateSelCount();
   }
 
   function updateSelCount() {
-    document.getElementById('selCount').textContent = state.selected.size;
-    document.getElementById('analyzeBtn').disabled = state.selected.size === 0;
+    const n = state.sites.length ? selectedVisible().length : 0;
+    $('selCount').textContent = String(n);
+    $('analyzeBtn').disabled = state.running || n === 0;
   }
 
-  // ---------- Analysis ----------
-  async function analyze() {
-    const selected = state.sites.filter(s => state.selected.has(s.id));
-    if (!selected.length) return;
-    const concurrency = parseInt(document.getElementById('concurrency').value, 10) || 8;
-    const staleDays   = parseInt(document.getElementById('staleDays').value, 10) || 365;
-    const forceScan   = document.getElementById('forceScan').checked;
-
-    document.getElementById('analyzeBtn').disabled = true;
-    document.getElementById('discoverBtn').disabled = true;
-    state.cancelToken = new Concurrency.CancelToken();
-
-    // Force-scan elevation: temporarily make ourselves a site collection admin
-    // on sites we don't already own. Track per site whether WE added the
-    // grant so we only revoke what we added (never touching pre-existing access).
-    const elevated = []; // [{ site, claim }]
-    if (forceScan) {
-      const acct = Auth.getAccount();
-      const upn = acct && (acct.username || acct.name);
-      if (!upn) {
-        toast('Force scan: cannot determine your UPN, aborting.');
-        document.getElementById('analyzeBtn').disabled = false;
-        document.getElementById('discoverBtn').disabled = false;
-        return;
-      }
-      const claim = SharePoint.buildClaimLoginName(upn);
-      Log.info(`Force scan enabled. Checking site collection admin status for ${selected.length} site(s) as ${upn}...`);
-      showProgress('Force scan: checking and granting temporary access...', selected.length);
-      let done = 0, granted = 0, alreadyAdmin = 0, failed = 0;
-      await Concurrency.pmap(selected, async (site) => {
-        if (state.cancelToken.cancelled) return;
-        try {
-          const status = await SharePoint.getCurrentUserAdminStatus(site.webUrl);
-          if (status.isSiteAdmin) { alreadyAdmin++; return; }
-          // Either no access or non-admin access: try to grant.
-          await SharePoint.setSiteAdmin(site.webUrl, claim, true);
-          elevated.push({ site, claim });
-          granted++;
-        } catch (e) {
-          failed++;
-          Log.warn(`Force scan grant failed for ${site.webUrl}: ${e.message}`);
-        } finally {
-          done++;
-          updateProgress(done, selected.length, 0);
-        }
-      }, { concurrency, cancelToken: state.cancelToken });
-      Log.info(`Force scan: ${alreadyAdmin} already admin, ${granted} granted, ${failed} failed.`);
-      if (failed > 0) toast(`Force scan: failed to grant access to ${failed} site(s). Check the debug log.`);
+  // ---------- force scan ----------
+  function forceScanReady(acct) {
+    if (!store || !Elevation.storageWorks(store)) {
+      toast('Force scan keeps a list of the rights it adds in local storage, and that is blocked in this browser.', 'err');
+      return false;
     }
+    if (Elevation.mine(Elevation.load(store), acct.upn, acct.tenantId).length) {
+      toast('Remove the admin rights from the earlier run first, see the notice at the top.', 'warn');
+      renderRecovery();
+      return false;
+    }
+    return true;
+  }
 
-    // Per-site engagement signals (analytics, drive activity, page edits) are
-    // fetched in parallel inside Analysis.analyzeSite via Graph.getSiteEngagement.
-    // No tenant-wide bulk fetch - everything works directly from the browser
-    // against graph.microsoft.com (CORS-friendly).
+  // Checks, confirms and grants. Returns false when the run should stop.
+  async function forceScanGrant(selected, { concurrency, includeOneDrive }) {
+    const acct = Auth.tenantInfo();
+    if (!acct || !acct.upn) { toast('Cannot tell which account is signed in.', 'err'); return false; }
+    if (!forceScanReady(acct)) return false;
 
-    // Step 2: per-site analysis
-    showProgress(`Analyzing ${selected.length} sites...`, selected.length);
-    const start = Date.now();
-
-    const { results } = await Concurrency.pmap(selected, async (site) => {
-      state.cancelToken.throwIfCancelled();
-      try {
-        return await Analysis.analyzeSite(site, { staleDays });
-      } catch (e) {
-        Log.err(`Analysis failed for ${site.webUrl}:`, e.message);
-        return { site, signals: {}, lastModified: null, lastViewed: null, advice: 'Unknown', reason: `Analysis error: ${e.message}`, errors: [e.message] };
-      }
-    }, {
-      concurrency,
-      cancelToken: state.cancelToken,
-      onProgress: (done, total) => {
-        const elapsed = (Date.now() - start) / 1000;
-        const rate = done / Math.max(elapsed, 0.1);
-        const remain = total - done;
-        const eta = remain > 0 && rate > 0 ? Math.ceil(remain / rate) : 0;
-        updateProgress(done, total, eta);
-      },
+    showProgress('Force scan: checking where you are site collection admin', selected.length);
+    const checks = await Elevation.check(selected, {
+      currentUser: SharePoint.getCurrentUser, concurrency, cancelToken: state.cancelToken,
+      onProgress: (d, t) => updateProgress(d, t),
     });
-
-    state.results = results.filter(r => r && !r.__error);
-    Log.info(`Analysis complete: ${state.results.length} results.`);
-
-    // Force-scan cleanup: revoke every grant we (and only we) added.
-    if (elevated.length > 0) {
-      showProgress(`Removing temporary site collection admin grants from ${elevated.length} site(s)...`, elevated.length);
-      let cleaned = 0, failed = 0, doneRev = 0;
-      await Concurrency.pmap(elevated, async ({ site, claim }) => {
-        try {
-          await SharePoint.setSiteAdmin(site.webUrl, claim, false);
-          cleaned++;
-        } catch (e) {
-          failed++;
-          Log.err(`Force scan REVOKE failed for ${site.webUrl}: ${e.message}. Remove manually if needed.`);
-        } finally {
-          doneRev++;
-          updateProgress(doneRev, elevated.length, 0);
-        }
-      }, { concurrency });
-      Log.info(`Force scan cleanup: ${cleaned} revoked, ${failed} failed.`);
-      if (failed > 0) toast(`Force scan cleanup: ${failed} grant(s) NOT revoked. Check the debug log and remove manually.`, 12000);
-    }
-
+    if (state.cancelToken.cancelled) return false;
+    const p = Elevation.plan(selected, checks, { includeOneDrive, isOneDrive: (s) => Sites.categoryOf(s) === 'OneDrive' });
+    p.unknown.forEach((u) => Log.warn(`Force scan: admin status of ${u.site.webUrl} unknown, left alone: ${u.error}`));
+    Log.info(`Force scan check: ${p.elevate.length} to elevate, ${p.admin.length} already admin, ${p.unknown.length} unknown, ${p.oneDriveSkipped.length} OneDrives skipped.`);
+    state.forceReport = { plan: p, failed: [], added: 0 };
     hideProgress();
-    document.getElementById('analyzeBtn').disabled = false;
-    document.getElementById('discoverBtn').disabled = false;
-    document.getElementById('exportXlsxBtn').disabled = state.results.length === 0;
-    document.getElementById('exportCsvBtn').disabled  = state.results.length === 0;
-    renderResults();
-    // Switch to results tab
-    document.querySelector('.tab[data-tab="results"]').click();
-  }
-
-  // ---------- Results ----------
-  document.getElementById('resultFilter').addEventListener('input', renderResults);
-  document.getElementById('clearFiltersBtn').addEventListener('click', () => {
-    state.colFilters.type.clear();
-    state.colFilters.advice.clear();
-    renderResults();
-  });
-  document.getElementById('exportXlsxBtn').addEventListener('click', () => Exporter.exportXlsx(state.results));
-  document.getElementById('exportCsvBtn').addEventListener('click', () => Exporter.exportCsv(state.results));
-  wireSortHeaders('#resultTable', state.sortResults, renderResults);
-  wireColumnFilterHeaders();
-  wireDetailModal();
-
-  function renderResults() {
-    const tbody = document.querySelector('#resultTable tbody');
-    tbody.innerHTML = '';
-    renderResultNotices();
-    refreshColumnFilterIndicators();
-    const q = (document.getElementById('resultFilter').value || '').toLowerCase();
-    let list = state.results.filter(r => {
-      const t = classifyType(r.site);
-      if (state.colFilters.type.has(t)) return false;
-      if (state.colFilters.advice.has(r.advice || '')) return false;
-      if (q) {
-        const hay = `${r.site.displayName || ''} ${r.site.webUrl || ''}`.toLowerCase();
-        if (!hay.includes(q)) return false;
-      }
+    if (!p.elevate.length) {
+      toast('Force scan: no site needs temporary admin rights.', 'info');
       return true;
+    }
+
+    const tenant = acct.domain ? `${acct.domain} (${acct.tenantId})` : acct.tenantId;
+    const body = h('div', null, [
+      h('p', null, ['Account ', h('strong', { text: acct.upn }), ' in tenant ', h('strong', { text: tenant }), '.']),
+      h('p', { text: `SPOTrim adds this account as site collection admin on the ${plural(p.elevate.length, 'site')} below, analyzes them and removes the account again at the end, also when you cancel. Nothing else is changed. The changes show up in the audit log.` }),
+      h('ul.small', null, [
+        h('li', { text: `${p.admin.length} already admin: left alone, nothing is removed there.` }),
+        h('li', { text: `${p.unknown.length} could not be checked: left alone and listed after the run.` }),
+        includeOneDrive ? null : h('li', { text: `${p.oneDriveSkipped.length} OneDrives where you are not admin: skipped.` }),
+      ]),
+      h('p.muted.small', { text: 'The list is kept in this browser until the rights are removed, so an interrupted run can be cleaned up on the next visit.' }),
+    ]);
+    const ok = await confirm({
+      title: `Temporary site admin on ${plural(p.elevate.length, 'site')}?`,
+      body, items: p.elevate.map((s) => s.webUrl), itemsMax: 50, wide: true, danger: true,
+      okLabel: `Add admin on ${plural(p.elevate.length, 'site')}`,
     });
-    list = applySort(list, state.sortResults, (r, k) => {
-      switch (k) {
-        case 'title':        return r.site.displayName || r.site.name || '';
-        case 'url':          return r.site.webUrl || '';
-        case 'type':         return classifyType(r.site);
-        case 'owners':       return (r.owners && r.owners[0] ? (r.owners[0].title || r.owners[0].email) : '') || '';
-        case 'lastModified': return r.lastModified || null;
-        case 'lastViewed':   return r.lastViewed || null;
-        case 'daysIdle':     return r.daysSinceModified == null ? null : Number(r.daysSinceModified);
-        case 'pageViews':    return r.pageViews == null ? null : Number(r.pageViews);
-        case 'storageMB':    return r.storageMB == null ? null : Number(r.storageMB);
-        case 'advice':       return r.advice || '';
-        default: return '';
+    if (!ok) { toast('Force scan cancelled, nothing changed.', 'info'); return false; }
+
+    state.elevationStarted = true;
+    window.addEventListener('beforeunload', warnUnload);
+    showProgress(`Force scan: adding temporary admin on ${plural(p.elevate.length, 'site')}`, p.elevate.length);
+    const g = await Elevation.grant(p.elevate, {
+      setAdmin: (url, on, upn) => SharePoint.setSiteAdmin(url, upn, on),
+      store, account: acct.upn, tenantId: acct.tenantId, concurrency, cancelToken: state.cancelToken,
+      onProgress: (d, t) => updateProgress(d, t),
+    });
+    g.failed.forEach((f) => Log.warn(`Force scan: adding admin on ${f.site.webUrl} failed: ${f.error.message}`));
+    state.forceReport.failed = g.failed;
+    state.forceReport.added = g.toRevoke.length;
+    Log.info(`Force scan: admin added on ${g.toRevoke.length}, ${g.failed.length} failed, ${g.skipped} skipped after cancel.`);
+    if (g.failed.length) toast(`Force scan: adding admin failed on ${plural(g.failed.length, 'site')}, see the debug log.`, 'warn');
+    return true;
+  }
+
+  async function cleanup(entries, concurrency) {
+    if (!entries.length) {
+      if (!Elevation.load(store).length) window.removeEventListener('beforeunload', warnUnload);
+      return;
+    }
+    showProgress(`Removing temporary admin from ${plural(entries.length, 'site')}`, entries.length, { cancellable: false });
+    const r = await Elevation.revoke(entries, {
+      setAdmin: (url, on, upn) => SharePoint.setSiteAdmin(url, upn, on),
+      store, concurrency, onProgress: (d, t) => updateProgress(d, t),
+    });
+    r.removed.forEach((e) => Log.info(`Removed temporary admin on ${e.siteUrl}`));
+    r.failed.forEach((f) => Log.err(`Could not remove admin on ${f.entry.siteUrl}: ${f.error.message}`));
+    if (r.failed.length) toast(`${plural(r.failed.length, 'admin right')} not removed. Use the notice on the first tab to try again.`, 'err', { timeout: 15000 });
+    else toast(`Removed temporary admin from ${plural(r.removed.length, 'site')}.`, 'ok');
+    if (!Elevation.load(store).length) window.removeEventListener('beforeunload', warnUnload);
+    renderRecovery();
+  }
+
+  // ---------- analysis ----------
+  async function analyze() {
+    const selected = selectedVisible();
+    if (!selected.length) return;
+    const concurrency = Math.min(32, Math.max(1, parseInt($('concurrency').value, 10) || 8));
+    const staleDays = Math.min(3650, Math.max(1, parseInt($('staleDays').value, 10) || 365));
+    const force = $('forceScan').checked;
+    const includeOneDrive = $('forceScanOneDrive').checked;
+
+    try {
+      if (!(await prepare({ admin: force, what: force ? 'Force scan' : 'Analysis' }))) return;
+    } catch (e) {
+      Log.err('Preparing analysis failed:', e);
+      toast(`Could not get started: ${e.message}`, 'err');
+      return;
+    }
+
+    setRunning(true);
+    state.cancelToken = new Concurrency.CancelToken();
+    state.forceReport = null;
+    state.elevationStarted = false;
+    const acct = Auth.tenantInfo();
+    let analysed = false;
+    try {
+      if (force && !(await forceScanGrant(selected, { concurrency, includeOneDrive }))) return;
+      if (state.cancelToken.cancelled) return;
+
+      showProgress(`Analyzing ${plural(selected.length, 'site')}`, selected.length);
+      const { results } = await Concurrency.pmap(selected, async (site) => {
+        state.cancelToken.throwIfCancelled();
+        try {
+          return await Analysis.analyzeSite(site, { staleDays });
+        } catch (e) {
+          Log.err(`Analysis failed for ${site.webUrl}:`, e.message);
+          return { site, signals: {}, lastModified: null, lastViewed: null, advice: 'Unknown', reason: `Analysis error: ${e.message}`, errors: [e.message] };
+        }
+      }, { concurrency, cancelToken: state.cancelToken, onProgress: (d, t) => updateProgress(d, t) });
+      state.results = results.filter((r) => r && !r.__error);
+      analysed = true;
+      Log.info(`Analysis done: ${state.results.length} results${state.cancelToken.cancelled ? ' (cancelled part way)' : ''}.`);
+    } catch (e) {
+      Log.err('Analysis run failed:', e);
+      toast(`Analysis failed: ${e.message}`, 'err');
+    } finally {
+      // Everything this account has in the ledger was added by this run: a run does
+      // not start while older entries exist.
+      if (state.elevationStarted && store && acct) {
+        try { await cleanup(Elevation.mine(Elevation.load(store), acct.upn, acct.tenantId), concurrency); }
+        catch (e) { Log.err('Clean-up failed:', e); toast(`Clean-up failed: ${e.message}. Use the notice on the first tab.`, 'err'); }
+      }
+      hideProgress();
+      setRunning(false);
+    }
+    if (!analysed) return;
+    $('exportXlsxBtn').disabled = !state.results.length;
+    $('exportCsvBtn').disabled = !state.results.length;
+    renderResults();
+    activateTab('results');
+  }
+
+  // ---------- recovery of an interrupted force scan ----------
+  function renderRecovery() {
+    const list = store ? Elevation.load(store) : [];
+    const box = $('recoveryNotice');
+    if (!list.length) { box.hidden = true; return; }
+    const t = Auth.tenantInfo();
+    const mine = t ? Elevation.mine(list, t.upn, t.tenantId) : [];
+    const others = [...new Set(list.filter((e) => !mine.includes(e)).map((e) => e.account))];
+    const parts = [];
+    if (mine.length) parts.push(`${plural(mine.length, 'site')} for ${t.upn}.`);
+    if (others.length) parts.push(`${plural(list.length - mine.length, 'site')} for ${others.join(', ')}: sign in as that account to remove them.`);
+    $('recoveryText').textContent = parts.join(' ');
+    $('recoverBtn').hidden = !mine.length;
+    box.hidden = false;
+  }
+
+  async function recover() {
+    const t = Auth.tenantInfo();
+    if (!t) return;
+    const mine = Elevation.mine(Elevation.load(store), t.upn, t.tenantId);
+    if (!mine.length) { renderRecovery(); return; }
+    const ok = await confirm({
+      title: `Remove admin rights on ${plural(mine.length, 'site')}?`,
+      body: `A force scan added ${t.upn} as site collection admin on these sites in tenant ${t.domain || t.tenantId} and did not get to remove it. This removes the account as site collection admin again.`,
+      items: mine.map((e) => `${e.siteUrl}  (added ${String(e.at).substring(0, 16).replace('T', ' ')})`),
+      okLabel: `Remove from ${plural(mine.length, 'site')}`,
+      danger: true,
+    });
+    if (!ok) return;
+    await busy($('recoverBtn'), async () => {
+      try {
+        if (!(await prepare({ spo: false, admin: true, what: 'Removing admin rights' }))) return;
+        setRunning(true);
+        await cleanup(mine, 4);
+      } catch (e) {
+        Log.err('Removing admin rights failed:', e);
+        toast(`Removing admin rights failed: ${e.message}`, 'err');
+      } finally {
+        hideProgress();
+        setRunning(false);
+        renderRecovery();
       }
     });
-
-    for (let i = 0; i < list.length; i++) {
-      const r = list[i];
-      const cat = classify(r.site);
-      const t = classifyType(r.site);
-      const tr = document.createElement('tr');
-      tr.classList.add('clickable-row');
-      tr.dataset.idx = String(state.results.indexOf(r));
-      const lastViewedLabel = r.lastViewed
-        ? (r.lastViewedApprox ? `≤7d (${fmtDate(r.lastViewed)})` : fmtDate(r.lastViewed))
-        : '-';
-      const fullUrl = r.site.webUrl || '';
-      const shortUrl = trimSiteUrlPrefix(fullUrl);
-      tr.innerHTML = `
-        <td><span class="badge ${badgeClass(r.advice)}">${esc(r.advice)}</span></td>
-        <td>${esc(r.site.displayName || r.site.name || '')}</td>
-        <td class="url-cell" title="${esc(fullUrl)}"><a href="${esc(fullUrl)}" target="_blank" rel="noopener" onclick="event.stopPropagation()">${esc(shortUrl)}</a></td>
-        <td><span class="badge ${cat === 'OneDrive' ? 'od' : 'spo'}">${esc(t)}</span></td>
-        <td>${fmtDate(r.lastModified)}</td>
-        <td>${lastViewedLabel}</td>
-        <td>${r.daysSinceModified ?? '-'}</td>
-        <td>${r.storageMB ?? '-'}</td>`;
-      tr.addEventListener('click', (e) => {
-        // Don't open modal when clicking the URL link or the owners-popover trigger.
-        if (e.target.closest('a, .owners-more, .owners-cell')) return;
-        showDetailModal(r);
-      });
-      tbody.appendChild(tr);
-    }
-    wireOwnersPopovers();
   }
+
+  async function forgetLedger() {
+    const list = Elevation.load(store);
+    const ok = await confirm({
+      title: 'Forget this list?',
+      body: 'Removes the list from this browser without changing anything in SharePoint. Only do this when the rights were removed some other way.',
+      items: list.map((e) => `${e.siteUrl}  (${e.account})`),
+      okLabel: 'Forget',
+      danger: true,
+    });
+    if (!ok) return;
+    list.forEach((e) => Elevation.forget(store, e));
+    Log.info(`Forgot ${plural(list.length, 'force scan entry', 'force scan entries')}.`);
+    renderRecovery();
+  }
+
+  // ---------- results ----------
+  const BADGE = { 'Clean up': 'cleanup', Review: 'review', Keep: 'keep', 'No access': 'noaccess', Unknown: 'unknown' };
+  const badgeClass = (advice) => BADGE[advice] || 'unknown';
+  const lastViewedLabel = (r) => (r.lastViewed ? (r.lastViewedApprox ? `≤7d (${fmtDate(r.lastViewed)})` : fmtDate(r.lastViewed)) : '-');
 
   function trimSiteUrlPrefix(url) {
     if (!url) return '';
-    // Strip the protocol+host so the (long, repeated) prefix isn't shown.
-    // The full URL stays in href + title for click/copy.
     try {
-      const u = new URL(url);
-      let p = u.pathname || '/';
+      let p = new URL(url).pathname || '/';
       if (p.length > 1) p = p.replace(/\/+$/, '');
       return p || '/';
     } catch {
-      return url.replace(/^https?:\/\/[^\/]+/i, '') || url;
+      return url.replace(/^https?:\/\/[^/]+/i, '') || url;
     }
   }
 
-  function badgeClass(advice) {
-    return ({
-      'Clean up':  'cleanup',
-      'Review':    'review',
-      'Keep':      'keep',
-      'No access': 'noaccess',
-      'Unknown':   'unknown',
-    })[advice] || 'unknown';
+  function filteredResults() {
+    const q = ($('resultFilter').value || '').toLowerCase();
+    const list = state.results.filter((r) => {
+      if (state.colFilters.type.has(Sites.classifyType(r.site))) return false;
+      if (state.colFilters.advice.has(r.advice || '')) return false;
+      if (q && !`${r.site.displayName || ''} ${r.site.webUrl || ''}`.toLowerCase().includes(q)) return false;
+      return true;
+    });
+    return applySort(list, state.sortResults, (r, k) => {
+      switch (k) {
+        case 'title': return r.site.displayName || r.site.name || '';
+        case 'url': return r.site.webUrl || '';
+        case 'type': return Sites.classifyType(r.site);
+        case 'owners': return r.owners && r.owners[0] ? Sites.ownerName(r.owners[0]) : null;
+        case 'lastModified': return r.lastModified || null;
+        case 'lastViewed': return r.lastViewed || null;
+        case 'daysIdle': return r.daysSinceModified == null ? null : Number(r.daysSinceModified);
+        case 'storageMB': return r.storageMB == null ? null : Number(r.storageMB);
+        case 'advice': return r.advice || '';
+        default: return '';
+      }
+    });
+  }
+
+  function ownerCell(owners) {
+    if (!owners || !owners.length) return '<span class="muted">-</span>';
+    const first = owners[0];
+    const more = owners.length > 1 ? ` <span class="muted small">+${owners.length - 1}</span>` : '';
+    return `<span class="owner-cell" title="${esc(owners.map(Sites.ownerName).join(', '))}">${esc(Sites.ownerName(first))}</span>${more}`;
+  }
+
+  function renderResults() {
+    renderResultNotices();
+    refreshColumnFilterIndicators();
+    const list = filteredResults();
+    state.shownResults = list;
+    document.querySelector('#resultTable tbody').innerHTML = list.map((r, i) => {
+      const url = r.site.webUrl || '';
+      return `<tr class="clickable-row" data-idx="${i}">
+        <td><span class="badge ${badgeClass(r.advice)}">${esc(r.advice)}</span></td>
+        <td>${esc(r.site.displayName || r.site.name || '')}</td>
+        <td class="url-cell" title="${esc(url)}"><a href="${esc(Toolkit.safeUrl(url))}" target="_blank" rel="noopener">${esc(trimSiteUrlPrefix(url))}</a></td>
+        <td><span class="badge ${Sites.categoryOf(r.site) === 'OneDrive' ? 'od' : 'spo'}">${esc(Sites.classifyType(r.site))}</span></td>
+        <td class="owner-col">${ownerCell(r.owners)}</td>
+        <td class="nowrap">${esc(fmtDate(r.lastModified))}</td>
+        <td class="nowrap">${esc(lastViewedLabel(r))}</td>
+        <td class="num">${esc(dash(r.daysSinceModified))}</td>
+        <td class="num">${esc(dash(r.storageMB))}</td>
+      </tr>`;
+    }).join('');
+    $('resultHint').textContent = state.results.length
+      ? `${plural(list.length, 'site')} shown of ${state.results.length}. Exports contain the rows shown.`
+      : 'No analysis yet. Discover sites, select some and analyze them.';
+    $('exportXlsxBtn').disabled = !list.length;
+    $('exportCsvBtn').disabled = !list.length;
   }
 
   function renderResultNotices() {
-    const host = document.getElementById('resultNotices');
-    if (!host) return;
-    host.innerHTML = '';
-    const notices = [];
-    // Per-site permission failures
-    const denied = state.results.filter(r => r && r.advice === 'No access');
-    if (denied.length > 0) {
-      const sample = denied.slice(0, 3).map(r => r.site.webUrl || r.site.displayName).filter(Boolean);
-      const more = denied.length > sample.length ? ` and ${denied.length - sample.length} more` : '';
-      notices.push({
-        kind: 'info',
-        text: `${denied.length} site${denied.length === 1 ? '' : 's'} could not be analyzed because you lack permission (HTTP 401/403). Filter the table to "No access" to see them. Examples: ${sample.join(', ')}${more}.`,
-      });
-    }
-    for (const n of notices) {
-      const div = document.createElement('div');
-      div.className = `notice notice-${n.kind}`;
-      div.textContent = n.text;
-      host.appendChild(div);
+    const host = $('resultNotices');
+    host.replaceChildren();
+    const add = (kind, iconName, text, items) => {
+      const content = [h('div', { text })];
+      if (items && items.length) {
+        content.push(h('ul.small.notice-list', null, items.slice(0, 20).map((t) => h('li', { text: t }))));
+        if (items.length > 20) content.push(h('div.small', { text: `+ ${items.length - 20} more in the debug log` }));
+      }
+      host.appendChild(h('div.notice', { class: `notice-${kind}` }, [Toolkit.icon(iconName), h('div', null, content)]));
+    };
+    const denied = state.results.filter((r) => r && r.advice === 'No access');
+    if (denied.length) add('info', 'i-lock', `${plural(denied.length, 'site')} could not be read (HTTP 401/403). Filter the recommendation on "No access" to see them.`);
+    const fr = state.forceReport;
+    if (fr) {
+      if (fr.plan.unknown.length) add('warn', 'i-alert', `Force scan: the admin check did not complete on ${plural(fr.plan.unknown.length, 'site')}. They were not elevated.`, fr.plan.unknown.map((u) => `${u.site.webUrl}: ${u.error}`));
+      if (fr.failed.length) add('warn', 'i-alert', `Force scan: adding admin failed on ${plural(fr.failed.length, 'site')}.`, fr.failed.map((f) => `${f.site.webUrl}: ${f.error.message}`));
+      if (fr.plan.oneDriveSkipped.length) add('info', 'i-info', `Force scan: ${plural(fr.plan.oneDriveSkipped.length, 'OneDrive')} skipped because OneDrives were not ticked.`);
     }
   }
 
-  function buildWhyTooltip(r) {
-    const lines = [];
-    lines.push(`Recommendation: ${r.advice}`);
-    lines.push('');
-    lines.push(r.reason);
-    lines.push('');
-    lines.push('--- Raw signals ---');
-    for (const [k, v] of Object.entries(r.signals)) {
-      lines.push(`${k}: ${v instanceof Date ? v.toISOString() : (v ?? '-')}`);
-    }
-    if (r.errors && r.errors.length) {
-      lines.push('');
-      lines.push('--- Errors ---');
-      r.errors.forEach(e => lines.push(`• ${e}`));
-    }
-    return lines.join('\n');
-  }
-
-  // ---------- Owners cell + popover ----------
-  function renderOwnersCell(owners) {
-    if (!owners || owners.length === 0) return '<span class="muted">-</span>';
-    const first = owners[0];
-    const label = esc(first.title || first.email || first.loginName || '');
-    if (owners.length === 1) {
-      return `<span class="owners-cell" title="${esc(first.email || first.loginName || '')}">${label}</span>`;
-    }
-    const more = owners.length - 1;
-    const data = encodeURIComponent(JSON.stringify(owners));
-    return `<span class="owners-cell">${label} <button type="button" class="owners-more" data-owners="${data}">+${more}</button></span>`;
-  }
-  function wireOwnersPopovers() {
-    document.querySelectorAll('.owners-more').forEach(btn => {
-      btn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        const list = JSON.parse(decodeURIComponent(btn.dataset.owners));
-        showOwnersPopover(btn, list);
-      });
-    });
-    document.addEventListener('click', (e) => {
-      const pop = document.getElementById('ownersPopover');
-      if (!pop || pop.classList.contains('hidden')) return;
-      if (!pop.contains(e.target) && !e.target.closest('.owners-more')) pop.classList.add('hidden');
-    });
-  }
-  function showOwnersPopover(anchor, owners) {
-    const pop = document.getElementById('ownersPopover');
-    pop.innerHTML = '<div class="popover-title">Owners</div><ul class="owners-list">' +
-      owners.map(o => {
-        const t = esc(o.title || o.email || o.loginName || '');
-        const em = o.email ? `<a href="mailto:${esc(o.email)}">${esc(o.email)}</a>` : '';
-        return `<li><strong>${t}</strong>${em ? '<br><span class="muted">' + em + '</span>' : ''}</li>`;
-      }).join('') + '</ul>';
-    positionPopover(pop, anchor);
-  }
-  function positionPopover(pop, anchor) {
-    pop.classList.remove('hidden');
-    const r = anchor.getBoundingClientRect();
-    const pr = pop.getBoundingClientRect();
-    let left = r.left;
-    let top  = r.bottom + 4 + window.scrollY;
-    if (left + pr.width > window.innerWidth - 12) left = Math.max(8, window.innerWidth - pr.width - 12);
-    pop.style.left = `${left}px`;
-    pop.style.top  = `${top}px`;
-  }
-
-  // ---------- Excel-style column filter dropdowns ----------
+  // ---------- column filters ----------
   function wireColumnFilterHeaders() {
-    document.querySelectorAll('#resultTable thead th[data-filter]').forEach(th => {
+    document.querySelectorAll('#resultTable thead th[data-filter]').forEach((th) => {
       th.classList.add('filterable-col');
-      const btn = document.createElement('button');
-      btn.type = 'button';
-      btn.className = 'col-filter-btn';
-      btn.title = 'Filter';
-      btn.textContent = '▾';
-      btn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        openColumnFilter(th.dataset.filter, btn);
-      });
+      const btn = h('button.col-filter-btn', { type: 'button', title: 'Filter', 'aria-label': 'Filter column' }, Toolkit.icon('i-filter', 'sm'));
+      btn.addEventListener('click', (e) => { e.stopPropagation(); openColumnFilter(th.dataset.filter, btn); });
       th.appendChild(btn);
     });
     document.addEventListener('click', (e) => {
-      const pop = document.getElementById('columnFilterPopover');
-      if (!pop || pop.classList.contains('hidden')) return;
-      if (!pop.contains(e.target) && !e.target.closest('.col-filter-btn')) pop.classList.add('hidden');
+      const pop = $('columnFilterPopover');
+      if (!pop.hidden && !pop.contains(e.target) && !e.target.closest('.col-filter-btn')) pop.hidden = true;
     });
+    document.addEventListener('keydown', (e) => { if (e.key === 'Escape') $('columnFilterPopover').hidden = true; });
   }
   function refreshColumnFilterIndicators() {
-    document.querySelectorAll('#resultTable thead th[data-filter]').forEach(th => {
-      const k = th.dataset.filter;
-      const active = state.colFilters[k] && state.colFilters[k].size > 0;
-      th.classList.toggle('filter-active', !!active);
+    document.querySelectorAll('#resultTable thead th[data-filter]').forEach((th) => {
+      th.classList.toggle('filter-active', state.colFilters[th.dataset.filter].size > 0);
     });
   }
   function openColumnFilter(colKey, anchor) {
-    const pop = document.getElementById('columnFilterPopover');
-    const valueOf = colKey === 'type'
-      ? (r) => classifyType(r.site)
-      : (r) => r.advice || '';
+    const pop = $('columnFilterPopover');
+    const valueOf = colKey === 'type' ? (r) => Sites.classifyType(r.site) : (r) => r.advice || '';
     const counts = new Map();
-    for (const r of state.results) {
-      const v = valueOf(r) || '';
-      counts.set(v, (counts.get(v) || 0) + 1);
-    }
+    for (const r of state.results) { const v = valueOf(r) || ''; counts.set(v, (counts.get(v) || 0) + 1); }
     const values = [...counts.keys()].sort();
     const hidden = state.colFilters[colKey];
-    const allChecked = values.every(v => !hidden.has(v));
-    pop.innerHTML = `
-      <div class="popover-title">Filter ${colKey === 'type' ? 'type' : 'recommendation'}</div>
-      <label class="col-filter-all"><input type="checkbox" id="cfAll" ${allChecked ? 'checked' : ''} /> (Select all)</label>
-      <div class="col-filter-list">${values.map((v, i) => {
-        const checked = !hidden.has(v);
-        return `<label><input type="checkbox" class="cf-item" data-val="${esc(v)}" ${checked ? 'checked' : ''} /> ${esc(v) || '<em>(empty)</em>'} <span class="muted">(${counts.get(v)})</span></label>`;
-      }).join('')}</div>`;
-    positionPopover(pop, anchor);
-    pop.querySelector('#cfAll').addEventListener('change', (e) => {
-      const on = e.target.checked;
-      pop.querySelectorAll('.cf-item').forEach(cb => { cb.checked = on; });
-      applyColumnFilter(colKey, pop);
-    });
-    pop.querySelectorAll('.cf-item').forEach(cb => {
-      cb.addEventListener('change', () => applyColumnFilter(colKey, pop));
-    });
-  }
-  function applyColumnFilter(colKey, pop) {
-    const hidden = state.colFilters[colKey];
-    hidden.clear();
-    pop.querySelectorAll('.cf-item').forEach(cb => {
-      if (!cb.checked) hidden.add(cb.dataset.val);
-    });
-    renderResults();
+    const apply = () => {
+      hidden.clear();
+      pop.querySelectorAll('input[data-val]').forEach((cb) => { if (!cb.checked) hidden.add(cb.dataset.val); });
+      renderResults();
+    };
+    const all = h('input', { type: 'checkbox', checked: values.every((v) => !hidden.has(v)) });
+    all.addEventListener('change', () => { pop.querySelectorAll('input[data-val]').forEach((cb) => { cb.checked = all.checked; }); apply(); });
+    pop.replaceChildren(
+      h('div.popover-title', { text: `Filter ${colKey === 'type' ? 'type' : 'recommendation'}` }),
+      h('label.checkbox.col-filter-all', null, [all, 'Select all']),
+      h('div.col-filter-list', null, values.map((v) => {
+        const cb = h('input', { type: 'checkbox', checked: !hidden.has(v), dataset: { val: v } });
+        cb.addEventListener('change', apply);
+        return h('label.checkbox', null, [cb, v || '(empty)', h('span.muted', { text: ` (${counts.get(v)})` })]);
+      })),
+    );
+    pop.hidden = false;
+    const r = anchor.getBoundingClientRect();
+    const pr = pop.getBoundingClientRect();
+    let left = r.left + window.scrollX;
+    if (r.left + pr.width > window.innerWidth - 12) left = Math.max(8, window.innerWidth - pr.width - 12) + window.scrollX;
+    pop.style.left = `${left}px`;
+    pop.style.top = `${r.bottom + 4 + window.scrollY}px`;
   }
 
-  // ---------- Site detail modal ----------
-  function wireDetailModal() {
-    const modal = document.getElementById('detailModal');
-    if (!modal) return;
-    modal.querySelector('.modal-backdrop').addEventListener('click', hideDetailModal);
-    modal.querySelector('#detailCloseBtn').addEventListener('click', hideDetailModal);
-    document.addEventListener('keydown', (e) => {
-      if (e.key === 'Escape' && !modal.classList.contains('hidden')) hideDetailModal();
-    });
-  }
-  function hideDetailModal() {
-    const modal = document.getElementById('detailModal');
-    if (modal) modal.classList.add('hidden');
-  }
-  function showDetailModal(r) {
-    const modal = document.getElementById('detailModal');
-    if (!modal) return;
-    document.getElementById('detailTitle').textContent = r.site.displayName || r.site.name || '(untitled site)';
-    const body = document.getElementById('detailBody');
-    const cat = classify(r.site);
-    const t = classifyType(r.site);
-    const fullUrl = r.site.webUrl || '';
-    const ownersHtml = r.owners && r.owners.length
-      ? '<ul class="owners-list">' + r.owners.map(o =>
-          `<li><strong>${esc(o.title || o.email || '')}</strong>${o.email ? '<br><span class="muted"><a href="mailto:' + esc(o.email) + '">' + esc(o.email) + '</a></span>' : ''}</li>`
-        ).join('') + '</ul>'
-      : '<span class="muted">No owners detected</span>';
+  // ---------- detail dialog: how the verdict was reached ----------
+  function showDetail(r) {
+    const url = r.site.webUrl || '';
+    const owners = r.owners && r.owners.length
+      ? h('ul.owners-list', null, r.owners.map((o) => h('li', null, [
+        h('strong', { text: Sites.ownerName(o) }),
+        o.email ? h('div.muted.small', null, h('a', { href: `mailto:${o.email}`, text: o.email })) : null,
+      ])))
+      : h('span.muted', { text: 'No owners found' });
     const rows = [
-      ['URL', `<a href="${esc(fullUrl)}" target="_blank" rel="noopener">${esc(fullUrl)}</a>`],
-      ['Type', `<span class="badge ${cat === 'OneDrive' ? 'od' : 'spo'}">${esc(t)}</span>`],
-      ['Recommendation', `<span class="badge ${badgeClass(r.advice)}">${esc(r.advice)}</span>`],
-      ['Why', esc(r.reason || '')],
-      ['Owners', ownersHtml],
+      ['URL', h('a', { href: url, target: '_blank', rel: 'noopener', text: url })],
+      ['Type', h('span.badge', { class: Sites.categoryOf(r.site) === 'OneDrive' ? 'od' : 'spo', text: Sites.classifyType(r.site) })],
+      ['Recommendation', h('span.badge', { class: badgeClass(r.advice), text: r.advice })],
+      ['Why', r.reason || ''],
+      ['Owners', owners],
       ['Last modified', fmtDate(r.lastModified)],
-      ['Last viewed', r.lastViewed ? (r.lastViewedApprox ? `≤7d (${fmtDate(r.lastViewed)})` : fmtDate(r.lastViewed)) : '-'],
-      ['Days since modified', r.daysSinceModified ?? '-'],
-      ['Days since viewed', r.daysSinceViewed ?? '-'],
-      ['Page views (all-time)', r.pageViews ?? '-'],
-      ['Views (last 7 days)',  r.recentViews ?? '-'],
-      ['Views (last 30 days)', r.last30Views ?? '-'],
-      ['Storage (MB)', r.storageMB ?? '-'],
+      ['Last viewed', lastViewedLabel(r)],
+      ['Days since modified', dash(r.daysSinceModified)],
+      ['Days since viewed', dash(r.daysSinceViewed)],
+      ['Page views (all time)', dash(r.pageViews)],
+      ['Views (last 7 days)', dash(r.recentViews)],
+      ['Views (last 30 days)', dash(r.last30Views)],
+      ['Storage (MB)', dash(r.storageMB)],
     ];
-    let html = '<dl class="detail-list">';
-    for (const [k, v] of rows) html += `<dt>${esc(k)}</dt><dd>${v}</dd>`;
-    html += '</dl>';
-    html += '<details class="detail-signals"><summary>Raw signals</summary><dl class="detail-list small">';
-    for (const [k, v] of Object.entries(r.signals || {})) {
-      const display = v instanceof Date ? v.toISOString() : (v == null ? '-' : String(v));
-      html += `<dt>${esc(k)}</dt><dd>${esc(display)}</dd>`;
-    }
-    html += '</dl></details>';
-    if (r.errors && r.errors.length) {
-      html += '<details class="detail-errors" open><summary>Errors</summary><ul>' +
-        r.errors.map(e => `<li>${esc(e)}</li>`).join('') + '</ul></details>';
-    }
-    body.innerHTML = html;
-    modal.classList.remove('hidden');
+    const dl = (pairs, cls) => h(`dl.detail-list${cls ? `.${cls}` : ''}`, null, pairs.flatMap(([k, v]) => [h('dt', { text: k }), h('dd', null, v instanceof Node ? v : String(v))]));
+    const signals = Object.entries(r.signals || {}).map(([k, v]) => [k, v instanceof Date ? v.toISOString() : dash(v)]);
+    const body = h('div', null, [
+      dl(rows),
+      h('details.detail-signals', null, [h('summary', { text: 'Raw signals' }), dl(signals, 'small')]),
+      r.errors && r.errors.length
+        ? h('details.detail-errors', { open: true }, [h('summary', { text: 'Errors' }), h('ul', null, r.errors.map((e) => h('li', { text: e })))])
+        : null,
+    ]);
+    Toolkit.modal({ title: r.site.displayName || r.site.name || '(untitled site)', body, wide: true });
   }
 
-  // ---------- Tooltips ----------
-  let activeTip = null;
-  function wireTooltips() {
-    document.querySelectorAll('.why-cell').forEach(el => {
-      el.addEventListener('mouseenter', showTip);
-      el.addEventListener('mouseleave', hideTip);
-      el.addEventListener('click', showTip);
+  function onResultClick(e) {
+    if (e.target.closest('a')) return;
+    const tr = e.target.closest('tr[data-idx]');
+    const r = tr && state.shownResults[Number(tr.dataset.idx)];
+    if (r) showDetail(r);
+  }
+
+  // ---------- export ----------
+  const exportRows = () => state.shownResults.map(Sites.exportRow);
+  const stamp = () => new Date().toISOString().replace(/[:.]/g, '-').substring(0, 19);
+
+  // ---------- boot ----------
+  async function boot() {
+    if (ToolkitAuth.isAuthPopup()) return;
+    activateTab = Toolkit.tabs('#tabs');
+
+    $('signInBtn').addEventListener('click', onSignIn);
+    $('discoverBtn').addEventListener('click', discover);
+    $('analyzeBtn').addEventListener('click', analyze);
+    $('cancelBtn').addEventListener('click', () => { if (state.cancelToken) { state.cancelToken.cancel(); toast('Cancelling', 'info'); } });
+    $('selectAllBtn').addEventListener('click', () => { filteredSites().forEach((s) => state.selected.add(s.id)); renderSites(); });
+    $('selectNoneBtn').addEventListener('click', () => { state.selected.clear(); renderSites(); });
+    $('selAll').addEventListener('change', (e) => {
+      filteredSites().forEach((s) => { if (e.target.checked) state.selected.add(s.id); else state.selected.delete(s.id); });
+      renderSites();
     });
-  }
-  function showTip(e) {
-    hideTip();
-    const text = e.currentTarget.dataset.tip;
-    if (!text) return;
-    const tip = document.createElement('div');
-    tip.className = 'tooltip';
-    tip.textContent = text;
-    document.body.appendChild(tip);
-    const rect = e.currentTarget.getBoundingClientRect();
-    const tipRect = tip.getBoundingClientRect();
-    let left = rect.right + 8;
-    let top  = rect.top + window.scrollY;
-    if (left + tipRect.width > window.innerWidth - 12) left = rect.left - tipRect.width - 8;
-    if (left < 8) left = 8;
-    tip.style.left = `${left}px`;
-    tip.style.top  = `${top}px`;
-    activeTip = tip;
-  }
-  function hideTip() { if (activeTip) { activeTip.remove(); activeTip = null; } }
+    document.querySelector('#siteTable tbody').addEventListener('change', (e) => {
+      const cb = e.target.closest('input[data-id]');
+      if (!cb) return;
+      if (cb.checked) state.selected.add(cb.dataset.id); else state.selected.delete(cb.dataset.id);
+      $('selAll').checked = false;
+      updateSelCount();
+    });
+    ['siteFilter', 'typeFilter', 'includeOneDrive', 'includeSharePoint'].forEach((id) => $(id).addEventListener(id === 'siteFilter' ? 'input' : 'change', renderSites));
+    $('forceScan').addEventListener('change', () => {
+      $('forceScanOneDrive').disabled = !$('forceScan').checked;
+      if (!$('forceScan').checked) $('forceScanOneDrive').checked = false;
+    });
+    wireSortHeaders('#siteTable', state.sortSites, renderSites);
 
-  // ---------- Progress UI ----------
-  function showProgress(label, total) {
-    document.getElementById('progressBox').classList.remove('hidden');
-    document.getElementById('progressLabel').textContent = label;
-    document.getElementById('progressEta').textContent = '';
-    if (total === null) {
-      document.getElementById('progressFill').style.width = '20%';
-      document.getElementById('progressFill').style.transition = 'width 1s';
-      document.getElementById('progressCount').textContent = '';
-    } else {
-      updateProgress(0, total, 0);
-    }
-  }
-  function updateProgress(done, total, etaSec) {
-    const pct = total > 0 ? Math.round((done / total) * 100) : 0;
-    document.getElementById('progressFill').style.width = `${pct}%`;
-    document.getElementById('progressCount').textContent = `${done}/${total} (${pct}%)`;
-    if (etaSec > 0) {
-      const m = Math.floor(etaSec / 60);
-      const s = etaSec % 60;
-      document.getElementById('progressEta').textContent = `ETA: ${m > 0 ? m + 'm ' : ''}${s}s`;
-    } else {
-      document.getElementById('progressEta').textContent = '';
-    }
-  }
-  function hideProgress() {
-    document.getElementById('progressBox').classList.add('hidden');
-  }
+    $('resultFilter').addEventListener('input', renderResults);
+    $('clearFiltersBtn').addEventListener('click', () => { state.colFilters.type.clear(); state.colFilters.advice.clear(); renderResults(); });
+    document.querySelector('#resultTable tbody').addEventListener('click', onResultClick);
+    wireSortHeaders('#resultTable', state.sortResults, renderResults);
+    wireColumnFilterHeaders();
 
-  // ---------- Helpers ----------
-  function esc(s) {
-    return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-  }
-  function fmtDate(d) {
-    if (!d) return '-';
-    if (typeof d === 'string') d = new Date(d);
-    if (!(d instanceof Date) || isNaN(d.getTime())) return '-';
-    return d.toISOString().substring(0, 10);
-  }
+    $('exportXlsxBtn').addEventListener('click', () => busy($('exportXlsxBtn'), () =>
+      Export.xlsx([{ name: 'StaleSites', rows: exportRows(), columns: Sites.EXPORT_COLUMNS }], `SPOTrim-StaleSites-${stamp()}.xlsx`)
+        .catch((e) => toast(`Export failed: ${e.message}`, 'err'))));
+    $('exportCsvBtn').addEventListener('click', () => Export.csv(exportRows(), { columns: Sites.EXPORT_COLUMNS, filename: `SPOTrim-StaleSites-${stamp()}.csv` }));
 
-  // ---------- Bootstrap ----------
-  (async function init() {
-    Log.info('SPOTrim starting...');
+    $('recoverBtn').addEventListener('click', recover);
+    $('forgetBtn').addEventListener('click', forgetLedger);
+
     try {
-      const acc = await Auth.init();
+      await Auth.init();
       const cfg = Auth.getAuthConfig();
-      const redir = Auth.getRedirectUri();
-      // Surface the active redirect URI so users can verify their app registration
-      const note = document.createElement('p');
-      note.style.fontSize = '12px';
-      note.style.color = 'var(--muted)';
-      note.innerHTML = `Active redirect URI: <code>${redir}</code> &nbsp; · &nbsp; Client ID: <code>${cfg.clientId}</code>`;
-      const card = document.getElementById('connectCard');
-      if (card && !card.querySelector('.redir-note')) {
-        note.classList.add('redir-note');
-        card.appendChild(note);
+      $('authNote').textContent = `Redirect URI ${Auth.getRedirectUri()}, client id ${cfg.clientId}`;
+      $('authNote').hidden = false;
+      refreshAuthUI();
+      if (Auth.getAccount()) {
+        try { await ensureHosts(); }
+        catch (e) { Log.dbg(`SharePoint host not detected yet: ${e.message}`); }
       }
-      if (acc) {
-        Log.info(`Restored session: ${acc.username}`);
-        setSignedInUI(acc);
-      } else {
-        setSignedInUI(null);
-      }
+      Log.info('SPOTrim ready.');
     } catch (e) {
-      Log.err('Init failed:', e);
-      toast(`Init failed: ${e.message}`, 10000);
-      const card = document.getElementById('connectCard');
-      if (card) {
-        const err = document.createElement('p');
-        err.style.color = 'var(--danger)';
-        err.textContent = `Could not initialize: ${e.message}`;
-        card.appendChild(err);
-      }
+      Log.err('Start-up failed:', e);
+      toast(`Start-up failed: ${e.message}`, 'err');
+      $('connectCard').querySelector('div:last-child').appendChild(h('p.notice.notice-err', { text: `Could not start: ${e.message}` }));
     }
-  })();
+    renderRecovery();
+  }
+
+  document.addEventListener('DOMContentLoaded', boot);
 })();

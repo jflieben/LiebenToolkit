@@ -112,182 +112,88 @@
     return dedupeUrls(candidates).filter(candidate => candidate && candidate !== url);
   }
 
-  const THROTTLE_STATUS = new Set([429, 503, 504]);
-  const MAX_THROTTLE_RETRIES = 3;
-
-  function sleep(ms) {
-    return new Promise(resolve => setTimeout(resolve, ms));
+  // Graph and ARM calls go through the shared Http client (retry, backoff, Retry-After).
+  // A deadline covers the call including its retries; the runner's per-control timeout
+  // is the outer bound.
+  function deadline(timeoutMs) {
+    const controller = new AbortController();
+    let fired = false;
+    const timer = setTimeout(() => { fired = true; controller.abort(); }, timeoutMs * 3);
+    return { signal: controller.signal, timedOut: () => fired, done: () => clearTimeout(timer) };
   }
 
-  function throttleWaitMs(response, attempt) {
-    const retryAfter = Number(response?.headers?.get?.('Retry-After'));
-    if (Number.isFinite(retryAfter) && retryAfter > 0) return Math.min(retryAfter, 120) * 1000;
-    return Math.min(2 ** attempt, 30) * 1000;
+  async function send(label, url, { method, body, headers, token, timeoutMs }) {
+    const startedAt = performance.now();
+    const limit = deadline(timeoutMs);
+    const traceBase = () => ({ method, url, durationMs: Math.round(performance.now() - startedAt), requestPreview: truncatePreview(body, 1200) });
+    let response;
+    try {
+      response = await Http.request(url, { method, body, headers, token, retries: 3, signal: limit.signal, raw: true, label });
+    } catch (error) {
+      if (limit.timedOut()) {
+        const timeoutError = new Error(`${label} request timed out after ${Math.round((timeoutMs * 3) / 1000)}s: ${url}`);
+        timeoutError.status = 408;
+        recordTrace({ ...traceBase(), status: 408, ok: false, responsePreview: timeoutError.message, nextLink: null });
+        throw timeoutError;
+      }
+      recordTrace({ ...traceBase(), status: 0, ok: false, responsePreview: truncatePreview(error.message || `${error}`, 3000), nextLink: null });
+      throw error;
+    } finally {
+      limit.done();
+    }
+    const status = response.status;
+    const rawText = status === 204 ? '' : await response.text();
+    let parsed = null;
+    if (rawText) { try { parsed = JSON.parse(rawText); } catch { parsed = rawText; } }
+    recordTrace({ ...traceBase(), status, ok: response.ok, responsePreview: truncatePreview(parsed ?? rawText, 3000), nextLink: parsed?.['@odata.nextLink'] || parsed?.nextLink || null });
+    return { response, status, rawText, parsed };
   }
+
+  // Tokens are silent during a run: consent is settled before the run starts, and a
+  // popup or redirect halfway through a scan would lose it.
+  const graphToken = () => Auth.getToken('read', { interactive: false });
 
   async function fetchJson(url, options) {
     const method = options.method || 'GET';
-    const scopes = options.scopes || null;
-    const body = options.body;
     const timeoutMs = Number(options.timeoutMs) > 0 ? Number(options.timeoutMs) : GRAPH_REQUEST_TIMEOUT_MS;
-    const token = await Auth.getToken(scopes);
-    if (!token) throw new Error('Interactive consent started. Retry after sign-in redirect.');
+    const { response, status, rawText, parsed } = await send('Graph', url, { method, body: options.body, headers: options.headers, token: graphToken, timeoutMs });
 
-    const startedAt = performance.now();
-    let status = 0;
-    let rawText = '';
-
-    try {
-      let response;
-      // All calls in this app are reads, so retrying throttled responses is always safe.
-      for (let attempt = 1; ; attempt += 1) {
-        const controller = new AbortController();
-        const timeout = setTimeout(() => controller.abort(), timeoutMs);
-        try {
-          response = await fetch(url, {
-            method,
-            headers: {
-              Authorization: `Bearer ${token}`,
-              'Content-Type': 'application/json',
-              ...(options.headers || {}),
-            },
-            body: body ? JSON.stringify(body) : undefined,
-            signal: controller.signal,
-          });
-        } finally {
-          clearTimeout(timeout);
-        }
-        if (!THROTTLE_STATUS.has(response.status) || attempt > MAX_THROTTLE_RETRIES) break;
-        const waitMs = throttleWaitMs(response, attempt);
-        recordTrace({
-          method,
-          url,
-          status: response.status,
-          ok: false,
-          durationMs: Math.round(performance.now() - startedAt),
-          requestPreview: truncatePreview(body, 1200),
-          responsePreview: `Throttled (attempt ${attempt}/${MAX_THROTTLE_RETRIES}); retrying in ${Math.round(waitMs / 1000)}s`,
-          nextLink: null,
-        });
-        await sleep(waitMs);
-      }
-
-      status = response.status;
-      rawText = response.status === 204 ? '' : await response.text();
-
-      let parsed = null;
-      if (rawText) {
-        try {
-          parsed = JSON.parse(rawText);
-        } catch {
-          parsed = rawText;
-        }
-      }
-
-      recordTrace({
-        method,
-        url,
-        status,
-        ok: response.ok,
-        durationMs: Math.round(performance.now() - startedAt),
-        requestPreview: truncatePreview(body, 1200),
-        responsePreview: truncatePreview(parsed ?? rawText, 3000),
-        nextLink: parsed?.['@odata.nextLink'] || null,
-      });
-
-      if (!response.ok) {
-        if (
-          method === 'GET' &&
-          status === 400 &&
-          (options._fallbackDepth || 0) < 3
-        ) {
-          const candidates = build400FallbackUrls(url, rawText);
-          for (const candidate of candidates) {
-            try {
-              return await fetchJson(candidate, {
-                ...options,
-                _fallbackDepth: (options._fallbackDepth || 0) + 1,
-              });
-            } catch (retryErr) {
-              if (retryErr?.status !== 400) throw retryErr;
-            }
+    if (!response.ok) {
+      if (method === 'GET' && status === 400 && (options._fallbackDepth || 0) < 3) {
+        for (const candidate of build400FallbackUrls(url, rawText)) {
+          try {
+            return await fetchJson(candidate, { ...options, _fallbackDepth: (options._fallbackDepth || 0) + 1 });
+          } catch (retryErr) {
+            if (retryErr?.status !== 400) throw retryErr;
           }
         }
-
-        const err = new Error(`Graph ${status}: ${rawText}`);
-        err.status = status;
-        throw err;
       }
-
-      if (response.status === 204) return null;
-      return parsed;
-    } catch (error) {
-      if (error && (error.name === 'AbortError' || /aborted|timeout/i.test(`${error.message || ''}`))) {
-        const timeoutError = new Error(`Graph request timed out after ${timeoutMs}ms: ${url}`);
-        timeoutError.status = 408;
-        recordTrace({
-          method,
-          url,
-          status: 408,
-          ok: false,
-          durationMs: Math.round(performance.now() - startedAt),
-          requestPreview: truncatePreview(body, 1200),
-          responsePreview: truncatePreview(timeoutError.message, 3000),
-          nextLink: null,
-        });
-        throw timeoutError;
-      }
-      recordTrace({
-        method,
-        url,
-        status,
-        ok: false,
-        durationMs: Math.round(performance.now() - startedAt),
-        requestPreview: truncatePreview(body, 1200),
-        responsePreview: truncatePreview(rawText || error.message || `${error}`, 3000),
-        nextLink: null,
-      });
-      throw error;
+      const err = new Error(`Graph ${status}: ${rawText}`);
+      err.status = status;
+      throw err;
     }
+    return status === 204 ? null : parsed;
   }
 
   const ARM_ROOT = 'https://management.azure.com';
   const ARM_SCOPE = 'https://management.azure.com/user_impersonation';
 
-  // Azure Resource Manager fetch. Uses a delegated ARM token; throws a tagged error
-  // (armConsent) when the ARM scope has not been consented so callers can skip cleanly.
+  // Azure Resource Manager fetch with the 'arm' scope set. Throws a tagged error
+  // (armConsent) when no ARM token can be had silently, so callers can skip cleanly.
   async function armFetch(url, options) {
     const opts = options || {};
     const method = opts.method || 'GET';
-    const body = opts.body;
     const timeoutMs = Number(opts.timeoutMs) > 0 ? Number(opts.timeoutMs) : GRAPH_REQUEST_TIMEOUT_MS;
-    const token = await Auth.getTokenSilent([ARM_SCOPE]);
-    if (!token) { const e = new Error('Azure Resource Manager consent is required.'); e.status = 401; e.armConsent = true; throw e; }
-
-    const startedAt = performance.now();
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), timeoutMs);
-    let response, rawText = '', status = 0;
+    let token;
     try {
-      response = await fetch(url, {
-        method,
-        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-        body: body ? JSON.stringify(body) : undefined,
-        signal: controller.signal,
-      });
-      status = response.status;
-      rawText = response.status === 204 ? '' : await response.text();
-    } catch (error) {
-      recordTrace({ method, url, status: 0, ok: false, durationMs: Math.round(performance.now() - startedAt), requestPreview: truncatePreview(body, 1200), responsePreview: truncatePreview(error.message || `${error}`, 3000), nextLink: null });
-      if (error && (error.name === 'AbortError' || /aborted|timeout/i.test(`${error.message || ''}`))) { const e = new Error(`ARM request timed out after ${timeoutMs}ms`); e.status = 408; throw e; }
-      throw error;
-    } finally {
-      clearTimeout(timeout);
+      token = await Auth.getToken('arm', { interactive: false });
+    } catch {
+      const e = new Error('Azure Resource Manager consent is required.');
+      e.status = 401;
+      e.armConsent = true;
+      throw e;
     }
-
-    let parsed = null;
-    if (rawText) { try { parsed = JSON.parse(rawText); } catch { parsed = rawText; } }
-    recordTrace({ method, url, status, ok: response.ok, durationMs: Math.round(performance.now() - startedAt), requestPreview: truncatePreview(body, 1200), responsePreview: truncatePreview(parsed ?? rawText, 3000), nextLink: parsed?.['@odata.nextLink'] || parsed?.nextLink || null });
+    const { response, status, rawText, parsed } = await send('ARM', url, { method, body: opts.body, token, timeoutMs });
     if (!response.ok) { const err = new Error(`ARM ${status}: ${rawText}`); err.status = status; throw err; }
     return parsed;
   }
@@ -333,7 +239,6 @@
     while (nextUrl) {
       const payload = await fetchJson(nextUrl, {
         method: options.method || 'GET',
-        scopes: options.scopes || null,
         timeoutMs: options.timeoutMs,
         headers: options.headers,
       });
@@ -358,7 +263,6 @@
     while (nextUrl) {
       const payload = await fetchJson(nextUrl, {
         method: 'GET',
-        scopes: options.scopes || null,
         timeoutMs: options.timeoutMs,
         headers: options.headers,
       });

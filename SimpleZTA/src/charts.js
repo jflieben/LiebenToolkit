@@ -1,8 +1,8 @@
 (() => {
   // Dependency-free SVG chart components for the dashboard and the native HTML report.
-  // Colors are referenced through CSS custom properties (--viz-*) defined in style.css for
-  // both themes, so charts restyle with the theme toggle and inline correctly when the
-  // dashboard markup is serialized into the standalone report export.
+  // Colors are CSS custom properties (--viz-*). In the app style.css maps them onto the
+  // shared toolkit tokens, so charts follow the theme toggle without a re-render; the
+  // standalone report defines its own values. No style attributes (CSP).
   //
   // Every mark carries a visible text label (palette relief rule) and identity is never
   // color-alone: legends and labels accompany all multi-series visuals.
@@ -70,10 +70,15 @@
     return STATUS_COLOR[status] || 'var(--viz-neutral)';
   }
 
+  // Color chip as SVG (fill is a presentation attribute, not inline style).
+  function swatch(color, cls) {
+    return `<svg class="${esc(cls || 'viz-swatch')}" viewBox="0 0 10 10" aria-hidden="true" focusable="false"><rect width="10" height="10" rx="3" fill="${esc(color)}"/></svg>`;
+  }
+
   // ---- Stat tile -------------------------------------------------------------------------
 
   function tile(label, value, sub) {
-    return `<div class="kpi"><div class="label">${esc(label)}</div><div class="value">${esc(value)}</div>${sub ? `<div class="label">${esc(sub)}</div>` : ''}</div>`;
+    return `<div class="stat"><span class="label">${esc(label)}</span><span class="value">${esc(value)}</span>${sub ? `<span class="foot">${esc(sub)}</span>` : ''}</div>`;
   }
 
   // ---- Radial gauge (pillar scorecard) ---------------------------------------------------
@@ -88,7 +93,7 @@
     const cy = size / 2;
     const circumference = 2 * Math.PI * r;
     const arc = Math.max(0, Math.min(1, pct)) * circumference;
-    const pctText = total > 0 ? `${Math.round(pct * 100)}%` : '—';
+    const pctText = total > 0 ? `${Math.round(pct * 100)}%` : '-';
     const subText = total > 0 ? `${fmt(value)}/${fmt(total)} passed` : 'no scored tests';
     return `
       <div class="viz-gauge" data-tip="${esc(opts.label)}: ${esc(subText)}">
@@ -133,14 +138,14 @@
         const pctLabel = `${Math.round(frac * 100)}%`;
         paths += `<path d="${d}" fill="none" stroke="${s.color}" stroke-width="18" data-tip="${esc(s.label)}: ${fmt(s.value)} (${pctLabel})"/>`;
         // 2px surface gap between segments
-        paths += `<line x1="${x2.toFixed(2)}" y1="${y2.toFixed(2)}" x2="${(cx + (r + 12) * Math.cos(end)).toFixed(2)}" y2="${(cy + (r + 12) * Math.sin(end)).toFixed(2)}" stroke="var(--card)" stroke-width="2"/>`;
+        paths += `<line x1="${x2.toFixed(2)}" y1="${y2.toFixed(2)}" x2="${(cx + (r + 12) * Math.cos(end)).toFixed(2)}" y2="${(cy + (r + 12) * Math.sin(end)).toFixed(2)}" stroke="var(--viz-surface)" stroke-width="2"/>`;
         angle = end;
       }
     }
 
     const legend = (opts.segments || []).map(s => `
       <div class="viz-legend-row">
-        <span class="viz-swatch" style="background:${s.color}"></span>
+        ${swatch(s.color)}
         <span class="viz-legend-label">${esc(s.label)}</span>
         <span class="viz-legend-value">${fmt(s.value)}</span>
       </div>`).join('');
@@ -263,7 +268,7 @@
 
   // ---- Heatmap (HTML table doubles as the accessible table view) --------------------------
 
-  const SEQ_STEPS = ['var(--viz-seq-1)', 'var(--viz-seq-2)', 'var(--viz-seq-3)', 'var(--viz-seq-4)', 'var(--viz-seq-5)'];
+  const SEQ_STEPS = 5; // .viz-heat-1 .. .viz-heat-5
 
   function heatmap(opts) {
     const rows = opts.rows || [];
@@ -276,9 +281,8 @@
       const cells = cols.map(c => {
         const v = get(r, c);
         if (!max || !v) return `<td class="viz-heat-cell viz-heat-zero">0</td>`;
-        const idx = Math.min(SEQ_STEPS.length - 1, Math.floor((v / max) * SEQ_STEPS.length));
-        const dark = idx >= 3;
-        return `<td class="viz-heat-cell${dark ? ' viz-heat-dark' : ''}" style="background:${SEQ_STEPS[idx]}" data-tip="${esc(r)} × ${esc(c)}: ${fmt(v)}">${fmt(v)}</td>`;
+        const idx = Math.min(SEQ_STEPS - 1, Math.floor((v / max) * SEQ_STEPS));
+        return `<td class="viz-heat-cell viz-heat-${idx + 1}" data-tip="${esc(r)} × ${esc(c)}: ${fmt(v)}">${fmt(v)}</td>`;
       }).join('');
       return `<tr><th>${esc(r)}</th>${cells}</tr>`;
     }).join('');
@@ -331,13 +335,13 @@
       const pts = s.points.map((p, i) => `${x(i).toFixed(1)},${y(p.value).toFixed(1)}`).join(' ');
       paths += `<polyline points="${pts}" fill="none" stroke="${s.color}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>`;
       s.points.forEach((p, i) => {
-        dots += `<circle cx="${x(i).toFixed(1)}" cy="${y(p.value).toFixed(1)}" r="3.5" fill="${s.color}" stroke="var(--card)" stroke-width="2"/>`;
-        dots += `<circle cx="${x(i).toFixed(1)}" cy="${y(p.value).toFixed(1)}" r="10" fill="transparent" data-tip="${esc(s.name)} — ${esc(p.label)}: ${p.value}${opts.unit || ''}"/>`;
+        dots += `<circle cx="${x(i).toFixed(1)}" cy="${y(p.value).toFixed(1)}" r="3.5" fill="${s.color}" stroke="var(--viz-surface)" stroke-width="2"/>`;
+        dots += `<circle cx="${x(i).toFixed(1)}" cy="${y(p.value).toFixed(1)}" r="10" fill="transparent" data-tip="${esc(s.name)}, ${esc(p.label)}: ${p.value}${opts.unit || ''}"/>`;
       });
     }
 
     const legend = series.length > 1
-      ? `<div class="viz-legend viz-legend-inline">${series.map(s => `<span class="viz-legend-row"><span class="viz-swatch" style="background:${s.color}"></span><span class="viz-legend-label">${esc(s.name)}</span></span>`).join('')}</div>`
+      ? `<div class="viz-legend viz-legend-inline">${series.map(s => `<span class="viz-legend-row">${swatch(s.color)}<span class="viz-legend-label">${esc(s.name)}</span></span>`).join('')}</div>`
       : '';
 
     return `
@@ -397,6 +401,7 @@
     sparkline,
     attachTooltips,
     statusColor,
+    swatch,
     SERIES,
   };
 })();

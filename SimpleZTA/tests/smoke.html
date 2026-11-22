@@ -17,9 +17,13 @@
       window.__smokeErrors.push(`unhandledrejection: ${e.reason?.message || e.reason}`);
     };
     // Stub Auth so registry/report modules run without MSAL in the harness.
-    window.Auth = { coreScopes: [], getAccount: () => null, getToken: async () => null, getTokenSilent: async () => null };
+    window.Auth = { getAccount: () => null, getToken: async () => { throw new Error('Not signed in'); } };
   </script>
-  <script src="src/log.js"></script>
+  <script src="../shared/registry.js"></script>
+  <script src="../shared/toolkit.js"></script>
+  <script src="../shared/log.js"></script>
+  <script src="../shared/http.js"></script>
+  <script src="../shared/export.js"></script>
   <script src="src/api.js"></script>
   <script src="src/storage.js"></script>
   <script src="src/md.js"></script>
@@ -168,6 +172,9 @@
         assert(html.includes('reportData= {'), 'splice marker');
         assert(html.includes('contoso.onmicrosoft.com'), 'tenant data embedded');
         assert(!html.includes('a<' + '/script>pp1'), 'script tag escaped in evidence');
+        const evilName = 'x<' + '!--<' + 'script>y';
+        const evil = await ReportOfficial.buildReportHtml({ ...fakeScan, tenantName: evilName });
+        assert(!evil.includes(evilName), 'comment opener in tenant name escaped');
         assert(html.length > 2000000, 'template bulk present');
       });
 

@@ -1,11 +1,10 @@
-// Transfer engine. Orchestrates a job end-to-end: enumerate source files, then
-// copy/move each to the target with the chosen options, checkpointing progress
-// so an interrupted run can resume. Same-tenant transfers use SharePoint's
-// server-side MoveCopyUtil (no bytes through the browser); cross-tenant and
-// version-preserving transfers stream bytes download->upload.
+// Transfer engine. Runs a job end to end: enumerate the source, then copy or move each
+// file to the target with the chosen options, checkpointing progress so an interrupted
+// run can resume. Same tenant uses SharePoint's server-side MoveCopyUtil (no bytes through
+// the browser); cross-tenant and version-preserving transfers stream download to upload.
 (() => {
   const SP = () => window.SharePoint;
-  const running = new Map(); // jobId -> { cancelToken, promise }
+  const running = new Map(); // jobId -> { cancelToken, promise, roles }
 
   function rolesFor(job) {
     const sameTenant = job.config.mode === 'same';
@@ -29,17 +28,19 @@
     const cancelToken = new Concurrency.CancelToken();
     const speed = { lastTs: Date.now(), lastBytes: job.stats.bytesDone || 0, bps: 0 };
     const ctx = { cancelToken, callbacks, speed, lastSave: 0, lastItemSave: 0, items: null };
-    const promise = _run(job, ctx).catch(async e => {
+    const promise = _run(job, ctx).catch(async (e) => {
       Log.err(`Job ${jobId} failed:`, e);
-      if (ctx.items) { try { await Jobs.saveItems(jobId, ctx.items); } catch {} }
-      job = Jobs.get(jobId) || job;
-      if (job.status !== 'cancelled') { job.status = 'failed'; job.lastError = e.message; }
-      job.finishedAt = Date.now();
+      if (ctx.items) { try { await Jobs.saveItems(jobId, ctx.items); } catch { /* best effort */ } }
+      const latest = Jobs.get(jobId) || job;
+      if (cancelToken.cancelled || /^Cancelled$/.test(e.message || '')) latest.status = 'cancelled';
+      else { latest.status = 'failed'; latest.lastError = e.message; }
+      latest.finishedAt = Date.now();
+      Object.assign(job, latest);
       Jobs.save(job);
       _emit(ctx, job);
       throw e;
     }).finally(() => running.delete(jobId));
-    running.set(jobId, { cancelToken, promise });
+    running.set(jobId, { cancelToken, promise, roles: rolesFor(job) });
     return promise;
   }
 
@@ -47,14 +48,18 @@
   function resumeRun(jobId) { running.get(jobId)?.cancelToken.resume(); }
   function cancel(jobId) { running.get(jobId)?.cancelToken.cancel(); }
   function isRunning(jobId) { return running.has(jobId); }
+  // Connection roles that running jobs depend on right now.
+  function rolesInUse() {
+    const out = new Set();
+    for (const r of running.values()) { out.add(r.roles.sourceRole); out.add(r.roles.targetRole); }
+    return out;
+  }
 
   function _emit(ctx, job, current) {
-    // Rolling speed estimate.
     const now = Date.now();
     const dt = (now - ctx.speed.lastTs) / 1000;
     if (dt >= 0.5) {
-      const db = job.stats.bytesDone - ctx.speed.lastBytes;
-      ctx.speed.bps = db / dt;
+      ctx.speed.bps = (job.stats.bytesDone - ctx.speed.lastBytes) / dt;
       ctx.speed.lastTs = now;
       ctx.speed.lastBytes = job.stats.bytesDone;
     }
@@ -73,14 +78,12 @@
     }
   }
 
-  // Item-status checkpoint to IndexedDB. Throttled hard because it rewrites the whole
-  // (potentially huge) item array; on resume at most this interval of work is redone.
+  // Rewrites the whole item array, so it is throttled hard; a resume redoes at most this interval.
   async function _saveItemsThrottled(ctx, job, force = false) {
     const now = Date.now();
     if (force || now - ctx.lastItemSave > 10000) {
       ctx.lastItemSave = now;
-      try { await Jobs.saveItems(job.id, job.items); }
-      catch (e) { Log.warn(`Item checkpoint failed: ${e.message}`); }
+      try { await Jobs.saveItems(job.id, job.items); } catch (e) { Log.warn(`Item checkpoint failed: ${e.message}`); }
     }
   }
 
@@ -88,16 +91,17 @@
     const roles = rolesFor(job);
     const cfg = job.config;
 
-    // --- validate both connections ---
     if (!Auth.isConnected(roles.sourceRole)) throw new Error('Source tenant is not connected');
     if (roles.targetRole === 'target' && !Auth.isConnected('target')) throw new Error('Target tenant is not connected');
+
+    const overlap = MoveRules.overlapError(cfg.source, cfg.target);
+    if (overlap) throw new Error(overlap);
 
     const srcCheck = await SP().validateConnection(roles.sourceRole, cfg.source.siteUrl);
     if (!srcCheck.ok) throw new Error(`Source site not reachable: ${srcCheck.error}`);
     const dstCheck = await SP().validateConnection(roles.targetRole, cfg.target.siteUrl);
     if (!dstCheck.ok) throw new Error(`Target site not reachable: ${dstCheck.error}`);
 
-    // --- re-run (re-scan + diff), resume (load), or first-run (enumerate) ---
     if (job.rerun) {
       const mode = job.rerun;
       job.rerun = null;
@@ -106,19 +110,32 @@
       Jobs.save(job);
       _emit(ctx, job);
       Log.info(`Re-run (${mode}): re-scanning ${cfg.source.folder} ...`);
-      const files = await SP().enumerateFiles(roles.sourceRole, cfg.source.siteUrl, cfg.source.folder, {
-        cancelToken: ctx.cancelToken,
-        onProgress: (found) => ctx.callbacks.onEnumerate?.(found),
-      });
-      job.items = buildRerunItems(mode, prevItems, files, cfg);
+      const scan = await scanSource(job, roles, ctx);
+      const plan = MoveRules.planRerun(mode, prevItems, scan.files, { operation: cfg.operation, unlistedFolders: scan.failedFolders });
+      job.items = plan.items;
       ctx.items = job.items;
+      if (plan.blockedDeletes) {
+        Log.warn(`Sync: ${scan.failedFolders.length} source folder(s) could not be listed, so nothing is deleted from the target in this run (${plan.blockedDeletes} file(s) would have been).`);
+      }
+      if (plan.deletes.length) {
+        const share = MoveRules.deleteShare(plan.deletes.length, prevItems);
+        const paths = plan.deletes.map((d) => `${SP().trimUrl(cfg.target.folder)}/${d.subPath}`);
+        const ok = ctx.callbacks.confirmDeletes ? await ctx.callbacks.confirmDeletes(job, paths, share) : false;
+        ctx.cancelToken.throwIfCancelled();
+        if (ok) {
+          job.items.push(...MoveRules.deleteItems(plan.deletes));
+          Log.info(`Sync: deleting ${plan.deletes.length} target file(s) after confirmation.`);
+        } else {
+          Log.info(`Sync: kept ${plan.deletes.length} target file(s) that are gone from the source (not confirmed).`);
+        }
+      }
       if (cfg.includeVersions) await enrichVersions(job, roles, ctx);
       recomputeStats(job);
       await Jobs.saveItems(job.id, job.items);
       Jobs.save(job);
-      const np = job.items.filter(i => i.status === 'pending' && !i.op).length;
-      const nd = job.items.filter(i => i.op === 'delete').length;
-      Log.info(`Re-run (${mode}): ${job.items.length} source item(s) — ${np} to (re)transfer, ${nd} to delete from target, ${job.stats.skipped} unchanged.`);
+      const np = job.items.filter((i) => i.status === 'pending' && !i.op).length;
+      const nd = job.items.filter((i) => i.op === 'delete').length;
+      Log.info(`Re-run (${mode}): ${job.items.length} item(s), ${np} to transfer, ${nd} to delete from the target, ${job.stats.skipped} unchanged.`);
     } else {
       if (!job.items) job.items = await Jobs.loadItems(job.id);
       if (!job.items.length) {
@@ -126,21 +143,11 @@
         Jobs.save(job);
         _emit(ctx, job);
         Log.info(`Enumerating files under ${cfg.source.folder} ...`);
-        const files = await SP().enumerateFiles(roles.sourceRole, cfg.source.siteUrl, cfg.source.folder, {
-          cancelToken: ctx.cancelToken,
-          onProgress: (found) => ctx.callbacks.onEnumerate?.(found),
-        });
-        job.items = files.map(f => ({
-          subPath: f.subPath,
-          size: f.size,
-          modified: f.modified,
-          status: 'pending',
-          error: null,
-        }));
+        const scan = await scanSource(job, roles, ctx);
+        job.items = scan.files.map((f) => ({ subPath: f.subPath, size: f.size, modified: f.modified, status: 'pending', error: null }));
         ctx.items = job.items;
-        // When preserving version history, read each file's versions up front so the
-        // reported totals (size + count) and the progress bar reflect the ACTUAL data
-        // moved. The compact list is cached on the item and reused at transfer time.
+        // With versions, read the history up front so totals and progress match the data
+        // that really moves. The list is cached on the item for the transfer.
         if (cfg.includeVersions) await enrichVersions(job, roles, ctx);
         job.stats.total = job.items.length;
         job.stats.bytesTotal = job.items.reduce((a, b) => a + itemBytes(b), 0);
@@ -155,15 +162,15 @@
       }
     }
 
+    const unlisted = (job.unlistedFolders || []).length > 0;
     if (job.stats.total === 0) {
-      job.status = 'completed';
+      job.status = unlisted ? 'completed_with_errors' : 'completed';
       job.finishedAt = Date.now();
       Jobs.save(job);
       _emit(ctx, job);
       return job;
     }
 
-    // --- run ---
     job.status = 'running';
     job.startedAt = job.startedAt || Date.now();
     job.lastError = null;
@@ -172,20 +179,16 @@
 
     const hostSrc = SP().hostOf(cfg.source.siteUrl);
     const ensureFolder = makeFolderEnsurer(cfg, roles, ctx);
-    const pending = job.items.filter(it => it.status !== 'done' && it.status !== 'skipped' && it.status !== 'deleted');
+    const pending = job.items.filter((it) => it.status !== 'done' && it.status !== 'skipped' && it.status !== 'deleted');
 
     await Concurrency.pmap(pending, async (item) => {
       ctx.cancelToken.throwIfCancelled();
       await ctx.cancelToken.waitIfPaused();
       item.attempts = (item.attempts || 0) + 1;
       try {
-        // Race against cancellation so a click stops the job promptly even while an item
-        // is stuck in a long throttle wait or transfer (the orphaned op self-terminates
-        // at the next cancellation checkpoint inside transferItem).
-        const res = await Concurrency.raceCancel(
-          transferItem(job, roles, item, { ensureFolder, hostSrc, ctx }),
-          ctx.cancelToken.signal
-        );
+        // Raced against cancellation so a click stops the job even during a long throttle
+        // wait; the orphaned call stops at its next cancellation check.
+        const res = await Concurrency.raceCancel(transferItem(job, roles, item, { ensureFolder, hostSrc, ctx }), ctx.cancelToken.signal);
         if (res && res.deleted) {
           item.status = 'deleted';
           item.error = null;
@@ -216,32 +219,39 @@
       _emit(ctx, job, item.subPath);
     }, { concurrency: cfg.concurrency || 4, cancelToken: ctx.cancelToken });
 
-    // --- finalize ---
-    if (ctx.cancelToken.cancelled) {
-      job.status = 'cancelled';
-    } else {
-      job.status = job.stats.failed > 0 ? 'completed_with_errors' : 'completed';
-    }
+    if (ctx.cancelToken.cancelled) job.status = 'cancelled';
+    else job.status = job.stats.failed > 0 || unlisted ? 'completed_with_errors' : 'completed';
     job.finishedAt = Date.now();
     await _saveItemsThrottled(ctx, job, true);
     Jobs.save(job);
     _emit(ctx, job);
-    Log.info(`Job ${job.id} ${job.status}: ${job.stats.done} done, ${job.stats.failed} failed.`);
+    Log.info(`Job ${job.id} ${job.status}: ${job.stats.done} done, ${job.stats.failed} failed${unlisted ? `, ${job.unlistedFolders.length} folder(s) not listed` : ''}.`);
     return job;
   }
 
-  // Bytes a single item accounts for: its current content plus any version history
-  // that will be replayed (0 unless includeVersions enriched the item).
+  // The root must list. A subfolder that fails is recorded on the job (card and report)
+  // and blocks sync deletes for this run.
+  async function scanSource(job, roles, ctx) {
+    const cfg = job.config;
+    const scan = await SP().enumerateFiles(roles.sourceRole, cfg.source.siteUrl, cfg.source.folder, {
+      cancelToken: ctx.cancelToken,
+      onProgress: (found) => ctx.callbacks.onEnumerate?.(found),
+    });
+    const rootFail = scan.failedFolders.find((f) => MoveRules.normPath(f.folder) === MoveRules.normPath(cfg.source.folder));
+    if (rootFail) throw new Error(`Could not list the source folder: ${rootFail.error}`);
+    job.unlistedFolders = scan.failedFolders.map((f) => ({ folder: f.folder, error: f.error }));
+    if (job.unlistedFolders.length) Log.warn(`${job.unlistedFolders.length} source folder(s) could not be listed; their files are not part of this run.`);
+    return scan;
+  }
+
+  // Current content plus any version history that will be replayed.
   function itemBytes(item) { return (item.size || 0) + (item.versionBytes || 0); }
 
-  // Read each file's non-current version history in parallel and cache a compact list
-  // on the item, so totals are accurate before the transfer starts and the transfer
-  // reuses the list instead of fetching it again.
   async function enrichVersions(job, roles, ctx) {
     const cfg = job.config;
     const SPm = SP();
     const base = SPm.trimUrl(cfg.source.folder);
-    const targets = job.items.filter(i => i.status === 'pending' && !i.op);
+    const targets = job.items.filter((i) => i.status === 'pending' && !i.op);
     if (!targets.length) return;
     let done = 0;
     Log.info(`Reading version history for ${targets.length} file(s) ...`);
@@ -249,14 +259,14 @@
       ctx.cancelToken.throwIfCancelled();
       try {
         const versions = (await SPm.getFileVersions(roles.sourceRole, cfg.source.siteUrl, `${base}/${item.subPath}`))
-          .filter(v => !v.isCurrent)
+          .filter((v) => !v.isCurrent)
           .sort((a, b) => new Date(a.created) - new Date(b.created))
-          .map(v => ({ id: v.id, label: v.label, created: v.created, size: v.size }));
+          .map((v) => ({ id: v.id, label: v.label, created: v.created, size: v.size }));
         item.versions = versions;
         item.versionCount = versions.length;
         item.versionBytes = versions.reduce((a, v) => a + (v.size || 0), 0);
       } catch (e) {
-        // Leave item.versions undefined so transferItem fetches it at transfer time.
+        // transferItem fetches the list again at transfer time.
         item.versionCount = 0;
         item.versionBytes = 0;
         Log.warn(`Could not read versions for ${item.subPath}: ${e.message}`);
@@ -274,42 +284,13 @@
       if (it.status === 'done') { s.done++; s.bytesDone += tb; }
       else if (it.status === 'skipped') { s.skipped++; s.bytesDone += tb; }
       else if (it.status === 'deleted') { s.deleted++; }
-      else if (it.status === 'failed') { it.status = 'pending'; } // retry failures on resume
+      else if (it.status === 'failed') { it.status = 'pending'; } // failures are retried on resume
     }
     job.stats = s;
   }
 
-  // Build the item list for a re-run by diffing a fresh source scan against the previous run.
-  // 'full' re-transfers everything currently in the source. 'incremental' transfers only new +
-  // changed files, carries unchanged files as skipped, and (for copy jobs) queues a target
-  // delete for files that were transferred before but are now gone from the source. Move jobs
-  // never queue deletes (their transferred files are meant to be absent from the source).
-  function buildRerunItems(mode, prevItems, files, cfg) {
-    const prevByPath = new Map((prevItems || []).map(i => [i.subPath, i]));
-    const seen = new Set();
-    const out = [];
-    for (const f of files) {
-      seen.add(f.subPath);
-      const base = { subPath: f.subPath, size: f.size, modified: f.modified, status: 'pending', error: null };
-      if (mode === 'full') { out.push(base); continue; }
-      const prev = prevByPath.get(f.subPath);
-      if (!prev) { out.push(base); continue; }                               // new file
-      if (isSourceNewer(f.modified, prev.modified)) { out.push(base); continue; } // changed
-      out.push({ ...base, status: 'skipped', skipReason: 'Unchanged since last run' });
-    }
-    if (mode === 'incremental' && cfg.operation !== 'move') {
-      for (const p of (prevItems || [])) {
-        if (seen.has(p.subPath)) continue;
-        if (p.status === 'done') out.push({ subPath: p.subPath, size: 0, modified: p.modified, status: 'pending', error: null, op: 'delete' });
-      }
-    }
-    return out;
-  }
-
-  // Build a folder-ensurer that creates each destination folder exactly once and always
-  // creates parents before children. Files in a new folder await the SAME creation
-  // promise, so nothing is transferred before its folder exists (folders are on the
-  // critical path). The target base folder is assumed to already exist.
+  // Creates each destination folder once, parents before children. Files in a new folder
+  // wait for the same promise. The target base folder already exists.
   function makeFolderEnsurer(cfg, roles, ctx) {
     const SPm = SP();
     const base = SPm.trimUrl(cfg.target.folder);
@@ -324,7 +305,7 @@
         await SPm.createFolder(roles.targetRole, cfg.target.siteUrl, path);
       })();
       cache.set(path, p);
-      p.catch(() => cache.delete(path)); // let a later file retry a failed create
+      p.catch(() => cache.delete(path));
       return p;
     }
     return ensure;
@@ -339,11 +320,13 @@
     const srcServerRel = `${SPm.trimUrl(cfg.source.folder)}/${item.subPath}`;
     const destServerRel = `${SPm.trimUrl(cfg.target.folder)}/${item.subPath}`;
     const destFolder = SPm.folderOf(destServerRel);
+    const srcAbs = `https://${hostSrc}${srcServerRel}`;
+    const destAbs = `https://${SPm.hostOf(dstSite)}${destServerRel}`;
 
     ctx.cancelToken.throwIfCancelled();
+    if (MoveRules.sameFile(srcAbs, destAbs)) throw new Error('Source and target are the same file. Nothing was changed.');
 
-    // Incremental re-run: the source object was removed since the last run — remove it from
-    // the target too (a 404 means it is already gone, which is fine).
+    // Sync: the source file is gone, remove the copy this job made (404: already gone).
     if (item.op === 'delete') {
       try { await SPm.deleteFile(roles.targetRole, dstSite, destServerRel); }
       catch (e) { if (e.status !== 404) throw e; }
@@ -354,50 +337,40 @@
 
     const byteMode = !roles.sameTenant || cfg.includeVersions;
 
-    // Existence-aware handling. onlyNewer: skip when the target exists and the source
-    // is not newer (timestamps are UTC from SharePoint, so the compare is timezone-safe).
-    // overwrite+byteMode: delete the existing target first so replayed version history
-    // starts clean instead of stacking new versions onto the old target file.
-    if (cfg.overwrite && (cfg.onlyNewer || byteMode)) {
+    // Byte mode always looks first: overwrite off skips an existing file before any version
+    // is replayed, overwrite on removes it (to the recycle bin) so the history starts clean.
+    if (byteMode || (cfg.overwrite && cfg.onlyNewer)) {
       let existing = null;
       try { existing = await SPm.getFileInfoIfExists(roles.targetRole, dstSite, destServerRel); }
-      catch (e) { Log.warn(`Could not check target for ${name}: ${e.message}`); }
-      if (existing) {
-        if (cfg.onlyNewer && !isSourceNewer(item.modified, existing.modified)) {
-          return { skipped: true, reason: 'Target already exists and is newer or the same age (only-newer is on)' };
-        }
-        if (byteMode) {
-          try { await SPm.deleteFile(roles.targetRole, dstSite, destServerRel); }
-          catch (e) { Log.warn(`Could not delete existing target ${name}: ${e.message}`); }
-        }
+      catch (e) { Log.warn(`Could not check the target for ${name}: ${e.message}`); }
+      const action = MoveRules.existingTargetAction(cfg, existing, item.modified, byteMode);
+      if (action === 'skip-exists') return { skipped: true, reason: 'Target file exists and overwrite is off' };
+      if (action === 'skip-not-newer') return { skipped: true, reason: 'Target exists and is the same age or newer (only-newer is on)' };
+      if (action === 'replace') {
+        try { await SPm.deleteFile(roles.targetRole, dstSite, destServerRel); }
+        catch (e) { Log.warn(`Could not remove the existing target ${name}: ${e.message}`); }
       }
     }
 
     if (!byteMode) {
-      // Fast path: server-side copy/move within the same tenant.
-      const hostDst = SPm.hostOf(dstSite);
-      const srcAbs = `https://${hostSrc}${srcServerRel}`;
-      const destAbs = `https://${hostDst}${destServerRel}`;
       const move = cfg.operation === 'move';
       const doTransfer = () => SPm.serverSideTransfer(roles.sourceRole, srcSite, srcAbs, destAbs, { move, overwrite: cfg.overwrite });
       ctx.cancelToken.throwIfCancelled();
       try {
         await doTransfer();
       } catch (e) {
-        // MoveCopyUtil returns 403/423 when it refuses to clobber an existing destination
-        // (typically on a full re-run overwriting files it created before). If overwrite is
-        // on and the target really exists, delete it and transfer fresh.
+        // MoveCopyUtil answers 403/423 when it will not replace an existing destination. With
+        // overwrite on and the target really there, remove it and transfer again.
         if (!(cfg.overwrite && (e.status === 403 || e.status === 423))) throw e;
         let existed = null;
-        try { existed = await SPm.getFileInfoIfExists(roles.targetRole, dstSite, destServerRel); } catch {}
+        try { existed = await SPm.getFileInfoIfExists(roles.targetRole, dstSite, destServerRel); } catch { /* treat as unknown */ }
         if (!existed) throw accessError(e, name);
-        await SPm.deleteFile(roles.targetRole, dstSite, destServerRel).catch(de => { throw accessError(de, name); });
+        await SPm.deleteFile(roles.targetRole, dstSite, destServerRel).catch((de) => { throw accessError(de, name); });
         ctx.cancelToken.throwIfCancelled();
-        await doTransfer().catch(re => { throw accessError(re, name); });
+        await doTransfer().catch((re) => { throw accessError(re, name); });
       }
-      // A copy carries over the original Author/Editor and can reset Created/Modified.
-      // Re-sync the original metadata when preserving it, or reset to the current
-      // user/now when not (the old ResetAuthorAndEditorOnCopy flag is unsupported).
+      // A copy keeps Author/Editor but can reset Created/Modified: put the original back,
+      // or reset to the current user and now when metadata is not preserved.
       if (cfg.operation === 'copy') {
         try {
           if (cfg.includeMetadata) {
@@ -409,32 +382,33 @@
           }
         } catch (e) { Log.warn(`Metadata update failed for ${name}: ${e.message}`); }
       }
-      return;
+      return undefined;
     }
 
-    // Byte path: optional version replay, then current content, then metadata.
+    // Byte path: version replay, then the current content, then metadata. The first upload
+    // follows the Overwrite option; later ones replace the file this run just created.
+    let created = false;
     if (cfg.includeVersions) {
       let versions = item.versions;
       if (!versions) {
         try {
           versions = (await SPm.getFileVersions(roles.sourceRole, srcSite, srcServerRel))
-            .filter(v => !v.isCurrent).sort((a, b) => new Date(a.created) - new Date(b.created));
+            .filter((v) => !v.isCurrent).sort((a, b) => new Date(a.created) - new Date(b.created));
         } catch (e) { Log.warn(`Could not read versions for ${name}: ${e.message}`); versions = []; }
       }
       for (const v of versions) {
+        ctx.cancelToken.throwIfCancelled();
         try {
           const blob = await SPm.downloadFileVersion(roles.sourceRole, srcSite, srcServerRel, v.id);
-          await SPm.uploadFile(roles.targetRole, dstSite, destFolder, name, blob, { overwrite: true, cancelToken: ctx.cancelToken });
+          await SPm.uploadFile(roles.targetRole, dstSite, destFolder, name, blob, { overwrite: MoveRules.uploadOverwrite(cfg.overwrite, created), cancelToken: ctx.cancelToken });
+          created = true;
         } catch (e) { Log.warn(`Version ${v.label} of ${name} skipped: ${e.message}`); }
       }
     }
 
     const blob = await SPm.downloadFile(roles.sourceRole, srcSite, srcServerRel);
     try {
-      await SPm.uploadFile(roles.targetRole, dstSite, destFolder, name, blob, {
-        overwrite: cfg.overwrite, cancelToken: ctx.cancelToken,
-        onProgress: (sent) => { /* per-file byte progress folds into item.size on completion */ },
-      });
+      await SPm.uploadFile(roles.targetRole, dstSite, destFolder, name, blob, { overwrite: MoveRules.uploadOverwrite(cfg.overwrite, created), cancelToken: ctx.cancelToken });
     } catch (e) { throw accessError(e, name); }
 
     if (cfg.includeMetadata) {
@@ -448,22 +422,13 @@
       ctx.cancelToken.throwIfCancelled();
       await SPm.deleteFile(roles.sourceRole, srcSite, srcServerRel);
     }
+    return undefined;
   }
 
-  // Whether the source file is strictly newer than the target. Unknown/unparseable
-  // timestamps default to true (allow the overwrite) rather than silently skipping.
-  function isSourceNewer(srcModified, tgtModified) {
-    if (!srcModified || !tgtModified) return true;
-    const s = new Date(srcModified).getTime();
-    const t = new Date(tgtModified).getTime();
-    if (isNaN(s) || isNaN(t)) return true;
-    return s > t;
-  }
-
-  // Wrap a raw 403/423 with an actionable hint: the target file is protected, not a tool bug.
+  // A raw 403/423 on the target usually means a protected file, not a tool bug.
   function accessError(e, name) {
     if (e && (e.status === 403 || e.status === 423)) {
-      const ne = new Error(`Access denied for ${name} — the target file is likely checked out, open/locked by a user, or a declared record / on hold in the destination. (${e.message})`);
+      const ne = new Error(`Access denied for ${name}: the target file is probably checked out, locked by a user, or a record / on hold. (${e.message})`);
       ne.status = e.status;
       return ne;
     }
@@ -473,9 +438,9 @@
   function fmtBytes(n) {
     if (!n) return '0 B';
     const u = ['B', 'KB', 'MB', 'GB', 'TB'];
-    const i = Math.floor(Math.log(n) / Math.log(1024));
+    const i = Math.min(u.length - 1, Math.floor(Math.log(n) / Math.log(1024)));
     return `${(n / Math.pow(1024, i)).toFixed(i ? 1 : 0)} ${u[i]}`;
   }
 
-  window.Transfer = { run, pause, resumeRun, cancel, isRunning, fmtBytes };
+  window.Transfer = { run, pause, resumeRun, cancel, isRunning, rolesInUse, fmtBytes };
 })();

@@ -6,7 +6,6 @@
 // Other CISA.MS.EXO.* tests require Exchange Admin REST and remain as stubs.
 (() => {
   const tests = [];
-  const ARM_SCOPES = ['https://management.azure.com/.default'];
 
   function ms(start) { return Math.round(performance.now() - start); }
   function errRow(id, e, start) {
@@ -26,22 +25,7 @@
     };
   }
 
-  async function armFetch(url) {
-    const tok = await Auth.getToken(ARM_SCOPES);
-    const res = await fetch(url, { headers: { Authorization: 'Bearer ' + tok } });
-    if (res.status === 403 || res.status === 401) {
-      const err = new Error(`ARM ${res.status} for ${url}`);
-      err.status = res.status;
-      throw err;
-    }
-    if (!res.ok) {
-      const t = await res.text().catch(() => '');
-      const err = new Error(`ARM ${res.status} for ${url}: ${t.substring(0, 300)}`);
-      err.status = res.status;
-      throw err;
-    }
-    return res.json();
-  }
+  const armFetch = (url) => Graph.arm(url);
 
   // Privileged role template IDs used for CISA privileged checks
   const PRIV_ROLE_TEMPLATE_IDS = [
@@ -106,7 +90,7 @@
 
       const results = await mapWithConcurrency(policies, async (pol) => {
         try {
-          const rulesResp = await Graph.graph(`policies/roleManagementPolicies/${pol.id}/rules`, { apiVersion: 'beta' });
+          const rulesResp = await Graph.graph(`policies/roleManagementPolicies/${encodeURIComponent(pol.id)}/rules`, { apiVersion: 'beta' });
           return { ...pol, rules: rulesResp.value || [] };
         } catch {
           return { ...pol, rules: [] };
@@ -234,7 +218,7 @@
         // Check if any of those strengths are phishing-resistant
         for (const pol of policiesWithStrength) {
           try {
-            const strength = await Graph.graph(`identity/conditionalAccess/authenticationStrength/policies/${pol.grantControls.authenticationStrength.id}`, { apiVersion: 'v1.0' });
+            const strength = await Graph.graph(`identity/conditionalAccess/authenticationStrength/policies/${encodeURIComponent(pol.grantControls.authenticationStrength.id)}`, { apiVersion: 'v1.0' });
             if (/phishing|fido|certificate|windowsHello/i.test(JSON.stringify(strength))) {
               return { id: 'CISA.MS.AAD.3.1', status: 'Passed', reason: `Policy "${pol.displayName}" requires phishing-resistant authentication strength.`, durationMs: ms(start) };
             }
@@ -412,7 +396,7 @@
     docUrl: 'https://maester.dev/docs/tests/CISA.MS.AAD.4.1',
     description: 'Checks Entra diagnostic settings via Azure Resource Manager to verify sign-in and audit logs are streamed to a SIEM destination.',
     implemented: true,
-    requiredScopes: ARM_SCOPES,
+    requiredScopes: 'arm',
     async run() {
       const start = performance.now();
       try {
@@ -572,7 +556,7 @@
         const roles = await Graph.graphAll('directoryRoles', { apiVersion: 'v1.0' });
         const ga = roles.find(r => r.roleTemplateId === '62e90394-69f5-4237-9190-012177145e10');
         if (!ga) return { id: 'CISA.MS.AAD.7.1', status: 'Skipped', reason: 'Global Administrator role not activated.', durationMs: ms(start) };
-        const members = await Graph.graphAll(`directoryRoles/${ga.id}/members`, { apiVersion: 'v1.0' });
+        const members = await Graph.graphAll(`directoryRoles/${encodeURIComponent(ga.id)}/members`, { apiVersion: 'v1.0' });
         const users = members.filter(m => m['@odata.type'] === '#microsoft.graph.user').length;
         const ok = users >= 2 && users <= 8;
         return { id: 'CISA.MS.AAD.7.1', status: ok ? 'Passed' : 'Failed', actual: users,
@@ -595,7 +579,7 @@
         const roles = await Graph.graphAll('directoryRoles', { apiVersion: 'v1.0' });
         const ga = roles.find(r => r.roleTemplateId === '62e90394-69f5-4237-9190-012177145e10');
         if (!ga) return { id: 'CISA.MS.AAD.7.2', status: 'Skipped', reason: 'Global Administrator role not activated.', durationMs: ms(start) };
-        const gaMembers = await Graph.graphAll(`directoryRoles/${ga.id}/members`, { apiVersion: 'v1.0' });
+        const gaMembers = await Graph.graphAll(`directoryRoles/${encodeURIComponent(ga.id)}/members`, { apiVersion: 'v1.0' });
         const gaCount = gaMembers.filter(m => m['@odata.type'] === '#microsoft.graph.user').length;
         // Count members in other privileged roles
         const otherPrivRoles = roles.filter(r => r.roleTemplateId !== '62e90394-69f5-4237-9190-012177145e10'
@@ -603,7 +587,7 @@
         let otherPrivCount = 0;
         for (const r of otherPrivRoles.slice(0, 10)) {
           try {
-            const m = await Graph.graphAll(`directoryRoles/${r.id}/members`, { apiVersion: 'v1.0' });
+            const m = await Graph.graphAll(`directoryRoles/${encodeURIComponent(r.id)}/members`, { apiVersion: 'v1.0' });
             otherPrivCount += m.filter(u => u['@odata.type'] === '#microsoft.graph.user').length;
           } catch (_) { /* skip */ }
         }
@@ -629,12 +613,12 @@
         const roles = await Graph.graphAll('directoryRoles', { apiVersion: 'v1.0' });
         const ga = roles.find(r => r.roleTemplateId === '62e90394-69f5-4237-9190-012177145e10');
         if (!ga) return { id: 'CISA.MS.AAD.7.3', status: 'Skipped', reason: 'Global Administrator role not activated.', durationMs: ms(start) };
-        const members = await Graph.graphAll(`directoryRoles/${ga.id}/members`, { apiVersion: 'v1.0' });
+        const members = await Graph.graphAll(`directoryRoles/${encodeURIComponent(ga.id)}/members`, { apiVersion: 'v1.0' });
         const userMembers = members.filter(m => m['@odata.type'] === '#microsoft.graph.user');
         const synced = [];
         for (const m of userMembers) {
           try {
-            const u = await Graph.graph(`users/${m.id}?$select=onPremisesSyncEnabled,userPrincipalName`, { apiVersion: 'v1.0' });
+            const u = await Graph.graph(`users/${encodeURIComponent(m.id)}?$select=onPremisesSyncEnabled,userPrincipalName`, { apiVersion: 'v1.0' });
             if (u.onPremisesSyncEnabled) synced.push(u.userPrincipalName);
           } catch (_) { /* skip */ }
         }
@@ -900,15 +884,8 @@
     },
   });
 
-  // ── DNS helper — used by SPF, DKIM, DMARC checks ────────────────────────────
-  async function dnsQuery(name, type) {
-    const res = await fetch(
-      `https://cloudflare-dns.com/dns-query?name=${encodeURIComponent(name)}&type=${type}`,
-      { headers: { Accept: 'application/dns-json' } }
-    );
-    const data = await res.json();
-    return (data.Answer || []).map(a => (a.data || '').replace(/"/g, ''));
-  }
+  // ── DNS helper - used by SPF, DKIM, DMARC checks ────────────────────────────
+  const dnsQuery = (name, type) => Graph.dns(name, type);
 
   async function getTenantDomains() {
     const domains = await Graph.graphAll('domains?$select=id,isVerified,isInitial,supportedServices', { apiVersion: 'v1.0' });
@@ -1084,7 +1061,7 @@
         const sharing = settings.sharingCapability || settings.SharingCapability || 'unknown';
         // If sharing is disabled/existingExternalUser only, domain restriction is not needed
         if (['disabled', 'existingExternalUserSharingOnly'].includes(sharing)) {
-          return { id: 'CISA.MS.SHAREPOINT.1.3', status: 'Passed', reason: `External sharing is set to "${sharing}" — domain restriction is effectively enforced.`, durationMs: ms(start) };
+          return { id: 'CISA.MS.SHAREPOINT.1.3', status: 'Passed', reason: `External sharing is set to "${sharing}" - domain restriction is effectively enforced.`, durationMs: ms(start) };
         }
         // Check if domain allow list is configured
         const allowedDomains = settings.sharingAllowedDomainList || settings.SharingAllowedDomainList || [];
@@ -1093,7 +1070,7 @@
           return { id: 'CISA.MS.SHAREPOINT.1.3', status: 'Passed', reason: `Domain allow list configured with ${allowedDomains.length} approved domain(s): ${allowedDomains.slice(0, 5).join(', ')}.`, durationMs: ms(start) };
         }
         if (domainRestriction === 'blockList') {
-          return { id: 'CISA.MS.SHAREPOINT.1.3', status: 'Failed', reason: `Sharing domain restriction is set to block list mode — CISA requires an allow list of specific approved domains.`, durationMs: ms(start) };
+          return { id: 'CISA.MS.SHAREPOINT.1.3', status: 'Failed', reason: `Sharing domain restriction is set to block list mode - CISA requires an allow list of specific approved domains.`, durationMs: ms(start) };
         }
         return { id: 'CISA.MS.SHAREPOINT.1.3', status: 'Failed', reason: `External sharing (${sharing}) is permitted but no domain allow list is configured. Restrict sharing to approved external domains.`, durationMs: ms(start) };
       } catch (e) {

@@ -61,7 +61,7 @@
         const checked = []; const passed = [];
         for (const pol of policies.slice(0, 15)) {
           try {
-            const actions = await Graph.graphAll(`deviceManagement/deviceCompliancePolicies/${pol.id}/scheduledActionsForRule`, gOpts);
+            const actions = await Graph.graphAll(`deviceManagement/deviceCompliancePolicies/${encodeURIComponent(pol.id)}/scheduledActionsForRule`, gOpts);
             const hasAction = actions.some(a => (a.scheduledActionConfigurations || []).some(c => ['retire', 'block', 'pushNotification'].includes(c.actionType)));
             checked.push(pol.displayName);
             if (hasAction) passed.push(pol.displayName);
@@ -483,7 +483,7 @@
             return { id: _id, status: 'Failed', reason: `No profile enables ASR rule "${_title}" (field: ${_field}). Current values: ${eps.map(p => `${p.displayName}:${p[_field] || 'not set'}`).join(', ')}`, durationMs: ms(t0) };
           }
           if (!blocking.length) {
-            return { id: _id, status: 'Failed', reason: `ASR rule is in audit mode only across ${passing.length} profile(s) — not in block mode.`, durationMs: ms(t0) };
+            return { id: _id, status: 'Failed', reason: `ASR rule is in audit mode only across ${passing.length} profile(s) - not in block mode.`, durationMs: ms(t0) };
           }
           return { id: _id, status: 'Passed', reason: `${blocking.length} profile(s) enable ASR rule in block mode.`, durationMs: ms(t0) };
         } catch (e) { return skip403(_id, e, t0); }

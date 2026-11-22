@@ -1,93 +1,75 @@
 # SPOTrim
 
-> Browser-based SharePoint &amp; OneDrive stale-site analysis &amp; cleanup tool.
-> Part of the [LCToolKit](https://github.com/jflieben/LCToolKit) by Lieben Consulting.
+Finds stale SharePoint and OneDrive sites, shows who owns them, when they were last changed or viewed and how that verdict was reached. Part of the [LC Toolkit](https://github.com/jflieben/LCToolKit).
 
-SPOTrim is a fully client-side single-page application. It signs you in to your Microsoft 365 tenant via OAuth2 PKCE using the public Lieben Consulting multi-tenant app registration (`271bf19c-6935-42dc-be52-67cb3bd93962`) and queries the Microsoft Graph &amp; SharePoint REST APIs as the signed-in user.
+Runs in the browser. It signs you in with MSAL (PKCE, delegated) using the client id in [.auth](.auth) and calls Microsoft Graph and SharePoint REST as you. Shared code (shell, auth, http, log, export) lives in `../shared`; see [../shared/README.md](../shared/README.md).
 
-**No backend. No telemetry. No data leaves your browser.**
+## Recommendations
 
----
-
-## Feature 1 - Stale site analysis &amp; cleanup advice
-
-For every selected SharePoint or OneDrive site, SPOTrim collects multiple "last user activity" signals and produces a single recommendation: **Clean up**, **Review**, **Keep**, or **Unknown**.
-
-Signals collected (visible in the per-row "Why" tooltip):
+For every selected site the tool collects these signals (all visible in the row detail and the export):
 
 | Source | Signal |
 |---|---|
-| Microsoft Graph `/sites/{id}` | `lastModifiedDateTime` |
-| SharePoint REST `_api/web` | `LastItemUserModifiedDate` (excludes system/crawl updates) |
-| SharePoint REST `_api/web/lists` | max `LastItemUserModifiedDate` across non-hidden document libraries |
-| Graph `/sites/{id}/pages` | most recent modern page / news edit (counts as a modification signal too) |
-| Graph `/sites/{id}/analytics/allTime` | all-time access count + distinct actors |
-| Graph `/sites/{id}/analytics/lastSevenDays` | last 7 days access count |
-| Graph `/sites/{id}/drive/items/root/getActivitiesByInterval` | per-day drive activity for the last 30 days (yields a precise "last viewed" date) |
-| Graph `/sites/{id}/drive?$select=quota` | live storage usage in bytes |
+| Discovery | `lastModifiedDateTime` |
+| `_api/web` | `LastItemUserModifiedDate` (no system or crawl updates) |
+| `_api/web/lists` | latest `LastItemUserModifiedDate` of the visible document libraries |
+| Graph `/sites/{id}/pages` | last edited modern page or news post |
+| Graph `/sites/{id}/analytics/allTime` and `lastSevenDays` | access count and distinct actors |
+| Graph `drive/items/root/getActivitiesByInterval` | daily activity for 30 days, gives the last active day |
+| Graph `drive?$select=quota` | storage used |
 
-All view / engagement signals come from `graph.microsoft.com` (CORS-friendly) and are batched into a single Graph `$batch` call per site - no proxy needed.
+The Graph signals go in one `$batch` per site.
 
-The site is classified as:
-- **Clean up** - not modified in &gt; threshold AND no all-time views, OR not viewed for &gt; threshold.
-- **Review** - not modified in &gt; threshold but still has activity in the last 30 / 7 days OR has nonzero all-time views (archive / reference site).
-- **Keep** - modified within the threshold.
-- **No access** - both `_api/web` and `_api/web/lists` returned 401/403.
-- **Unknown** - no modification signal could be retrieved for non-permission reasons (e.g. transient 5xx).
+- **Keep**: modified within the threshold, or a system site.
+- **Review**: not modified within the threshold but still opened (30 or 7 days, or all-time views).
+- **Clean up**: not modified within the threshold and no views, or not viewed within the threshold.
+- **No access**: `_api/web` and `_api/web/lists` both 401/403.
+- **Unknown**: no modification date for another reason.
 
-Results are exportable to **XLSX** or **CSV** with all raw signals (so you can re-score in Excel with your own rules).
+Exports (Excel, CSV) contain the rows shown, with every raw signal, so you can re-score in Excel.
 
-## Required Microsoft Graph delegated permissions
+## Permissions
 
-| Permission | Why |
-|---|---|
-| `Sites.Read.All` | Enumerate sites; per-site analytics, drive activity, site pages, drive quota |
-| `Sites.FullControl.All` | Read web/list modification details via SharePoint REST |
-| `User.Read` | Sign-in identity |
+| When | Resource | Scope |
+|---|---|---|
+| Sign-in | Graph | `User.Read`, `Sites.Read.All` |
+| First discovery | SharePoint (`{tenant}.sharepoint.com`) | `AllSites.Read` |
+| OneDrive discovery and force scan only | SharePoint admin (`{tenant}-admin.sharepoint.com`) | `AllSites.FullControl`, plus the SharePoint Administrator role |
 
-The Lieben Consulting multi-tenant app already exposes these scopes; the first sign-in will trigger an admin-consent prompt if your tenant has not yet consented to this app.
+Missing consent is asked before a run starts, in one popup for both SharePoint resources when both are needed. During a run tokens are only taken silently (`noRedirect`), so the page never navigates away halfway.
 
-> **OneDrive enumeration:** to enumerate other users' OneDrive sites the signed-in user must additionally hold the **SharePoint Administrator** role in Entra ID (the SharePoint Admin Tenant REST API is used; it is CORS-friendly and works directly from the browser).
+## Force scan
 
-## Run it
+Makes the signed-in admin temporary site collection admin on selected sites they cannot read.
 
-A PowerShell helper is included that serves the folder over HTTP (MSAL refuses `file://`):
+1. Checks `_api/web/currentuser` on every selected site. `IsSiteAdmin=false` or a 403 means not admin. Anything else (401, 429 after retries, 5xx, network) is unknown: that site is left alone and listed after the run.
+2. Shows the exact list of sites, the account and the tenant, and waits for confirmation. OneDrives are skipped unless ticked.
+3. Writes each site to `localStorage` (`spotrim-elevations`: site URL, account, tenant id, time, no tokens) before calling `SetSiteAdmin`. Clearly refused grants are taken off the list again.
+4. Removes the rights after the analysis, also after cancel or errors. Failed removals stay on the list.
+5. On the next visit a notice offers to remove what an interrupted run left behind.
+
+## Run it locally
 
 ```powershell
-pwsh ./serve.ps1                 # http://localhost:8080/
-pwsh ./serve.ps1 -Port 8123      # custom port
-pwsh ./serve.ps1 -NoBrowser      # don't auto-open
+pwsh ./serve.ps1             # http://localhost:1985/, same CSP as production
+pwsh ./serve.ps1 -Port 1996
 ```
 
-The script reads `redirect-url-local` from [.auth](.auth) and warns if the chosen port does not match. The tool itself reads [.auth](.auth) at startup and picks `redirect-url-local` when served from `localhost`/`127.0.0.1` and `redirect-url-web` otherwise - so the same build works both locally and in production.
-
-The first time you sign in, MSAL caches the refresh token in `localStorage` so subsequent loads restore your session. A "Sign out" button is in the top-right when signed in.
+Sign-in only works on the port in `redirect-url-local` of [.auth](.auth).
 
 ## Tests
 
-Unit tests for pure logic (`.auth` parsing, redirect-URI selection, staleness scoring, pmap concurrency, classify) are at [tests/test.html](tests/test.html). Run them by serving the folder and opening <http://localhost:8080/tests/test.html>.
+[tests/test.html](tests/test.html): classification, host checks, export rows, Graph batch parsing, scoring, and the force scan safety rules (admin check, plan, ledger, grant and revoke). Open `/tests/test.html` on the local server and look for `TEST-RESULT: PASS`.
 
-## Architecture
+## Files
 
 ```
-SPOTrim/
-  index.html           # SPA shell with tabs (Discover, Results, Debug, About)
-  style.css            # White + blue UI, dark mode, responsive
-  src/
-    log.js             # Centralized log buffer + Debug tab renderer
-    auth.js            # MSAL.js wrapper (PKCE), per-resource token cache mutex
-    concurrency.js     # Promise-based pmap with cancellation + ETA progress
-    graph.js           # Microsoft Graph client (retry/backoff, paging, per-site engagement $batch)
-    sharepoint.js      # SharePoint REST client + Search-based site enumeration
-    analysis.js        # Per-site signal aggregation & recommendation logic
-    export.js          # XLSX (SheetJS) and CSV exporters
-    app.js             # UI orchestration: tabs, discover, analyze, results
+index.html          page (shared shell contract)
+style.css           tool-only styles
+src/sites.js        site types, tenant host checks, export rows
+src/elevation.js    force scan: admin check, plan, ledger, grant, revoke
+src/graph.js        Graph: host detection, engagement $batch
+src/sharepoint.js   SharePoint REST, search, tenant admin API, SetSiteAdmin
+src/analysis.js     signals per site and the recommendation
+src/app.js          UI
 ```
-
-External libraries (loaded via CDN):
-- [`msal-browser`](https://github.com/AzureAD/microsoft-authentication-library-for-js) - OAuth2 PKCE
-- [`SheetJS / xlsx`](https://github.com/SheetJS/sheetjs) - XLSX export
-
-## Roadmap
-
-The `.description` file in this folder defines additional features to be implemented. Feature 1 (stale-site analysis) is implemented; future features (configuring versioning, file-version cleanup, deletion workflows) will be added incrementally.

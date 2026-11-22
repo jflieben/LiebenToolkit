@@ -1,126 +1,72 @@
-// Multi-API HTTP client for PermView. Each backend (Graph, ARM, PowerBI,
-// Azure DevOps, Power Platform) gets its own helper that knows how to fetch
-// its token, deal with throttling and follow that API's pagination scheme.
+// Auth and API clients for PermView. Each workload has its own scope set, asked by
+// popup the first time that workload runs. Retry and backoff come from Http.
 (() => {
-  async function _fetch(url, { method = 'GET', body, headers = {}, getToken, attempt = 0 } = {}) {
-    const token = await getToken();
-    const opts = {
-      method,
-      headers: {
-        Authorization: `Bearer ${token}`,
-        Accept: 'application/json',
-        ...(body ? { 'Content-Type': 'application/json' } : {}),
-        ...headers,
-      },
-    };
-    if (body) opts.body = typeof body === 'string' ? body : JSON.stringify(body);
-    Log.dbg(`${method} ${url}`);
-    const res = await fetch(url, opts);
-    if (res.status === 429 || res.status === 503 || res.status === 504) {
-      const ra = parseInt(res.headers.get('Retry-After') || '0', 10);
-      const wait = (ra > 0 ? ra : Math.min(60, Math.pow(2, attempt))) * 1000;
-      if (attempt >= 5) throw _err(res, url, await res.text().catch(() => ''));
-      Log.warn(`${res.status}, backing off ${wait}ms (attempt ${attempt + 1})`);
-      await Concurrency.sleep(wait);
-      return _fetch(url, { method, body, headers, getToken, attempt: attempt + 1 });
-    }
-    if (!res.ok) {
-      const txt = await res.text().catch(() => '');
-      throw _err(res, url, txt);
-    }
-    if (res.status === 204) return null;
-    const ct = res.headers.get('Content-Type') || '';
-    if (ct.includes('json')) return res.json();
-    return res.text();
-  }
-
-  function _err(res, url, txt) {
-    const e = new Error(`${res.status} ${res.statusText}: ${(txt || '').substring(0, 400)}`);
-    e.status = res.status;
-    e.url = url;
-    return e;
-  }
+  const READ = ['User.Read', 'Directory.Read.All'];
+  const SETS = {
+    read: READ,
+    apps: [...READ, 'Application.Read.All'],
+    sites: [...READ, 'Sites.Read.All'],
+    files: [...READ, 'Files.Read.All'],
+    calendars: [...READ, 'Calendars.Read.Shared'],
+    arm: ['https://management.azure.com/user_impersonation'],
+    powerbi: ['https://analysis.windows.net/powerbi/api/Workspace.Read.All'],
+    powerplatform: ['https://service.powerapps.com/User'],
+    devops: ['499b84ac-1321-427f-aa17-267ca6975798/user_impersonation'],
+  };
+  window.Auth = ToolkitAuth.create({ scopes: SETS });
 
   // ---------- Microsoft Graph ----------
   const GRAPH = 'https://graph.microsoft.com/v1.0';
-  const Graph = {
-    call(path, opts = {}) {
-      const url = path.startsWith('http') ? path : GRAPH + path;
-      return _fetch(url, { ...opts, getToken: Auth.getGraphToken });
-    },
-    async pageAll(path, opts = {}) {
-      const out = [];
-      let next = path.startsWith('http') ? path : GRAPH + path;
-      while (next) {
-        const data = await _fetch(next, { ...opts, getToken: Auth.getGraphToken });
-        if (data && Array.isArray(data.value)) out.push(...data.value);
-        next = data && data['@odata.nextLink'];
-      }
-      return out;
-    },
-  };
+  function Graph(set = 'read') {
+    const opts = (o) => ({ ...o, label: 'Graph', token: () => Auth.getToken(set) });
+    return {
+      json: (path, o = {}) => Http.json(GRAPH + path, opts(o)),
+      pageAll: (path, o = {}) => Http.pageAll(GRAPH + path, opts(o)),
+    };
+  }
 
   // ---------- Azure Resource Manager ----------
   const ARM = 'https://management.azure.com';
-  const Arm = {
-    call(path, opts = {}) {
-      const url = path.startsWith('http') ? path : ARM + path;
-      return _fetch(url, { ...opts, getToken: Auth.getArmToken });
-    },
-    async pageAll(path, opts = {}) {
-      const out = [];
-      let next = path.startsWith('http') ? path : ARM + path;
-      while (next) {
-        const data = await _fetch(next, { ...opts, getToken: Auth.getArmToken });
-        if (data && Array.isArray(data.value)) out.push(...data.value);
-        next = data && data.nextLink;
-      }
-      return out;
-    },
-  };
+  const armToken = () => Auth.getToken('arm');
+  // Http.pageAll follows nextLink and refuses a next page on another host.
+  const armPageAll = (path) => Http.pageAll(ARM + path, { label: 'ARM', token: armToken });
 
-  // ---------- Power BI REST ----------
+  // ---------- Power BI ----------
   const PBI = 'https://api.powerbi.com/v1.0/myorg';
-  const PowerBI = {
-    call(path, opts = {}) {
-      const url = path.startsWith('http') ? path : PBI + path;
-      return _fetch(url, { ...opts, getToken: Auth.getPowerBIToken });
-    },
-  };
+  const PowerBI = { json: (path) => Http.json(PBI + path, { label: 'Power BI', token: () => Auth.getToken('powerbi') }) };
+
+  // ---------- Power Platform (BAP admin API) ----------
+  const BAP = 'https://api.bap.microsoft.com';
+  const PowerPlatform = { json: (path) => Http.json(BAP + path, { label: 'BAP', token: () => Auth.getToken('powerplatform') }) };
 
   // ---------- Azure DevOps ----------
-  // VSSPS profile (find user) + accounts (orgs) live on app.vssps.visualstudio.com.
-  // Project / group queries live on dev.azure.com/{org} or vssps.dev.azure.com/{org}.
+  const devopsToken = () => Auth.getToken('devops');
+  function devopsUrl(url) {
+    if (!Guards.isDevOpsUrl(url)) throw new Error(`Not an Azure DevOps URL: ${url}`);
+    return url;
+  }
   const DevOps = {
-    call(url, opts = {}) {
-      return _fetch(url, { ...opts, getToken: Auth.getDevOpsToken });
-    },
-  };
-
-  // ---------- Power Platform (Flow / PowerApps / Environments) ----------
-  // BAP API uses the Flow service token.
-  const BAP = 'https://api.bap.microsoft.com';
-  const PowerPlatform = {
-    call(path, opts = {}) {
-      const url = path.startsWith('http') ? path : BAP + path;
-      return _fetch(url, { ...opts, getToken: Auth.getFlowToken });
-    },
+    json: (url) => Http.json(devopsUrl(url), { label: 'DevOps', token: devopsToken }),
+    request: (url) => Http.request(devopsUrl(url), { label: 'DevOps', token: devopsToken }),
   };
 
   // ---------- Dataverse Web API ----------
-  // Each environment has its own instance URL (e.g. https://orgname.crm4.dynamics.com).
-  // Tokens are per-instance, so the caller passes the instance URL.
-  const Dataverse = {
-    call(instanceUrl, path, opts = {}) {
-      const base = instanceUrl.replace(/\/$/, '');
-      const url = path.startsWith('http') ? path : `${base}/api/data/v9.2${path}`;
-      return _fetch(url, {
-        ...opts,
-        getToken: () => Auth.getDataverseToken(instanceUrl),
-        headers: { 'OData-MaxVersion': '4.0', 'OData-Version': '4.0', ...(opts.headers || {}) },
-      });
-    },
-  };
+  // Instance URLs come from the BAP response, so the host is checked before a token
+  // is requested for it or a call is made.
+  function dataverseBase(instanceUrl) {
+    const origin = Guards.dataverseOrigin(instanceUrl);
+    if (!origin) throw new Error(`Dataverse instance URL is not an https *.dynamics.com address: ${instanceUrl}`);
+    return origin;
+  }
+  const DV_HEADERS = { 'OData-MaxVersion': '4.0', 'OData-Version': '4.0' };
+  function dataversePageAll(instanceUrl, path, onPage) {
+    const origin = dataverseBase(instanceUrl);
+    return Http.pageAll(`${origin}/api/data/v9.2${path}`, {
+      label: 'Dataverse', headers: DV_HEADERS, token: () => Auth.getToken([`${origin}/user_impersonation`]),
+    }, onPage);
+  }
 
-  window.Api = { Graph, Arm, PowerBI, DevOps, PowerPlatform, Dataverse };
+  window.Api = {
+    SETS, Graph, armPageAll, PowerBI, PowerPlatform, DevOps, dataversePageAll, dataverseBase,
+  };
 })();

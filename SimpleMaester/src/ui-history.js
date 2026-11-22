@@ -1,170 +1,143 @@
-// History UI: renders a stacked-bar trend chart of pass/fail/skip/error per scan.
-// Also renders a per-test breakdown: pass rate and a sparkline of the last 10 results.
+// History UI: stacked bar chart of pass/fail/skip/error per scan and a per-test
+// breakdown with pass rate and the last 10 results.
 (() => {
+  const { esc, statusBadge, sparkHtml } = SMUi;
   let _chart = null;
+  let _lastScans = [];
+  const $ = (id) => document.getElementById(id);
 
   async function refresh() {
     const all = await History.getAllScans();
-    const tenantSel = document.getElementById('historyTenantFilter');
-    if (!tenantSel) return;
-    const tenants = Array.from(new Set(all.map(s => s.tenantDomain || s.tenantId))).sort();
+    const tenantSel = $('historyTenantFilter');
+    const tenants = Array.from(new Set(all.map((s) => s.tenantDomain || s.tenantId))).sort();
     const cur = tenantSel.value;
-    tenantSel.innerHTML = '<option value="">All tenants</option>' + tenants.map(t => `<option value="${t}">${t}</option>`).join('');
-    if (cur) tenantSel.value = cur;
+    tenantSel.replaceChildren(new Option('All tenants', ''), ...tenants.map((t) => new Option(t, t)));
+    if (cur && tenants.includes(cur)) tenantSel.value = cur;
 
-    const filtered = tenantSel.value ? all.filter(s => (s.tenantDomain || s.tenantId) === tenantSel.value) : all;
+    const filtered = tenantSel.value ? all.filter((s) => (s.tenantDomain || s.tenantId) === tenantSel.value) : all;
     filtered.sort((a, b) => a.startedAt.localeCompare(b.startedAt));
+    _lastScans = filtered;
 
-    const historyEmpty = document.getElementById('historyEmpty');
-    if (historyEmpty) historyEmpty.style.display = filtered.length ? 'none' : '';
+    $('historyEmpty').hidden = filtered.length > 0;
+    $('historyChartWrap').hidden = !filtered.length;
+    $('clearHistoryBtn').disabled = !all.length;
     renderChart(filtered);
     renderPerTest(filtered);
-    await renderStorageCard();
+    await renderStorage();
   }
 
-  async function renderStorageCard() {
-    const card = document.getElementById('storageCard');
-    const label = document.getElementById('storageLabel');
-    const fill = document.getElementById('storageBarFill');
-    const detail = document.getElementById('storageDetail');
-    if (!card) return;
+  async function renderStorage() {
+    let stats = null;
+    try { stats = await History.getStorageStats(); } catch { /* unavailable */ }
+    const el = $('storageDetail');
+    if (!stats) { el.textContent = ''; return; }
+    const parts = [`${stats.scanCount} scan${stats.scanCount === 1 ? '' : 's'} stored in this browser (${stats.backend})`];
+    if (stats.quotaBytes > 0) parts.push(`${(stats.usedBytes / 1048576).toFixed(1)} MB used by this site of about ${Math.round(stats.quotaBytes / 1048576)} MB`);
+    el.textContent = parts.join(', ');
+  }
 
-    let stats;
-    try { stats = await History.getStorageStats(); } catch { card.style.display = 'none'; return; }
-    if (!stats || (!stats.quotaBytes && !stats.scanCount)) { card.style.display = 'none'; return; }
-
-    card.style.display = '';
-    const pct = Math.round((stats.usedPct || 0) * 100);
-    const level = pct >= 80 ? 'danger' : pct >= 60 ? 'warn' : '';
-    card.className = 'storage-card' + (level ? ' ' + level : '');
-    fill.className = 'storage-bar-fill' + (level ? ' ' + level : '');
-    fill.style.width = Math.max(1, pct) + '%';
-    label.textContent = `Storage - ${pct}% used`;
-
-    const usedMB = (stats.usedBytes / (1024 * 1024)).toFixed(1);
-    const quotaMB = stats.quotaBytes > 0 ? (stats.quotaBytes / (1024 * 1024)).toFixed(0) : '?';
-    const scanInfo = `${stats.scanCount} scan${stats.scanCount !== 1 ? 's' : ''}`;
-    detail.textContent = stats.quotaBytes > 0
-      ? `${usedMB} MB of ~${quotaMB} MB used (origin total) - ${scanInfo} stored - ${stats.backend}`
-      : `${scanInfo} stored - ${stats.backend}`;
+  function cssVar(name, fallback) {
+    const v = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+    return v || fallback;
   }
 
   function renderChart(scans) {
-    const ctx = document.getElementById('historyChart');
-    if (!ctx) return;
-    if (!window.Chart) {
-      ctx.parentElement.insertBefore(Object.assign(document.createElement('p'), {
-        textContent: 'Chart.js failed to load - chart unavailable.',
-        className: 'muted',
-      }), ctx);
-      return;
-    }
-
-    if (_chart) _chart.destroy();
-
-    const labels = scans.map(s => new Date(s.startedAt).toLocaleString());
-    const passed = scans.map(s => s.summary.passed);
-    const failed = scans.map(s => s.summary.failed);
-    const skipped = scans.map(s => s.summary.skipped);
-    const errored = scans.map(s => s.summary.error);
-
+    const ctx = $('historyChart');
+    if (_chart) { _chart.destroy(); _chart = null; }
+    if (!scans.length) return;
+    if (!window.Chart) { $('chartMissing').hidden = false; return; }
+    const ink = cssVar('--ink-500', '#566878');
+    const line = cssVar('--line', '#dce5ee');
     _chart = new Chart(ctx, {
       type: 'bar',
       data: {
-        labels,
+        labels: scans.map((s) => new Date(s.startedAt).toLocaleString()),
         datasets: [
-          { label: 'Passed', data: passed, backgroundColor: '#128d4f' },
-          { label: 'Failed', data: failed, backgroundColor: '#c0392b' },
-          { label: 'Skipped', data: skipped, backgroundColor: '#8a9bb5' },
-          { label: 'Errored', data: errored, backgroundColor: '#8b1a1a' },
+          { label: 'Passed', data: scans.map((s) => s.summary.passed), backgroundColor: cssVar('--ok', '#2f7d2e') },
+          { label: 'Failed', data: scans.map((s) => s.summary.failed), backgroundColor: cssVar('--danger', '#c0352b') },
+          { label: 'Skipped', data: scans.map((s) => s.summary.skipped), backgroundColor: cssVar('--ink-300', '#a9b6c3') },
+          { label: 'Error', data: scans.map((s) => s.summary.error), backgroundColor: cssVar('--warn', '#b26a00') },
         ],
       },
       options: {
         responsive: true,
-        scales: { x: { stacked: true }, y: { stacked: true, beginAtZero: true } },
-        plugins: { legend: { position: 'bottom' } },
+        maintainAspectRatio: false,
+        scales: {
+          x: { stacked: true, ticks: { color: ink }, grid: { color: line } },
+          y: { stacked: true, beginAtZero: true, ticks: { color: ink, precision: 0 }, grid: { color: line } },
+        },
+        plugins: { legend: { position: 'bottom', labels: { color: ink } } },
       },
     });
   }
 
   function renderPerTest(scans) {
     const tbody = document.querySelector('#historyTestTable tbody');
-    if (!tbody) return;
-    tbody.innerHTML = '';
+    tbody.replaceChildren();
     if (!scans.length) return;
 
     const byId = new Map();
     for (const s of scans) {
       for (const r of s.results) {
         let row = byId.get(r.id);
-        if (!row) {
-          row = { id: r.id, title: r.title || r.id, severity: r.severity, history: [] };
-          byId.set(r.id, row);
-        }
-        row.history.push({ at: s.startedAt, status: r.status, reason: r.reason });
+        if (!row) { row = { id: r.id, title: r.title || r.id, severity: r.severity, tag: r.tag, category: r.category, history: [] }; byId.set(r.id, row); }
+        row.history.push({ at: s.startedAt, status: r.status, reason: r.reason, actual: r.actual, expectation: r.expectation, graphCalls: r.graphCalls, tenantId: s.tenantId });
       }
     }
 
-    const q = (document.getElementById('historyTestSearch').value || '').toLowerCase();
-    const rows = [...byId.values()].filter(r => !q || r.id.toLowerCase().includes(q) || (r.title || '').toLowerCase().includes(q));
+    const q = ($('historyTestSearch').value || '').toLowerCase();
+    const rows = [...byId.values()].filter((r) => !q || r.id.toLowerCase().includes(q) || (r.title || '').toLowerCase().includes(q));
     rows.sort((a, b) => a.id.localeCompare(b.id));
 
     for (const r of rows) {
       const last = r.history[r.history.length - 1];
-      const passes = r.history.filter(h => h.status === 'Passed').length;
-      const evals = r.history.filter(h => h.status === 'Passed' || h.status === 'Failed').length;
-      const rate = evals ? Math.round((100 * passes) / evals) + '%' : '-';
-      const last10 = r.history.slice(-10);
-      const spark = `<div class="spark">${last10.map(h => `<span class="${(h.status || '').toLowerCase()}" style="height:${h.status === 'Passed' ? 14 : h.status === 'Failed' ? 14 : 8}px" title="${h.at}: ${h.status}"></span>`).join('')}</div>`;
+      const passes = r.history.filter((h) => h.status === 'Passed').length;
+      const evals = r.history.filter((h) => h.status === 'Passed' || h.status === 'Failed').length;
+      const rate = evals ? `${Math.round((100 * passes) / evals)}%` : '-';
       const tr = document.createElement('tr');
-      tr.innerHTML = `<td>${r.id}<br><span class="muted" style="font-size:11px">${escape(r.title)}</span></td>
-        <td><span class="badge ${(last.status || '').toLowerCase()}">${last.status}</span></td>
-        <td>${rate}</td><td>${r.history.length}</td><td>${spark}</td>`;
-      tr.addEventListener('click', () => UIResults.openDetail({
-        id: r.id,
-        title: r.title,
-        severity: r.severity,
-        status: last.status,
-        reason: last.reason,
-      }));
+      tr.className = 'clickable-row';
+      tr.tabIndex = 0;
+      tr.innerHTML = `<td><span class="mono">${esc(r.id)}</span><br><span class="muted small">${esc(r.title)}</span></td>
+        <td>${statusBadge(last.status)}</td>
+        <td class="num">${esc(rate)}</td><td class="num">${r.history.length}</td><td>${sparkHtml(r.history.slice(-10))}</td>`;
+      const open = () => UIResults.openDetail({
+        id: r.id, title: r.title, severity: r.severity, tag: r.tag, category: r.category,
+        status: last.status, reason: last.reason, actual: last.actual, expectation: last.expectation,
+        graphCalls: last.graphCalls, tenantId: last.tenantId,
+      });
+      tr.addEventListener('click', open);
+      tr.addEventListener('keydown', (e) => { if (e.key === 'Enter') open(); });
       tbody.appendChild(tr);
     }
   }
 
-  function escape(s) {
-    return String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  async function clearHistory() {
+    const all = await History.getAllScans();
+    if (!all.length) { Toolkit.toast('There is no stored history.', 'info'); return; }
+    const tenants = Array.from(new Set(all.map((s) => s.tenantDomain || s.tenantId)));
+    const ok = await Toolkit.confirm({
+      title: 'Clear scan history',
+      body: 'Removes every stored scan from this browser. This cannot be undone. Your tenant is not touched.',
+      items: [`${all.length} scan(s)`, ...tenants.map((t) => `Tenant: ${t}`)],
+      okLabel: 'Clear history',
+      danger: true,
+    });
+    if (!ok) return;
+    await History.clearAll();
+    Log.info('Cleared scan history');
+    Toolkit.toast('Scan history cleared', 'ok');
+    UIResults.hide();
+    document.dispatchEvent(new CustomEvent('simplemaester:history-cleared'));
+    refresh();
   }
 
   function init() {
-    const tenantFilter = document.getElementById('historyTenantFilter');
-    const testSearch = document.getElementById('historyTestSearch');
-    const clearHistoryBtn = document.getElementById('clearHistoryBtn');
-    const pruneHistoryBtn = document.getElementById('pruneHistoryBtn');
-
-    if (tenantFilter) tenantFilter.addEventListener('change', refresh);
-    if (testSearch) testSearch.addEventListener('input', refresh);
-
-    if (clearHistoryBtn) clearHistoryBtn.addEventListener('click', async () => {
-      if (!confirm('Delete all stored scan history? This cannot be undone.')) return;
-      await History.clearAll();
-      Log.info('Cleared scan history');
-      refresh();
-    });
-
-    if (pruneHistoryBtn) pruneHistoryBtn.addEventListener('click', async () => {
-      const stats = await History.getStorageStats().catch(() => null);
-      const pct = stats ? Math.round((stats.usedPct || 0) * 100) : '?';
-      if (!confirm(`Remove the oldest scans to free up storage space? (currently at ${pct}%)`)) return;
-      const pruned = await History.pruneOldScans();
-      Log.info(`Pruned ${pruned} old scan(s) to free storage space`);
-      refresh();
-    });
-
-    window.addEventListener('SimpleMaester:storageWarning', () => {
-      const topHistory = document.getElementById('top-history');
-      if (topHistory && topHistory.classList.contains('active')) {
-        renderStorageCard();
-      }
+    $('historyTenantFilter').addEventListener('change', refresh);
+    $('historyTestSearch').addEventListener('input', () => renderPerTest(_lastScans));
+    $('clearHistoryBtn').addEventListener('click', (e) => Toolkit.busy(e.currentTarget, clearHistory));
+    document.addEventListener('toolkit:theme', () => { if (_chart) renderChart(_lastScans); });
+    window.addEventListener('SimpleMaester:storageWarning', (e) => {
+      if (e.detail && e.detail.message) Toolkit.toast(e.detail.message, 'warn');
     });
   }
 

@@ -3,102 +3,92 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>SPNRoleMgr - Manage service principal API permissions</title>
-  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🔑</text></svg>">
+  <title>SPNRoleMgr - API permissions of service principals and managed identities | LC Toolkit</title>
+  <meta name="description" content="Inspect, grant and revoke Graph and other API permissions of any service principal or managed identity, and manage Sites.Selected grants on SharePoint sites. Runs in your browser." />
+  <link rel="icon" type="image/png" href="../shared/img/favicon.png" />
+  <link rel="stylesheet" href="../shared/toolkit.css" />
   <link rel="stylesheet" href="style.css" />
-  <script src="../vendor/msal-browser.3.27.0.min.js"
-          onerror="window.__msalLoadFailed=true"></script>
-    <!-- Google Analytics (GDPR Compliant) -->
-    <script async src="https://www.googletagmanager.com/gtag/js?id=G-20PYJ8S2G7"></script>
-    <script>
-      window.dataLayer = window.dataLayer || [];
-      function gtag(){dataLayer.push(arguments);}
-      gtag('js', new Date());
-      gtag('config', 'G-20PYJ8S2G7', {
-        'anonymize_ip': true,
-        'storage': 'none',
-        'client_storage': 'none'
-      });
-      gtag('consent', 'default', {
-        'ad_storage': 'denied',
-        'ad_user_data': 'denied',
-        'ad_personalization': 'denied',
-        'analytics_storage': 'denied'
-      });
-    </script>             
+  <script src="../shared/registry.js"></script>
+  <script src="../shared/toolkit.js"></script>
+  <script src="../shared/analytics.js" defer></script>
+  <script src="../shared/log.js" defer></script>
+  <script src="../shared/concurrency.js" defer></script>
+  <script src="../shared/http.js" defer></script>
+  <script src="../shared/auth.js" defer></script>
+  <script src="../shared/export.js" defer></script>
+  <script src="src/spns.js" defer></script>
+  <script src="src/graph.js" defer></script>
+  <script src="src/spo.js" defer></script>
+  <script src="src/app.js" defer></script>
 </head>
-<body>
-  <header class="topbar">
-    <div class="brand">
-      <div class="logo">SR</div>
-      <div>
-        <h1>SPNRoleMgr</h1>
-        <p class="subtitle">Manage API permissions on service principals and managed identities</p>
-      </div>
-    </div>
-    <div class="topbar-actions">
-      <a href="../index.html" class="ghost-btn toolkit-link" title="Back to LCToolkit">&larr; Toolkit</a>
-      <button id="darkToggle" class="icon-btn" title="Toggle dark mode">&#127769;</button>
-      <div id="userBox" class="user-box hidden">
-        <span id="userName"></span>
-        <button id="signOutBtn" class="ghost-btn">Sign out</button>
-      </div>
-    </div>
-  </header>
+<body data-tool="SPNRoleMgr">
+  <div data-tk="header"></div>
 
-  <nav class="tabs">
-    <button class="tab active" data-tab="browse">1. Browse SPNs</button>
-    <button class="tab" data-tab="manage">2. Manage permissions</button>
-    <button class="tab" data-tab="debug">Debug</button>
-    <button class="tab" data-tab="about">About</button>
-  </nav>
+  <main class="tk-page">
+    <nav class="tabs" id="tabs">
+      <button class="tab active" data-tab="browse"><i data-icon="t-SPNRoleMgr"></i>Service principals</button>
+      <button class="tab" data-tab="manage"><i data-icon="i-key"></i>Permissions</button>
+      <button class="tab" data-tab="debug"><i data-icon="i-bug"></i>Debug</button>
+      <button class="tab" data-tab="about"><i data-icon="i-info"></i>About</button>
+    </nav>
 
-  <main>
-    <!-- BROWSE TAB -->
+    <div id="elevationBanner" class="notice notice-warn elevation-banner" role="status" hidden>
+      <i data-icon="i-alert"></i>
+      <div class="grow">
+        <strong>You are still temporary site admin</strong>
+        <ul id="elevationList" class="small"></ul>
+      </div>
+      <button id="elevationRemoveBtn" class="btn btn-small" type="button">Remove my admin rights</button>
+    </div>
+
     <section class="tab-panel active" id="tab-browse">
-      <div class="card" id="connectCard">
-        <h2>Connect to your tenant</h2>
-        <p>SPNRoleMgr runs entirely in your browser. It signs you in with Microsoft (PKCE) and queries Microsoft Graph as you. No backend, no telemetry, no data leaves your browser.</p>
-        <p>Required delegated permissions:</p>
-        <ul>
-          <li><code>Application.Read.All</code> - list service principals and the API surfaces they consume</li>
-          <li><code>Directory.Read.All</code> - resolve owners and other directory metadata</li>
-          <li><code>User.Read</code> - sign-in identity</li>
-          <li><code>AppRoleAssignment.ReadWrite.All</code> <span class="muted">(only when you actually save changes)</span></li>
-          <li><code>DelegatedPermissionGrant.ReadWrite.All</code> <span class="muted">(only when you actually save changes)</span></li>
-        </ul>
-        <p>To grant tenant-wide application permissions or delegated grants for all users, your account also needs a privileged role: <strong>Privileged Role Administrator</strong>, <strong>Cloud Application Administrator</strong>, <strong>Application Administrator</strong> or <strong>Global Administrator</strong>. Without one of these, Graph will return 403 on save.</p>
-        <button id="signInBtn" class="primary-btn">Sign in with Microsoft</button>
+      <div class="card connect-card" id="connectCard">
+        <div class="connect-art"><i data-icon="t-SPNRoleMgr"></i></div>
+        <div>
+          <h2>Connect to your tenant</h2>
+          <p>Sign in with the account you manage the tenant with. The tool reads service principals and their permissions through Microsoft Graph, as you.</p>
+          <p class="muted small">Delegated permissions asked at sign-in:</p>
+          <ul class="small">
+            <li><code>Application.Read.All</code> list service principals and their app role assignments</li>
+            <li><code>Directory.Read.All</code> list delegated permission grants</li>
+            <li><code>User.Read</code> who you are</li>
+          </ul>
+          <p class="muted small">Asked only when you confirm your first change: <code>AppRoleAssignment.ReadWrite.All</code> and <code>DelegatedPermissionGrant.ReadWrite.All</code>. Asked only when you open the SharePoint site manager: <code>Sites.FullControl.All</code> on Graph, and SharePoint access to list all sites and make you site admin when you ask for it.</p>
+          <p class="muted small">Tenant-wide grants also need <strong>Privileged Role Administrator</strong>, <strong>Cloud Application Administrator</strong>, <strong>Application Administrator</strong> or <strong>Global Administrator</strong>. Without one of those Graph answers 403 on save.</p>
+          <button id="signInBtn" class="btn btn-primary"><i data-icon="i-login"></i>Sign in with Microsoft</button>
+        </div>
       </div>
 
-      <div class="card hidden" id="browseCard">
-        <h2>Service principals</h2>
-        <div class="row">
-          <button id="loadSpnsBtn" class="primary-btn">Load all service principals</button>
-          <span id="loadStatus" class="muted"></span>
+      <div class="card" id="browseCard" hidden>
+        <div class="card-head">
+          <div>
+            <h2>Service principals</h2>
+            <p class="muted small" id="loadStatus">Load the service principals, then click one to see and change its permissions.</p>
+          </div>
+          <button id="loadSpnsBtn" class="btn btn-primary"><i data-icon="i-refresh"></i>Load all service principals</button>
         </div>
 
-        <div id="progressBox" class="progress-box hidden">
+        <div id="progressBox" class="progress-box" hidden>
           <div class="progress-header">
-            <span id="progressLabel">Loading...</span>
+            <span id="progressLabel">Loading service principals</span>
             <span id="progressEta"></span>
           </div>
-          <div class="progress-bar"><div id="progressFill"></div></div>
+          <div class="progress-bar indeterminate"><div id="progressFill"></div></div>
           <div class="progress-footer">
-            <span id="progressCount">0/0</span>
-            <button id="cancelBtn" class="ghost-btn">Cancel</button>
+            <span id="progressCount">0 loaded</span>
+            <button id="cancelBtn" class="btn btn-small" type="button">Cancel</button>
           </div>
         </div>
 
-        <div id="spnFilterRow" class="row hidden">
-          <input type="search" id="spnFilter" placeholder="Filter by name or appId..." />
-          <select id="typeFilter">
+        <div id="spnFilterRow" class="row filters" hidden>
+          <input type="search" id="spnFilter" placeholder="Filter on name or appId" aria-label="Filter" />
+          <select id="typeFilter" aria-label="Type">
             <option value="">All types</option>
           </select>
-          <label class="checkbox" title="Microsoft owns about 250 first-party service principals you usually don't want to touch."><input type="checkbox" id="hideMs" checked/> Hide Microsoft first-party SPNs</label>
+          <label class="checkbox" title="Microsoft owns a few hundred first-party service principals you usually leave alone."><input type="checkbox" id="hideMs" checked />Hide Microsoft first-party</label>
         </div>
 
-        <div id="spnTableWrap" class="table-wrap hidden">
+        <div id="spnTableWrap" class="table-wrap" hidden>
           <table class="data-table sortable" id="spnTable">
             <thead>
               <tr>
@@ -111,89 +101,114 @@
             <tbody></tbody>
           </table>
         </div>
-        <p id="spnHint" class="table-hint hidden"></p>
+        <p id="spnHint" class="table-hint" hidden></p>
+        <p class="muted small m365p-hint">This tool works on one service principal at a time. To review the permissions of all of them at once, with history and findings, see the <a href="https://m365permissions.com/use-cases/entra-id-permissions-review" target="_blank" rel="noopener">Entra ID permissions review</a> on m365permissions.com.</p>
+
+        <div class="action-bar" id="spnActionBar" hidden>
+          <span class="grow">Export the filtered list</span>
+          <button id="exportSpnXlsxBtn" class="btn btn-small"><i data-icon="i-table"></i>Excel</button>
+          <button id="exportSpnCsvBtn" class="btn btn-small"><i data-icon="i-download"></i>CSV</button>
+        </div>
       </div>
     </section>
 
-    <!-- MANAGE TAB -->
     <section class="tab-panel" id="tab-manage">
-      <div class="card hidden" id="noSelectionCard">
-        <p class="muted">Pick a service principal on the Browse tab to manage its permissions.</p>
+      <div class="card empty-state" id="noSelectionCard">
+        <i data-icon="i-key"></i>
+        <h3>No service principal picked</h3>
+        <p>Pick one on the Service principals tab to see and change its permissions.</p>
       </div>
 
-      <div class="card hidden" id="spnHeaderCard">
-        <div class="row between">
+      <div class="card" id="spnHeaderCard" hidden>
+        <div class="card-head">
           <div>
-            <h2 id="selSpnName" style="margin-bottom:4px"></h2>
-            <div class="muted" id="selSpnMeta"></div>
+            <h2 id="selSpnName" class="spn-title"></h2>
+            <div class="muted small" id="selSpnMeta"></div>
+            <div class="muted small" id="selTenant"></div>
           </div>
-          <div class="row">
-            <button id="manageSitesBtn" class="ghost-btn" disabled>Manage SharePoint site access</button>
-            <button id="revokeAllBtn" class="danger-btn" disabled>Revoke all permissions</button>
-            <button id="refreshPermsBtn" class="ghost-btn">Refresh</button>
+          <div class="row tight">
+            <button id="refreshPermsBtn" class="btn btn-small"><i data-icon="i-refresh"></i>Refresh</button>
+            <button id="exportPermsBtn" class="btn btn-small" disabled><i data-icon="i-table"></i>Excel</button>
+            <button id="manageSitesBtn" class="btn btn-small" disabled><i data-icon="i-folder"></i>SharePoint site access</button>
+            <button id="revokeAllBtn" class="btn btn-small btn-danger" disabled><i data-icon="i-trash"></i>Revoke all</button>
           </div>
         </div>
+        <ul id="revokeResults" class="action-result-list" hidden></ul>
       </div>
 
-      <div class="card hidden" id="appRolesCard">
+      <div class="card" id="appRolesCard" hidden>
         <h3>Application permissions <span class="muted" id="appRolesCount"></span></h3>
-        <p class="table-hint">These are <em>tenant-wide</em> app roles granted to this service principal. They allow the SPN to act without a signed-in user.</p>
+        <p class="table-hint">Tenant-wide app roles. The service principal uses them without a signed-in user.</p>
+        <div id="mailboxHint" class="notice notice-info" hidden>
+          <i data-icon="i-info"></i>
+          <div>This service principal can reach mailboxes. Exchange Online can also grant or scope mailbox access with RBAC for Applications, which does not show here, and a scoped Exchange role does not limit what Entra already grants. More in <a href="https://m365permissions.com/articles/exchange-rbac-for-applications-mailbox-access" target="_blank" rel="noopener">which apps can read every mailbox</a>.</div>
+        </div>
         <div class="table-wrap">
           <table class="data-table" id="appRolesTable">
             <thead>
               <tr>
+                <th class="col-check"><input type="checkbox" id="appRolesAll" aria-label="Select all application permissions" /></th>
                 <th>API</th>
                 <th>Permission</th>
                 <th>Description</th>
                 <th>Granted</th>
-                <th></th>
               </tr>
             </thead>
             <tbody></tbody>
           </table>
         </div>
-        <p id="appRolesEmpty" class="table-hint hidden">No application permissions granted.</p>
+        <p id="appRolesEmpty" class="table-hint" hidden>No application permissions granted.</p>
+        <div class="action-bar" id="appRolesBar">
+          <span class="grow"><strong id="appRolesSelCount">0</strong> selected</span>
+          <button id="revokeAppsBtn" class="btn btn-small btn-danger" disabled><i data-icon="i-trash"></i>Revoke selected</button>
+        </div>
+        <ul id="appRolesResults" class="action-result-list" hidden></ul>
       </div>
 
-      <div class="card hidden" id="oauth2Card">
+      <div class="card" id="oauth2Card" hidden>
         <h3>Delegated permissions <span class="muted" id="oauth2Count"></span></h3>
-        <p class="table-hint">Delegated grants tied to a signed-in user. <strong>AllPrincipals</strong> means the grant covers every user in the tenant; <strong>Principal</strong> is a single-user consent.</p>
+        <p class="table-hint">Grants used on behalf of a signed-in user. <strong>AllPrincipals</strong> covers every user in the tenant, <strong>Principal</strong> is one user's consent.</p>
         <div class="table-wrap">
           <table class="data-table" id="oauth2Table">
             <thead>
               <tr>
+                <th class="col-check"><input type="checkbox" id="oauth2All" aria-label="Select all delegated scopes" /></th>
                 <th>API</th>
-                <th>Scope(s)</th>
+                <th>Scope</th>
                 <th>Consent type</th>
                 <th>Principal</th>
-                <th></th>
               </tr>
             </thead>
             <tbody></tbody>
           </table>
         </div>
-        <p id="oauth2Empty" class="table-hint hidden">No delegated grants on this SPN.</p>
+        <p id="oauth2Empty" class="table-hint" hidden>No delegated grants on this service principal.</p>
+        <div class="action-bar" id="oauth2Bar">
+          <span class="grow"><strong id="oauth2SelCount">0</strong> selected</span>
+          <button id="revokeScopesBtn" class="btn btn-small btn-danger" disabled><i data-icon="i-trash"></i>Revoke selected</button>
+        </div>
+        <ul id="oauth2Results" class="action-result-list" hidden></ul>
       </div>
 
-      <div class="card hidden" id="addCard">
+      <div class="card" id="addCard" hidden>
         <h3>Add permission</h3>
         <div class="row">
-          <label>API:
-            <input type="search" id="apiSearch" list="apiSuggestions" placeholder="Microsoft Graph, SharePoint Online, ..." style="min-width:280px"/>
+          <label class="api-field">API
+            <input type="search" id="apiSearch" list="apiSuggestions" placeholder="Microsoft Graph, Office 365 Exchange Online, or an appId" />
             <datalist id="apiSuggestions"></datalist>
           </label>
-          <span id="apiLoadStatus" class="muted"></span>
         </div>
+        <p id="apiLoadStatus" class="muted small"></p>
         <div class="row" id="apiKindRow">
-          <label class="checkbox"><input type="radio" name="permKind" value="AppRole" checked/> Application permissions</label>
-          <label class="checkbox"><input type="radio" name="permKind" value="OAuth2"/> Delegated permissions</label>
-          <input type="search" id="permFilter" placeholder="Filter permissions..." />
+          <label class="checkbox"><input type="radio" name="permKind" value="AppRole" checked />Application permissions</label>
+          <label class="checkbox"><input type="radio" name="permKind" value="OAuth2" />Delegated permissions</label>
+          <input type="search" id="permFilter" placeholder="Filter permissions" aria-label="Filter permissions" />
         </div>
         <div class="table-wrap">
           <table class="data-table" id="addPermTable">
             <thead>
               <tr>
-                <th style="width:32px"></th>
+                <th class="col-check"></th>
                 <th>Permission</th>
                 <th>Type</th>
                 <th>Description</th>
@@ -203,143 +218,139 @@
           </table>
         </div>
         <div class="action-bar">
-          <span class="grow"><strong id="addSelCount">0</strong> permission(s) selected</span>
-          <button id="addPermsBtn" class="primary-btn" disabled>Grant selected</button>
+          <span class="grow"><strong id="addSelCount">0</strong> selected</span>
+          <button id="addPermsBtn" class="btn btn-primary" disabled><i data-icon="i-plus"></i>Grant selected</button>
         </div>
-        <div id="addFeedback" class="inline-feedback hidden" role="status" aria-live="polite"></div>
-        <ul id="addResults" class="action-result-list hidden"></ul>
+        <div id="addFeedback" class="notice" role="status" aria-live="polite" hidden></div>
+        <ul id="addResults" class="action-result-list" hidden></ul>
       </div>
     </section>
 
-    <!-- DEBUG TAB -->
     <section class="tab-panel" id="tab-debug">
-      <div class="card">
-        <div class="row between">
-          <h2>Debug log</h2>
-          <div>
-            <label class="checkbox"><input type="checkbox" id="verboseLog"/> Verbose</label>
-            <button id="clearLogBtn" class="ghost-btn">Clear</button>
-          </div>
-        </div>
-        <pre id="logPanel" class="log-panel"></pre>
-      </div>
+      <div data-tk="debug"></div>
     </section>
 
-    <!-- ABOUT TAB -->
     <section class="tab-panel" id="tab-about">
-      <div class="card">
+      <div class="card about">
         <h2>About SPNRoleMgr</h2>
-        <p>SPNRoleMgr is part of the <a href="../index.html">LCToolkit</a> by Lieben Consulting. It lets you inspect and modify the API permissions of any service principal or managed identity in your tenant. The user interface mimics the "Add a permission" experience on Entra app registrations, but works for SPNs that have no app registration in your tenant (managed identities, federated apps, multi-tenant apps).</p>
+        <p>SPNRoleMgr shows and changes the API permissions of any service principal or managed identity in your tenant. It works like "Add a permission" on an app registration, but also for service principals without an app registration in your tenant: managed identities, gallery apps and multi-tenant apps.</p>
+        <div data-tk="about"></div>
 
-        <h3>What it can do</h3>
+        <h3>What it does</h3>
         <ul>
-          <li>Browse every service principal in the tenant with quick filters for type and Microsoft first-party.</li>
-          <li>For a chosen SPN, list both application permissions (<code>appRoleAssignments</code>) and delegated grants (<code>oauth2PermissionGrants</code>) it currently has.</li>
-          <li>Revoke any single permission (per-permission delete, not per-API).</li>
-          <li>Revoke all permissions for a selected SPN in one action when you need a clean slate.</li>
-          <li>Pick any API exposed in the tenant (Microsoft Graph, SharePoint, Exchange, Azure-Storage, third-party APIs you've consented to, etc.) and grant either application or delegated permissions on it.</li>
-          <li>For SPNs that hold <code>Sites.Selected</code> (on Microsoft Graph or SharePoint Online), grant, change or remove their access to individual SharePoint sites through a built-in site picker - a GUI over <code>/sites/{id}/permissions</code>.</li>
+          <li>Lists every service principal in the tenant, with filters on type and Microsoft first-party. Exports to Excel or CSV.</li>
+          <li>For the picked service principal: its application permissions (<code>appRoleAssignments</code>) and delegated grants (<code>oauth2PermissionGrants</code>).</li>
+          <li>Revokes the permissions and delegated scopes you tick, or everything at once when you want a clean slate.</li>
+          <li>Grants application or delegated permissions on any API in the tenant: Microsoft Graph, SharePoint, Exchange, Azure Storage, third-party APIs. APIs are picked by appId, so two APIs with the same name cannot be mixed up.</li>
+          <li>For service principals with <code>Sites.Selected</code> (Microsoft Graph or SharePoint Online): grants, changes or removes their access per SharePoint site. Sites it already reaches are listed first. Grants of other apps on a site can be removed as well.</li>
+          <li>When you are not an admin of a site, it can make you site collection admin for the change, and asks after each change whether to remove that again.</li>
+          <li>Every change dialog shows the tenant, the service principal and each permission that is added or removed.</li>
         </ul>
 
         <h3>How it works</h3>
         <ul>
-          <li><strong>Listing SPNs</strong>: <code>GET /servicePrincipals?$top=999</code> with <code>ConsistencyLevel: eventual</code> for max throughput.</li>
-          <li><strong>Listing permissions</strong>: <code>GET /servicePrincipals/{id}/appRoleAssignments</code> + <code>GET /servicePrincipals/{id}/oauth2PermissionGrants</code> in parallel.</li>
-          <li><strong>Resolving names</strong>: when an assignment points at a resource SPN we don't have cached, we look up <code>GET /servicePrincipals/{resourceId}</code> to translate the role/scope GUID into a human-readable name.</li>
-          <li><strong>Granting</strong>: for application permissions we POST to <code>/servicePrincipals/{spId}/appRoleAssignments</code> with <code>{principalId, resourceId, appRoleId}</code>. For delegated, we look for an existing <code>oauth2PermissionGrants</code> entry with the same client+resource+consentType and PATCH its <code>scope</code> string; if none exists we POST a new one with <code>consentType=AllPrincipals</code>.</li>
-          <li><strong>Revoking</strong>: DELETE on the assignment or grant id; for delegated, if removing the last scope from a grant we delete the grant entirely.</li>
+          <li><strong>Listing</strong>: <code>GET /servicePrincipals?$top=999</code> with <code>ConsistencyLevel: eventual</code>.</li>
+          <li><strong>Permissions</strong>: <code>GET /servicePrincipals/{id}/appRoleAssignments</code> and <code>/oauth2PermissionGrants</code> in parallel. Role and scope ids are translated to names through the resource service principal.</li>
+          <li><strong>Application permissions</strong>: <code>POST /servicePrincipals/{id}/appRoleAssignments</code> with <code>principalId</code>, <code>resourceId</code> and <code>appRoleId</code>; revoke is a <code>DELETE</code> on the assignment.</li>
+          <li><strong>Delegated permissions</strong>: scopes are added to the existing <code>AllPrincipals</code> grant for that API (<code>PATCH</code>), or a new one is created. Removing the last scope deletes the grant.</li>
+          <li><strong>Site access</strong>: <code>/sites/{id}/permissions</code>. Sites.Selected works per site collection, so a subsite or library URL resolves to its collection. Only <code>https://*.sharepoint.com</code> URLs are accepted.</li>
+          <li><strong>Site list</strong>: every site collection from the SharePoint admin API (<code>GetSitePropertiesFromSharePointByFilters</code>), filtered in the browser on any part of the name or URL. Without SharePoint admin access it falls back to Graph search, which matches whole words and prefixes only. Listed sites are checked one by one for a grant to this service principal.</li>
+          <li><strong>Temporary site admin</strong>: <code>Tenant.SetSiteAdmin</code> on the SharePoint admin API, only after you confirm. The site is written to this browser's local storage before the call, so a closed tab does not hide it: the next visit lists it with a button to remove it.</li>
+          <li><strong>Tenant check</strong>: every token is checked against the tenant you signed in to. If a consent popup ends up in another account, the call is refused before anything changes.</li>
         </ul>
 
-        <h3>What it does NOT do</h3>
+        <h3>Questions this tool does not answer</h3>
+        <p>SPNRoleMgr changes one service principal at a time and reads only what Entra and Graph store. These questions need a scan of the whole tenant, which <a href="https://m365permissions.com" target="_blank" rel="noopener">M365Permissions</a> does:</p>
         <ul>
-          <li>It does not change the application's own published API surface (i.e. it doesn't edit the resource SPN's <code>appRoles</code> or <code>oauth2PermissionScopes</code>). To do that, edit the underlying app registration in Entra.</li>
-          <li>It does not assign Entra directory roles (Global Admin, Reader, etc.). Use Entra for that.</li>
-          <li>It does not configure Conditional Access, app authentication policies, or password/certificate credentials.</li>
+          <li>Which service principals hold which permissions, across the tenant and over time: <a href="https://m365permissions.com/use-cases/entra-id-permissions-review" target="_blank" rel="noopener">Entra ID permissions review</a>.</li>
+          <li>Which apps can read every mailbox, including grants made with Exchange RBAC for Applications: <a href="https://m365permissions.com/articles/exchange-rbac-for-applications-mailbox-access" target="_blank" rel="noopener">which apps can read every mailbox</a>.</li>
+          <li>Which apps have Sites.Selected access on which sites, next to users, groups and sharing links: <a href="https://m365permissions.com/articles/sharepoint-permissions-report-all-sites" target="_blank" rel="noopener">SharePoint permissions report for all sites</a>.</li>
+          <li>Everyone and everything with access to one site: <a href="https://m365permissions.com/articles/who-has-access-to-sharepoint-site" target="_blank" rel="noopener">who has access to a SharePoint site</a>.</li>
         </ul>
 
-        <h3>Required permissions</h3>
-        <p>Read-only browsing only needs <code>Application.Read.All</code> + <code>Directory.Read.All</code>. The first time you save a change SPNRoleMgr asks for <code>AppRoleAssignment.ReadWrite.All</code> and <code>DelegatedPermissionGrant.ReadWrite.All</code>. Granting tenant-wide also requires you to hold a privileged Entra role (Privileged Role Admin, Cloud App Admin, Application Admin or Global Admin); without one, Graph returns 403 on the save.</p>
-        <p>Managing SharePoint site access is opt-in: the very first time you open the site manager, SPNRoleMgr asks for <code>Sites.FullControl.All</code> (delegated). That scope is deliberately not requested up front, so tenants that never use SharePoint are never prompted for it. This action also needs you to be a <strong>SharePoint Administrator</strong> (or higher), and it typically requires admin consent.</p>
+        <h3>What it does not do</h3>
+        <ul>
+          <li>Change the API an app publishes (its own <code>appRoles</code> or <code>oauth2PermissionScopes</code>). Edit the app registration for that.</li>
+          <li>Assign Entra directory roles, configure Conditional Access, or manage secrets and certificates.</li>
+        </ul>
+
+        <h3>Permissions</h3>
+        <p>Browsing needs <code>Application.Read.All</code> and <code>Directory.Read.All</code>. Your first confirmed change asks for <code>AppRoleAssignment.ReadWrite.All</code> and <code>DelegatedPermissionGrant.ReadWrite.All</code>. Tenant-wide grants also need Privileged Role Administrator, Cloud Application Administrator, Application Administrator or Global Administrator.</p>
+        <p>The SharePoint site manager is opt-in: opening it the first time asks for <code>Sites.FullControl.All</code> (delegated, admin consent), the only scope Graph accepts for site permissions. You also need SharePoint Administrator or higher. The full site list and temporary site admin use the SharePoint admin API, which asks for SharePoint access for this app the first time.</p>
       </div>
     </section>
   </main>
 
-  <div id="toast" class="toast hidden"></div>
-
-  <!-- SharePoint site access manager (Sites.Selected) -->
-  <div id="sitePickerModal" class="modal hidden" role="dialog" aria-modal="true">
-    <div class="modal-backdrop"></div>
-    <div class="modal-panel site-modal">
-      <div class="modal-header">
-        <h3>Grant SharePoint site access <span class="muted" id="siteModalSpn"></span></h3>
-        <button id="siteModalCloseBtn" class="icon-btn">&times;</button>
+  <div id="sitePickerModal" class="tk-modal-host" hidden>
+    <div class="tk-modal wide" role="dialog" aria-modal="true" aria-labelledby="siteModalTitle">
+      <div class="tk-modal-head">
+        <h2 id="siteModalTitle">SharePoint site access <span class="muted" id="siteModalSpn"></span></h2>
+        <button id="siteModalCloseBtn" class="btn-icon borderless" type="button" aria-label="Close"><i data-icon="i-close"></i></button>
       </div>
-      <div class="modal-body">
-        <p class="table-hint">This SPN has <code>Sites.Selected</code>, so it can only reach the specific sites you list here. Search for a site, then grant, change or remove this app's access. Uses <code>/sites/{id}/permissions</code> as the signed-in user (needs <code>Sites.FullControl.All</code> and a SharePoint Administrator role).</p>
+      <div class="tk-modal-body">
+        <p class="table-hint">This service principal has <code>Sites.Selected</code>, so it only reaches the sites you grant here. Filter on part of a name or URL, or paste a URL. Sites it already has access to are listed first.</p>
         <div class="row">
-          <input type="search" id="siteSearch" placeholder="Search sites by name or URL..." style="flex:1; min-width:240px" />
-          <span id="siteSearchStatus" class="muted"></span>
+          <input type="search" id="siteSearch" class="site-search" placeholder="Part of a site name or URL, or https://tenant.sharepoint.com/sites/..." aria-label="Filter sites" />
+          <button id="siteLoadAllBtn" class="btn btn-small" type="button" hidden><i data-icon="i-refresh"></i>Load all sites</button>
+          <button id="siteCheckAllBtn" class="btn btn-small" type="button" hidden>Check all</button>
         </div>
+        <p id="siteSearchStatus" class="muted small site-status" role="status" aria-live="polite"></p>
         <div class="site-panes">
           <div class="site-list-wrap">
             <ul id="siteResults" class="site-list"></ul>
           </div>
-          <div class="site-detail hidden" id="siteDetail">
+          <div class="site-detail" id="siteDetail" hidden>
             <div class="site-detail-head">
               <strong id="siteDetailName"></strong>
               <a id="siteDetailUrl" class="muted small" href="#" target="_blank" rel="noopener"></a>
             </div>
-            <p id="siteScopeNote" class="notice notice-info hidden"></p>
-            <h4>Existing app permissions <span class="muted" id="sitePermsCount"></span></h4>
-            <div class="table-wrap">
-              <table class="data-table" id="sitePermsTable">
-                <thead><tr><th>Application</th><th>AppId</th><th>Roles</th><th></th></tr></thead>
-                <tbody></tbody>
-              </table>
+            <div id="siteScopeNote" class="notice notice-info" hidden><i data-icon="i-info"></i><div id="siteScopeText"></div></div>
+            <div id="siteDeniedNote" class="notice notice-warn" hidden>
+              <i data-icon="i-lock"></i>
+              <div>
+                <p id="siteDeniedText">You are not an admin of this site, so its app permissions cannot be read or changed.</p>
+                <button id="siteElevateBtn" class="btn btn-small btn-primary" type="button"><i data-icon="i-shield"></i>Make me site admin temporarily</button>
+              </div>
             </div>
-            <p id="sitePermsEmpty" class="table-hint hidden">No applications have been granted access to this site yet.</p>
+            <div id="siteElevatedNote" class="notice notice-info" hidden>
+              <i data-icon="i-shield"></i>
+              <div class="grow">You are temporary site admin here. After each change you are asked whether to remove that again.</div>
+              <button id="siteDemoteBtn" class="btn btn-small" type="button">Remove my admin rights</button>
+            </div>
+            <div id="sitePermsBox">
+              <h4>App permissions on this site <span class="muted" id="sitePermsCount"></span></h4>
+              <div class="table-wrap">
+                <table class="data-table" id="sitePermsTable">
+                  <thead><tr><th class="col-check"><input type="checkbox" id="sitePermsAll" aria-label="Select all app permissions on this site" /></th><th>Application</th><th>AppId</th><th>Roles</th></tr></thead>
+                  <tbody></tbody>
+                </table>
+              </div>
+              <p id="sitePermsEmpty" class="table-hint" hidden>No applications have access to this site yet.</p>
+              <div class="action-bar" id="sitePermsBar">
+                <span class="grow"><strong id="sitePermsSelCount">0</strong> selected (any app)</span>
+                <button id="sitePermsRemoveBtn" class="btn btn-small btn-danger" disabled><i data-icon="i-trash"></i>Remove selected</button>
+              </div>
+            </div>
 
             <div class="site-grant" id="siteGrantBox">
-              <h4 id="siteGrantTitle">Grant access to this SPN</h4>
+              <h4 id="siteGrantTitle">Grant access</h4>
               <div class="role-picker" id="siteRolePicker"></div>
-              <p class="table-hint">Tip: <code>read</code> and <code>write</code> are universally supported. <code>owner</code>, <code>fullcontrol</code> and <code>manage</code> depend on your SharePoint configuration and may be rejected.</p>
+              <p class="table-hint"><code>read</code> and <code>write</code> always work. <code>owner</code>, <code>fullcontrol</code> and <code>manage</code> depend on your SharePoint configuration and can be rejected.</p>
               <div class="action-bar">
                 <span class="grow" id="siteGrantHint"></span>
-                <button id="siteRemoveBtn" class="ghost-btn danger-text hidden">Remove access</button>
-                <button id="siteGrantBtn" class="primary-btn" disabled>Grant</button>
+                <button id="siteRemoveBtn" class="btn btn-small btn-danger" hidden><i data-icon="i-trash"></i>Remove access</button>
+                <button id="siteGrantBtn" class="btn btn-primary" disabled>Grant</button>
               </div>
-              <div id="siteGrantFeedback" class="inline-feedback hidden" role="status" aria-live="polite"></div>
+              <div id="siteGrantFeedback" class="notice" role="status" aria-live="polite" hidden></div>
             </div>
           </div>
         </div>
+        <p class="muted small m365p-hint">Graph shows app grants one site at a time. To see which apps, users, groups and sharing links reach every site, see the <a href="https://m365permissions.com/articles/sharepoint-permissions-report-all-sites" target="_blank" rel="noopener">SharePoint permissions report for all sites</a> on m365permissions.com.</p>
       </div>
     </div>
   </div>
 
-  <!-- Confirmation modal for destructive actions -->
-  <div id="confirmModal" class="modal hidden" role="dialog">
-    <div class="modal-backdrop"></div>
-    <div class="modal-panel">
-      <div class="modal-header">
-        <h3 id="confirmTitle">Confirm</h3>
-        <button id="confirmCloseBtn" class="icon-btn">&times;</button>
-      </div>
-      <div class="modal-body" id="confirmBody"></div>
-      <div class="modal-header" style="border-top:1px solid var(--border); border-bottom:none">
-        <span></span>
-        <div>
-          <button id="confirmCancelBtn" class="ghost-btn">Cancel</button>
-          <button id="confirmOkBtn" class="danger-btn">Confirm</button>
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <script src="src/log.js"></script>
-  <script src="src/concurrency.js"></script>
-  <script src="src/auth.js"></script>
-  <script src="src/graph.js"></script>
-  <script src="src/spns.js"></script>
-  <script src="src/app.js"></script>
+  <div data-tk="related"></div>
+  <div data-tk="footer"></div>
 </body>
 </html>

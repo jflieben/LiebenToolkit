@@ -171,6 +171,271 @@
     return extractSiteAppPermissions(sitePermissions).find(r => r.appId.toLowerCase() === needle) || null;
   }
 
+  // ---------- API picker ----------
+  const GUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+  /** Datalist value for an API: the name alone is not unique, the appId is. */
+  function apiOptionLabel(sp) {
+    return `${(sp && sp.displayName) || '(no name)'} (${(sp && sp.appId) || '?'})`;
+  }
+
+  /**
+   * Resolve what the user typed in the API box. Accepts "Name (appId)", a bare
+   * appId, or an exact display name that only one API carries. No substring
+   * matching: picking the wrong resource means granting roles on the wrong API.
+   * Returns { sp } or { error, matches }.
+   */
+  function resolveApiQuery(apiSpns, query) {
+    const q = String(query == null ? '' : query).trim();
+    if (!q) return { error: 'Enter an API name or appId.', matches: [] };
+    const list = Array.isArray(apiSpns) ? apiSpns : [];
+    const m = /\(([0-9a-f-]{36})\)\s*$/i.exec(q);
+    const appId = m ? m[1] : (GUID_RE.test(q) ? q : null);
+    if (appId) {
+      const hits = list.filter((x) => (x.appId || '').toLowerCase() === appId.toLowerCase());
+      if (hits.length === 1) return { sp: hits[0] };
+      return { error: `No API with appId ${appId} that exposes assignable permissions.`, matches: hits };
+    }
+    const lower = q.toLowerCase();
+    const hits = list.filter((x) => (x.displayName || '').toLowerCase() === lower);
+    if (hits.length === 1) return { sp: hits[0] };
+    if (hits.length > 1) return { error: `${hits.length} APIs are called "${q}". Pick one from the list, it shows the appId.`, matches: hits };
+    return { error: 'No API with that name. Pick one from the list.', matches: [] };
+  }
+
+  /** Who owns an API, for status lines and confirm dialogs. */
+  function ownerLabel(sp, tenantId) {
+    if (!sp) return 'unknown owner';
+    const owner = String(sp.appOwnerOrganizationId || '').toLowerCase();
+    if (owner === MS_FIRST_PARTY_TENANT) return 'Microsoft';
+    if (owner && tenantId && owner === String(tenantId).toLowerCase()) return 'your tenant';
+    if (sp.publisherName) return `${sp.publisherName}${owner ? `, tenant ${owner}` : ''}`;
+    return owner ? `tenant ${owner}` : 'unknown owner';
+  }
+
+  // ---------- tenant guard ----------
+  /** tid claim of an access token, or null when it is not a readable JWT. */
+  function tokenTenantId(token) {
+    try {
+      const part = String(token).split('.')[1];
+      if (!part) return null;
+      const b64 = part.replace(/-/g, '+').replace(/_/g, '/');
+      const json = atob(b64 + '='.repeat((4 - (b64.length % 4)) % 4));
+      const tid = JSON.parse(json).tid;
+      return tid ? String(tid) : null;
+    } catch { return null; }
+  }
+
+  /** Throws when a token belongs to another tenant than the one this page loaded. */
+  function assertTokenTenant(token, expectedTenantId) {
+    if (!expectedTenantId) return;
+    const tid = tokenTenantId(token);
+    if (tid && tid.toLowerCase() !== String(expectedTenantId).toLowerCase()) {
+      throw new Error(`The token is for tenant ${tid}, this page works in ${expectedTenantId}. Nothing was changed. Reload the page and sign in with the right account.`);
+    }
+  }
+
+  // ---------- SharePoint URLs ----------
+  function isSharePointHost(host) {
+    const h = String(host || '').toLowerCase();
+    return /^[a-z0-9-]+(\.[a-z0-9-]+)*\.sharepoint\.com$/.test(h);
+  }
+
+  /** https URL on *.sharepoint.com, or null. */
+  function parseSharePointUrl(text) {
+    let u;
+    try { u = new URL(String(text || '').trim()); } catch { return null; }
+    if (u.protocol !== 'https:' || u.username || u.password || u.port || !isSharePointHost(u.hostname)) return null;
+    let segments;
+    try { segments = u.pathname.split('/').filter(Boolean).map(decodeURIComponent); } catch { return null; }
+    return { host: u.hostname.toLowerCase(), segments };
+  }
+
+  /**
+   * Graph path (relative to /v1.0) of the site collection a URL belongs to, e.g.
+   * /sites/contoso.sharepoint.com:/sites/Marketing. Sites.Selected grants live on
+   * the collection, so subsites and library URLs resolve to their collection.
+   * Returns null for anything that is not a SharePoint Online URL.
+   */
+  function siteCollectionPath(url) {
+    const p = parseSharePointUrl(url);
+    if (!p) return null;
+    const host = encodeURIComponent(p.host);
+    if (p.segments.length < 2) return `/sites/${host}`;
+    return `/sites/${host}:/${p.segments.slice(0, 2).map(encodeURIComponent).join('/')}`;
+  }
+
+  /** Graph site id: "<host>,<site guid>,<web guid>" on a SharePoint Online host. */
+  function isValidSiteId(id) {
+    const parts = String(id || '').split(',');
+    return parts.length === 3 && isSharePointHost(parts[0]) && GUID_RE.test(parts[1]) && GUID_RE.test(parts[2]);
+  }
+
+  // ---------- confirm dialog text ----------
+  /** [label, value] rows that head every change dialog. */
+  function confirmFacts({ tenant, spn, api, site }) {
+    const rows = [];
+    rows.push(['Tenant', tenant ? `${tenant.domain || '(unknown domain)'} (${tenant.tenantId || 'unknown id'})` : '(not signed in)']);
+    if (spn) rows.push(['Service principal', `${spn.displayName || '(no name)'} (appId ${spn.appId || '?'})`]);
+    if (api) rows.push(['API', `${api.displayName || '(no name)'} (appId ${api.appId || '?'}), owned by ${ownerLabel(api, tenant && tenant.tenantId)}`]);
+    if (site) rows.push(['Site', `${site.displayName || site.name || '(no name)'} ${site.webUrl ? `(${site.webUrl})` : ''}`.trim()]);
+    return rows;
+  }
+
+  /** One readable line per application permission, for confirm lists. */
+  function appRoleLabel(assignment, resourceCache, resourceIndexCache) {
+    const res = resourceCache && resourceCache.get ? resourceCache.get(assignment.resourceId) : null;
+    const idx = resourceIndexCache && resourceIndexCache.get ? resourceIndexCache.get(assignment.resourceId) : null;
+    const meta = idx && idx.get ? idx.get(assignment.appRoleId) : null;
+    const api = (res && res.displayName) || assignment.resourceDisplayName || assignment.resourceId;
+    return `${api}: ${meta ? meta.name : assignment.appRoleId}`;
+  }
+
+  /** One line per delegated grant, scopes included. */
+  function grantLabel(grant, resourceCache) {
+    const res = resourceCache && resourceCache.get ? resourceCache.get(grant.resourceId) : null;
+    const api = (res && res.displayName) || grant.resourceId;
+    const scopes = parseScopeString(grant.scope);
+    const who = grant.consentType === 'AllPrincipals' ? 'all users' : `user ${grant.principalId || '?'}`;
+    return `${api}: ${scopes.length ? scopes.join(' ') : '(no scopes)'} (${who})`;
+  }
+
+  /** Every line "Revoke all" removes. */
+  function revokeAllItems(appRoleAssignments, oauth2Grants, resourceCache, resourceIndexCache) {
+    return [
+      ...(appRoleAssignments || []).map((a) => `Remove application permission ${appRoleLabel(a, resourceCache, resourceIndexCache)}`),
+      ...(oauth2Grants || []).map((g) => `Remove delegated grant ${grantLabel(g, resourceCache)}`),
+    ];
+  }
+
+  // ---------- bulk revoke of delegated scopes ----------
+  /** Selection key of one scope row. A grant without scopes has scope ''. */
+  function scopeKey(grantId, scope) { return `${grantId}|${scope || ''}`; }
+
+  /**
+   * Per grant: which selected scopes go and which stay. A grant left without scopes is
+   * deleted, otherwise it is patched. Returns [{ grant, remove, keep, action }].
+   */
+  function planScopeRevocation(oauth2Grants, selectedKeys) {
+    const sel = selectedKeys instanceof Set ? selectedKeys : new Set(selectedKeys || []);
+    const plan = [];
+    for (const grant of (oauth2Grants || [])) {
+      if (!grant) continue;
+      const scopes = parseScopeString(grant.scope);
+      if (!scopes.length) {
+        if (sel.has(scopeKey(grant.id, ''))) plan.push({ grant, remove: [], keep: [], action: 'delete' });
+        continue;
+      }
+      const remove = scopes.filter((s) => sel.has(scopeKey(grant.id, s)));
+      if (!remove.length) continue;
+      const keep = scopes.filter((s) => !remove.includes(s));
+      plan.push({ grant, remove, keep, action: keep.length ? 'update' : 'delete' });
+    }
+    return plan;
+  }
+
+  // ---------- Exchange hint ----------
+  const EXO_APP_ID = '00000002-0000-0ff1-ce00-000000000000';
+  const MAILBOX_ROLE_RE = /^(mail|calendars|contacts|mailboxsettings|mailboxfolder|mailboxitem|full_access_as_app)/i;
+
+  /** True when the SPN holds an application permission that reaches mailboxes. */
+  function hasMailboxPermissions(appRoleAssignments, resourceCache, resourceIndexCache) {
+    for (const a of (appRoleAssignments || [])) {
+      const res = resourceCache && resourceCache.get ? resourceCache.get(a.resourceId) : null;
+      const appId = String((res && res.appId) || '').toLowerCase();
+      if (appId === EXO_APP_ID) return true;
+      if (appId !== GRAPH_APP_ID) continue;
+      const idx = resourceIndexCache && resourceIndexCache.get ? resourceIndexCache.get(a.resourceId) : null;
+      const meta = idx && idx.get ? idx.get(a.appRoleId) : null;
+      if (meta && MAILBOX_ROLE_RE.test(meta.name || '')) return true;
+    }
+    return false;
+  }
+
+  // ---------- site list ----------
+  /** Lowercase site collection URL, the key sites are matched and cached on. */
+  function siteKey(url) {
+    const p = parseSharePointUrl(url);
+    if (!p) return null;
+    return `https://${p.host}${p.segments.length >= 2 ? `/${p.segments.slice(0, 2).join('/')}` : ''}`.toLowerCase();
+  }
+
+  /**
+   * Substring filter on name and URL, every word must match. A pasted URL matches the
+   * site collection it belongs to.
+   */
+  function filterSites(sites, query) {
+    const list = Array.isArray(sites) ? sites : [];
+    const q = String(query == null ? '' : query).trim().toLowerCase();
+    if (!q || q === '*') return list.slice();
+    const asUrl = /^https?:\/\//.test(q) ? siteKey(q) : null;
+    if (asUrl) return list.filter((s) => siteKey(s.webUrl) === asUrl);
+    const words = q.split(/\s+/).filter(Boolean);
+    return list.filter((s) => {
+      const hay = `${s.displayName || ''}\n${s.webUrl || ''}`.toLowerCase();
+      return words.every((w) => hay.includes(w));
+    });
+  }
+
+  /** Sites the SPN can reach first, in their original order otherwise. access: Map(siteKey -> { status }). */
+  function sortSitesByAccess(sites, access) {
+    const rank = (s) => {
+      const a = access && access.get ? access.get(siteKey(s.webUrl)) : null;
+      return a && a.status === 'yes' ? 0 : 1;
+    };
+    return (sites || []).map((s, i) => ({ s, i, r: rank(s) })).sort((x, y) => x.r - y.r || x.i - y.i).map((x) => x.s);
+  }
+
+  /** Graph refused because of the user's own rights on the site. */
+  function isAccessDenied(e) {
+    if (!e) return false;
+    return e.status === 401 || e.status === 403 || /accessDenied/i.test(e.code || '');
+  }
+
+  /** Site permission rows picked for removal, one per permission object. */
+  function sitePermsForRemoval(sitePermissions, permissionIds) {
+    const ids = permissionIds instanceof Set ? permissionIds : new Set(permissionIds || []);
+    const byId = new Map();
+    for (const r of extractSiteAppPermissions(sitePermissions)) {
+      if (!ids.has(r.permissionId)) continue;
+      if (!byId.has(r.permissionId)) byId.set(r.permissionId, { permissionId: r.permissionId, apps: [], roles: r.roles });
+      byId.get(r.permissionId).apps.push({ appId: r.appId, displayName: r.displayName });
+    }
+    return [...byId.values()];
+  }
+
+  // ---------- SharePoint admin ----------
+  /** contoso.sharepoint.com (or -my) -> contoso-admin.sharepoint.com, else null. */
+  function adminHostOf(spoHost) {
+    const m = /^([a-z0-9]+)(?:-my|-admin)?\.sharepoint\.com$/i.exec(String(spoHost || ''));
+    return m ? `${m[1].toLowerCase()}-admin.sharepoint.com` : null;
+  }
+
+  function claimLoginName(upn) {
+    const u = String(upn || '').trim();
+    if (!u) throw new Error('No account name to make site admin.');
+    return /^i:0/i.test(u) ? u : `i:0#.f|membership|${u}`;
+  }
+
+  // ---------- temporary site admin records ----------
+  // A record is written before SetSiteAdmin runs, so a closed tab never hides one.
+  function sameAccount(rec, tenantId, upn) {
+    return !!rec && String(rec.tenantId || '').toLowerCase() === String(tenantId || '').toLowerCase() &&
+      String(rec.upn || '').toLowerCase() === String(upn || '').toLowerCase();
+  }
+  function addElevation(list, rec) {
+    const key = siteKey(rec.siteUrl);
+    const rest = (list || []).filter((r) => !(siteKey(r.siteUrl) === key && sameAccount(r, rec.tenantId, rec.upn)));
+    return [...rest, { ...rec, siteUrl: key }];
+  }
+  function dropElevation(list, siteUrl, tenantId, upn) {
+    const key = siteKey(siteUrl);
+    return (list || []).filter((r) => !(siteKey(r.siteUrl) === key && sameAccount(r, tenantId, upn)));
+  }
+  function elevationsFor(list, tenantId, upn) {
+    return (list || []).filter((r) => sameAccount(r, tenantId, upn));
+  }
+
   window.Spns = {
     MS_FIRST_PARTY_TENANT,
     GRAPH_APP_ID, SPO_APP_ID, SITE_ROLE_OPTIONS,
@@ -180,5 +445,14 @@
     parseScopeString, joinScopeString,
     summarizePermissionRemoval,
     hasSitesSelected, extractSiteAppPermissions, findAppPermissionOnSite,
+    apiOptionLabel, resolveApiQuery, ownerLabel,
+    tokenTenantId, assertTokenTenant,
+    isSharePointHost, parseSharePointUrl, siteCollectionPath, isValidSiteId,
+    confirmFacts, appRoleLabel, grantLabel, revokeAllItems,
+    scopeKey, planScopeRevocation,
+    EXO_APP_ID, hasMailboxPermissions,
+    siteKey, filterSites, sortSitesByAccess, isAccessDenied, sitePermsForRemoval,
+    adminHostOf, claimLoginName,
+    addElevation, dropElevation, elevationsFor,
   };
 })();

@@ -472,13 +472,8 @@
       const payload = await Api.arm('providers/Microsoft.Authorization/roleAssignments?$filter=atScope()&api-version=2022-04-01');
       return { assignments: toArray(payload?.value), scopePrompted: false };
     } catch (err) {
-      if (err.armConsent) {
-        // No silent ARM token available yet; kick off interactive consent so a re-run succeeds.
-        try {
-          await Auth.getToken(['https://management.azure.com/user_impersonation']);
-        } catch { /* redirect in flight, or consent declined */ }
-        return { assignments: null, scopePrompted: true };
-      }
+      // No ARM token: consent is asked before the run starts, never halfway through.
+      if (err.armConsent) return { assignments: null, scopePrompted: true };
       if (err.status === 400 || err.status === 401 || err.status === 403 || err.status === 404) {
         return { assignments: null, scopePrompted: false };
       }
@@ -1004,7 +999,7 @@
       scan(policy.servicePrincipalRestrictions?.passwordCredentials, 'Service principal', 'password');
       scan(policy.servicePrincipalRestrictions?.keyCredentials, 'Service principal', 'key');
       if (enabledRestrictions.length) return pass(test, 'Tenant app management policy is enabled with active credential restrictions.', { enabledRestrictions });
-      return fail(test, 'Tenant app management policy is enabled but no credential restrictions are enabled — standards for app secrets and certificates are not enforced.');
+      return fail(test, 'Tenant app management policy is enabled but no credential restrictions are enabled: standards for app secrets and certificates are not enforced.');
     },
 
     '21776': async (test) => {
@@ -1732,7 +1727,7 @@
       if (!gaRole) return skip(test, 'Global Administrator role is not active in this tenant.');
       const members = await Api.graphAll(`directoryRoles/${gaRole.id}/members`, { query: { '$select': 'id,displayName,userPrincipalName' } });
       const userMembers = members.filter(m => m.userPrincipalName);
-      if (userMembers.length <= 8) return pass(test, `Global Administrator has ${userMembers.length} user member(s) — within the recommended maximum of 8.`, { count: userMembers.length });
+      if (userMembers.length <= 8) return pass(test, `Global Administrator has ${userMembers.length} user member(s): within the recommended maximum of 8.`, { count: userMembers.length });
       return fail(test, `Global Administrator has ${userMembers.length} user members, exceeding the recommended maximum of 8.`, { count: userMembers.length, members: userMembers.map(m => ({ displayName: m.displayName, userPrincipalName: m.userPrincipalName })) });
     },
 
@@ -1778,7 +1773,7 @@
       if (instances === null) return skip(test, 'Role assignment schedule instances are not accessible (P2 PIM license may be required).');
       const roleMap = new Map(roles.map(r => [r.id, r.displayName]));
       const permanentPriv = instances.filter(i => roleMap.has(i.roleDefinitionId));
-      if (!permanentPriv.length) return pass(test, 'No permanent (non-PIM-activated) privileged role assignments found — all assignments appear to be JIT.');
+      if (!permanentPriv.length) return pass(test, 'No permanent (non-PIM-activated) privileged role assignments found: all assignments appear to be JIT.');
       const users = await getUsersByIds(permanentPriv.map(i => i.principalId));
       const userMap = new Map(users.map(u => [u.id, u]));
       return fail(test, `Found ${permanentPriv.length} permanent active privileged role assignments not activated via PIM.`, permanentPriv.slice(0, 30).map(i => ({
@@ -1872,7 +1867,7 @@
     '21837': async (test) => {
       const policy = await getDeviceRegistrationPolicy();
       const limit = policy?.userDeviceQuota;
-      if (limit && limit <= 10) return pass(test, `Device quota is set to ${limit} per user — within the recommended maximum of 10.`, { userDeviceQuota: limit });
+      if (limit && limit <= 10) return pass(test, `Device quota is set to ${limit} per user: within the recommended maximum of 10.`, { userDeviceQuota: limit });
       if (!limit) return fail(test, 'Device quota is set to unlimited (no maximum device per user limit).', { userDeviceQuota: null });
       return fail(test, `Device quota is set to ${limit} per user, exceeding the recommended maximum of 10.`, { userDeviceQuota: limit });
     },
@@ -1914,7 +1909,7 @@
       const lockoutDuration = toArray(pwdSettings.values).find(v => lower(v.name) === 'lockoutdurationinseconds')?.value;
       const durationSecs = parseInt(lockoutDuration, 10);
       if (isNaN(durationSecs)) return skip(test, 'Smart lockout duration value is not set in directory settings.');
-      if (durationSecs >= 60) return pass(test, `Smart lockout duration is ${durationSecs} seconds — meets the 60-second minimum.`, { lockoutDurationInSeconds: durationSecs });
+      if (durationSecs >= 60) return pass(test, `Smart lockout duration is ${durationSecs} seconds: meets the 60-second minimum.`, { lockoutDurationInSeconds: durationSecs });
       return fail(test, `Smart lockout duration is ${durationSecs} seconds, which is below the recommended minimum of 60 seconds.`, { lockoutDurationInSeconds: durationSecs });
     },
 
@@ -1925,7 +1920,7 @@
       const threshold = toArray(pwdSettings.values).find(v => lower(v.name) === 'lockoutthreshold')?.value;
       const thresholdNum = parseInt(threshold, 10);
       if (isNaN(thresholdNum)) return skip(test, 'Smart lockout threshold value is not set in directory settings.');
-      if (thresholdNum <= 10) return pass(test, `Smart lockout threshold is ${thresholdNum} attempts — within the recommended maximum of 10.`, { lockoutThreshold: thresholdNum });
+      if (thresholdNum <= 10) return pass(test, `Smart lockout threshold is ${thresholdNum} attempts: within the recommended maximum of 10.`, { lockoutThreshold: thresholdNum });
       return fail(test, `Smart lockout threshold is ${thresholdNum} attempts, exceeding the recommended maximum of 10.`, { lockoutThreshold: thresholdNum });
     },
 
@@ -2380,7 +2375,7 @@
       const managedDomains = domains.filter(d => !d.isInitial && !lower(d.id).endsWith('.onmicrosoft.com'));
       const domainsToCheck = managedDomains.length ? managedDomains : domains;
       const federated = domainsToCheck.filter(d => lower(d.authenticationType) === 'federated');
-      if (!federated.length) return pass(test, 'All custom domains use cloud authentication (Managed) — no federated domains found.', domainsToCheck.map(d => ({ id: d.id, authenticationType: d.authenticationType })));
+      if (!federated.length) return pass(test, 'All custom domains use cloud authentication (Managed): no federated domains found.', domainsToCheck.map(d => ({ id: d.id, authenticationType: d.authenticationType })));
       return fail(test, `Found ${federated.length} federated domain(s). Verify that Entra ID's cloud authentication stack is in use (not AD FS pass-through).`, federated.map(d => ({ id: d.id, authenticationType: d.authenticationType })));
     },
 
@@ -2410,7 +2405,7 @@
       );
       const cloudOnly = gaUsers.filter(u => !u.onPremisesSyncEnabled);
       if (nameMatch.length) return pass(test, `Found ${nameMatch.length} emergency/breakglass Global Administrator account(s) by naming pattern.`, nameMatch.map(u => ({ displayName: u.displayName, userPrincipalName: u.userPrincipalName })));
-      if (excludedFromAll.length) return pass(test, `Found ${excludedFromAll.length} Global Administrator account(s) excluded from all enabled Conditional Access policies — consistent with breakglass pattern.`, excludedFromAll.map(u => ({ displayName: u.displayName, userPrincipalName: u.userPrincipalName })));
+      if (excludedFromAll.length) return pass(test, `Found ${excludedFromAll.length} Global Administrator account(s) excluded from all enabled Conditional Access policies: consistent with breakglass pattern.`, excludedFromAll.map(u => ({ displayName: u.displayName, userPrincipalName: u.userPrincipalName })));
       return fail(test, 'No emergency/breakglass accounts were detected by naming pattern or CA policy exclusions. Verify that at least one cloud-only emergency Global Administrator account exists and is excluded from Conditional Access policies.', { gaCount: gaUsers.length, cloudOnly: cloudOnly.length });
     },
 
@@ -2512,14 +2507,14 @@
     '21890': async (test) => {
       const policy = await getSelfServicePasswordResetPolicy();
       if (policy === null) return skip(test, 'Self-service password reset policy is not accessible.');
-      if (!policy.isEnabled) return skip(test, 'SSPR is not enabled — notification settings are irrelevant.');
+      if (!policy.isEnabled) return skip(test, 'SSPR is not enabled: notification settings are irrelevant.');
       return skip(test, 'SSPR user notification settings are not exposed via Microsoft Graph in delegated browser mode. Validate this in Entra Admin Center.');
     },
 
     '21891': async (test) => {
       const policy = await getSelfServicePasswordResetPolicy();
       if (policy === null) return skip(test, 'Self-service password reset policy is not accessible.');
-      if (!policy.isEnabled) return skip(test, 'SSPR is not enabled — notification settings are irrelevant.');
+      if (!policy.isEnabled) return skip(test, 'SSPR is not enabled: notification settings are irrelevant.');
       return skip(test, 'SSPR admin notification settings are not exposed via Microsoft Graph in delegated browser mode. Validate this in Entra Admin Center.');
     },
 
@@ -2734,13 +2729,13 @@
       const audits = await getDirectoryAuditLogs("activityDisplayName eq 'Add company'", 25);
       if (audits === null) return skip(test, 'Directory audit logs are not accessible (AuditLog.Read.All required).');
       if (!audits.length) return pass(test, 'No tenant creation events found in audit logs.');
-      // These are unusual events — if found and recent, flag for review
+      // These are unusual events: if found and recent, flag for review
       const recentCreations = audits.filter(a => {
         const daysSince = daysBetween(new Date().toISOString(), a.activityDateTime);
         return daysSince < 365;
       });
       if (!recentCreations.length) return pass(test, `Found ${audits.length} tenant creation event(s) but none in the last 365 days.`, audits.slice(0, 5).map(a => ({ activityDisplayName: a.activityDisplayName, activityDateTime: a.activityDateTime, result: a.result })));
-      return fail(test, `Found ${recentCreations.length} recent tenant creation event(s) — verify these are authorized.`, recentCreations.slice(0, 10).map(a => ({ activityDisplayName: a.activityDisplayName, activityDateTime: a.activityDateTime, initiatedBy: a.initiatedBy })));
+      return fail(test, `Found ${recentCreations.length} recent tenant creation event(s): verify these are authorized.`, recentCreations.slice(0, 10).map(a => ({ activityDisplayName: a.activityDisplayName, activityDateTime: a.activityDateTime, initiatedBy: a.initiatedBy })));
     },
 
     '21860': async (test) => {
@@ -2818,7 +2813,7 @@
     '24555': async (test) => {
       const tags = await getDeviceRoleScopeTags();
       if (tags === null) return skip(test, 'Intune role scope tags are not accessible (DeviceManagementRBAC.Read.All required).');
-      // The Default scope tag always exists — if only 1 and it is "Default", it's not configured
+      // The Default scope tag always exists: if only 1 and it is "Default", it's not configured
       const custom = tags.filter(t => lower(t.displayName) !== 'default');
       if (custom.length) return pass(test, `Found ${custom.length} custom Intune scope tag(s) configured for delegated administration.`, custom.map(t => ({ id: t.id, displayName: t.displayName })));
       return fail(test, 'No custom Intune scope tags are configured. Scope tags are needed for delegated administration of different device groups or regions.');
@@ -2992,7 +2987,7 @@
         const daysSince = daysBetween(new Date().toISOString(), lastChange);
         if (daysSince > 90) staleCredentials.push({ type: 'user', displayName: user.displayName, userPrincipalName: user.userPrincipalName, lastPasswordChangeDateTime: lastChange, daysSince });
       }
-      if (!staleCredentials.length) return pass(test, `Directory sync service account(s) found — credentials appear current.`, syncUsers.map(u => ({ userPrincipalName: u.userPrincipalName, lastPasswordChangeDateTime: u.lastPasswordChangeDateTime })));
+      if (!staleCredentials.length) return pass(test, `Directory sync service account(s) found: credentials appear current.`, syncUsers.map(u => ({ userPrincipalName: u.userPrincipalName, lastPasswordChangeDateTime: u.lastPasswordChangeDateTime })));
       return fail(test, `Found ${staleCredentials.length} sync service account(s) with stale or unknown credential rotation.`, staleCredentials);
     },
 
@@ -3020,7 +3015,7 @@
         const instances = await Api.graphAll('identityGovernance/privilegedAccess/group/assignmentScheduleInstances', {
           beta: true, query: { '$select': 'id,principalId,groupId,accessId,memberType', '$top': '100' },
         });
-        if (!instances.length) return pass(test, 'No PIM for Groups assignments found — no nested group risk.');
+        if (!instances.length) return pass(test, 'No PIM for Groups assignments found: no nested group risk.');
         const groupPrincipalIds = [...new Set(instances.map(i => i.principalId))];
         const nestedGroups = [];
         for (const principalId of groupPrincipalIds.slice(0, 20)) {
@@ -3030,7 +3025,7 @@
           } catch { /* not a group */ }
         }
         if (!nestedGroups.length) return pass(test, `No nested groups found among ${groupPrincipalIds.length} PIM for Groups principals.`, { total: instances.length });
-        return fail(test, `Found ${nestedGroups.length} group(s) assigned as principals in PIM for Groups — nested group memberships can bypass JIT access controls.`, nestedGroups.slice(0, 20));
+        return fail(test, `Found ${nestedGroups.length} group(s) assigned as principals in PIM for Groups: nested group memberships can bypass JIT access controls.`, nestedGroups.slice(0, 20));
       } catch (err) {
         if (err.status === 400 || err.status === 403 || err.status === 404) return skip(test, 'PIM for Groups assignment schedule is not accessible (P2 license required, or endpoint query shape unsupported for this tenant).');
         throw err;
@@ -3042,7 +3037,7 @@
         const provLogs = await Api.graphAll('auditLogs/provisioning', {
           beta: true, query: { '$top': '5' },
         });
-        if (provLogs.length) return pass(test, `Automatic provisioning is active — ${provLogs.length} recent provisioning log entries found.`, provLogs.slice(0, 5).map(l => ({ jobId: l.jobId, servicePrincipal: l.servicePrincipal?.displayName, activityDateTime: l.activityDateTime })));
+        if (provLogs.length) return pass(test, `Automatic provisioning is active: ${provLogs.length} recent provisioning log entries found.`, provLogs.slice(0, 5).map(l => ({ jobId: l.jobId, servicePrincipal: l.servicePrincipal?.displayName, activityDateTime: l.activityDateTime })));
         return fail(test, 'No recent automatic provisioning activity was found. Applications that support Entra-based provisioning should have provisioning configured.');
       } catch (err) {
         if (err.status === 400 || err.status === 403 || err.status === 404) return skip(test, 'Provisioning audit logs are not accessible (AuditLog.Read.All required, or query shape unsupported for this tenant).');
@@ -3104,19 +3099,19 @@
 
     '21985': async (test) => {
       const org = await getOrganization();
-      if (!org?.onPremisesSyncEnabled) return pass(test, 'On-premises directory sync is not enabled — Seamless SSO is not applicable.');
-      // Look for the Seamless SSO service principal — it uses the Kerberos delegation token
+      if (!org?.onPremisesSyncEnabled) return pass(test, 'On-premises directory sync is not enabled: Seamless SSO is not applicable.');
+      // Look for the Seamless SSO service principal: it uses the Kerberos delegation token
       const ssoSps = await Api.graphAll('servicePrincipals', {
         query: { '$filter': "contains(displayName,'Seamless SSO') or contains(displayName,'AZUREADSSOACC')", '$select': 'id,displayName,appId,accountEnabled', '$top': '5' },
         beta: true,
       }).catch(() => []);
       if (!ssoSps.length) return skip(test, 'Could not detect Seamless SSO service principal. Verify Seamless SSO usage in Entra ID → Hybrid Identity → Entra Connect → Single sign-on.');
       const enabled = ssoSps.filter(sp => sp.accountEnabled !== false);
-      if (!enabled.length) return pass(test, 'Seamless SSO service principal exists but is disabled — this control recommends disabling if not in use.', ssoSps.map(s => ({ displayName: s.displayName, accountEnabled: s.accountEnabled })));
+      if (!enabled.length) return pass(test, 'Seamless SSO service principal exists but is disabled: this control recommends disabling if not in use.', ssoSps.map(s => ({ displayName: s.displayName, accountEnabled: s.accountEnabled })));
       // Check if it's being used via sign-in logs
       const signIns = await getSignInLogs(`appId eq '${enabled[0].appId}'`, 5);
-      if (signIns?.length) return pass(test, `Seamless SSO is enabled and sign-in activity was detected — usage appears active.`, { recentSignIns: signIns.length, sp: enabled[0].displayName });
-      return fail(test, 'Seamless SSO is enabled but no recent sign-in activity was detected — consider disabling Seamless SSO if it is no longer in use.', enabled.map(s => ({ displayName: s.displayName, appId: s.appId })));
+      if (signIns?.length) return pass(test, `Seamless SSO is enabled and sign-in activity was detected: usage appears active.`, { recentSignIns: signIns.length, sp: enabled[0].displayName });
+      return fail(test, 'Seamless SSO is enabled but no recent sign-in activity was detected: consider disabling Seamless SSO if it is no longer in use.', enabled.map(s => ({ displayName: s.displayName, appId: s.appId })));
     },
 
     '21778': async (test) => {
@@ -3147,7 +3142,7 @@
     '21788': async (test) => {
       const privilegedAccessAdminRoleDefinitionId = '18d7d88d-d35e-4fb5-a5c3-7773c20a72d9';
       const arm = await getArmRootRoleAssignments();
-      if (arm.scopePrompted) return skip(test, 'Azure management scope consent has been requested. Re-run the assessment after completing consent for https://management.azure.com/user_impersonation.');
+      if (arm.scopePrompted) return skip(test, 'No Azure Resource Manager access in this run. Run it again and accept the Azure consent prompt (https://management.azure.com/user_impersonation).');
       if (arm.assignments === null) return skip(test, 'Azure role assignments at tenant root are not accessible with current Azure permissions.');
 
       const standingRootAssignments = toArray(arm.assignments).filter(a => lower(a?.properties?.roleDefinitionId || '').endsWith(`/${privilegedAccessAdminRoleDefinitionId}`));

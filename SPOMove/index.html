@@ -3,252 +3,219 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>SPOMove - SharePoint file mover</title>
-  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📦</text></svg>">
-  <link rel="stylesheet" href="style.css?v=19" />
-  <script src="../vendor/msal-browser.3.27.0.min.js"
-          onerror="window.__msalLoadFailed=true"></script>
-  <!-- Google Analytics (GDPR Compliant) -->
-  <script async src="https://www.googletagmanager.com/gtag/js?id=G-20PYJ8S2G7"></script>
-  <script>
-    window.dataLayer = window.dataLayer || [];
-    function gtag(){dataLayer.push(arguments);}
-    gtag('js', new Date());
-    gtag('config', 'G-20PYJ8S2G7', { 'anonymize_ip': true, 'storage': 'none', 'client_storage': 'none' });
-    gtag('consent', 'default', { 'ad_storage': 'denied', 'ad_user_data': 'denied', 'ad_personalization': 'denied', 'analytics_storage': 'denied' });
-  </script>
+  <title>SPOMove - move or copy SharePoint files between sites and tenants | LC Toolkit</title>
+  <meta name="description" content="Move or copy SharePoint Online files between sites, within one tenant or between two tenants. Wizard driven, resumable jobs, optional versions and metadata. Runs in your browser." />
+  <link rel="icon" type="image/png" href="../shared/img/favicon.png" />
+  <link rel="stylesheet" href="../shared/toolkit.css" />
+  <link rel="stylesheet" href="style.css" />
+  <script src="../shared/registry.js"></script>
+  <script src="../shared/toolkit.js"></script>
+  <script src="../shared/analytics.js" defer></script>
+  <script src="../shared/log.js" defer></script>
+  <script src="../shared/concurrency.js" defer></script>
+  <script src="../shared/http.js" defer></script>
+  <script src="../shared/auth.js" defer></script>
+  <script src="../shared/export.js" defer></script>
+  <script src="src/rules.js" defer></script>
+  <script src="src/auth.js" defer></script>
+  <script src="src/graph.js" defer></script>
+  <script src="src/sharepoint.js" defer></script>
+  <script src="src/jobs.js" defer></script>
+  <script src="src/transfer.js" defer></script>
+  <script src="src/app.js" defer></script>
 </head>
-<body>
-  <header class="topbar">
-    <div class="brand">
-      <div class="logo">SPM</div>
-      <div>
-        <h1>SPOMove</h1>
-        <p class="subtitle">Move &amp; copy SharePoint files - within or between tenants</p>
-      </div>
-    </div>
-    <div class="topbar-actions">
-      <a href="../index.html" class="ghost-btn toolkit-link" title="Back to Toolkit">&larr; Toolkit</a>
-      <button id="darkToggle" class="icon-btn" title="Toggle dark mode">🌙</button>
-      <div id="userBox" class="user-box hidden">
-        <span id="userName"></span>
-        <button id="signOutBtn" class="ghost-btn">Sign out all</button>
-      </div>
-    </div>
-  </header>
+<body data-tool="SPOMove">
+  <div data-tk="header"></div>
 
-  <nav class="tabs">
-    <button class="tab active" data-tab="wizard">New transfer</button>
-    <button class="tab" data-tab="jobs">Jobs <span id="jobsBadge" class="tab-badge hidden">0</span></button>
-    <button class="tab" data-tab="debug">Debug</button>
-    <button class="tab" data-tab="about">About</button>
-  </nav>
+  <main class="tk-page">
+    <nav class="tabs" id="tabs">
+      <button class="tab active" data-tab="wizard"><i data-icon="t-SPOMove"></i>New transfer</button>
+      <button class="tab" data-tab="jobs"><i data-icon="i-history"></i>Jobs <span id="jobsBadge" class="tab-count" hidden>0</span></button>
+      <button class="tab" data-tab="debug"><i data-icon="i-bug"></i>Debug</button>
+      <button class="tab" data-tab="about"><i data-icon="i-info"></i>About</button>
+    </nav>
 
-  <main>
-    <!-- WIZARD TAB -->
     <section class="tab-panel active" id="tab-wizard">
-      <div id="bootError" class="notice notice-warn hidden"></div>
+      <div id="bootError" class="notice notice-err" hidden><i data-icon="i-error"></i><div id="bootErrorText"></div></div>
 
       <ol class="stepper" id="stepper"></ol>
 
       <div class="card wizard-card">
-        <!-- Step: mode -->
         <div class="wiz-step" data-step="mode">
           <h2>What kind of transfer is this?</h2>
-          <p class="muted">Choose whether you are moving files inside one Microsoft 365 tenant or between two different tenants.</p>
+          <p class="muted">Inside one Microsoft 365 tenant, or from one tenant to another.</p>
           <div class="choice-grid">
-            <button class="choice-card" data-mode="same">
-              <div class="choice-icon">🏢</div>
+            <button class="choice-card" type="button" data-mode="same" aria-pressed="false">
+              <span class="choice-icon"><i data-icon="i-folder"></i></span>
               <h3>Same tenant</h3>
-              <p>Move or copy files between sites in the same Microsoft 365 tenant. Uses fast server-side copy - data never passes through your browser.</p>
+              <p>Move or copy between sites of one tenant. SharePoint copies server-side, the files never pass through your browser.</p>
             </button>
-            <button class="choice-card" data-mode="cross">
-              <div class="choice-icon">🔀</div>
+            <button class="choice-card" type="button" data-mode="cross" aria-pressed="false">
+              <span class="choice-icon"><i data-icon="i-cloud"></i></span>
               <h3>Between tenants</h3>
-              <p>Move or copy files from a site in one tenant to a site in another. Both tenants are validated. File contents stream through your browser.</p>
+              <p>From a site in one tenant to a site in another. Both sign-ins are checked and the file contents stream through your browser.</p>
             </button>
           </div>
         </div>
 
-        <!-- Step: connect source -->
-        <div class="wiz-step hidden" data-step="sourceConnect">
-          <h2>Connect the source tenant</h2>
-          <p class="muted">Sign in to the tenant that currently holds the files. SPOMove runs entirely in your browser using OAuth2 PKCE (public Lieben Consulting app). Your tokens and file data never leave your browser.</p>
-          <div id="sourceConnState" class="conn-state"></div>
-          <button id="sourceSignInBtn" class="primary-btn">Sign in to source tenant</button>
+        <div class="wiz-step" data-step="sourceConnect" hidden>
+          <div class="connect-card">
+            <div class="connect-art"><i data-icon="t-SPOMove"></i></div>
+            <div>
+              <h2>Connect the source tenant</h2>
+              <p>Sign in to the tenant that holds the files. The sign-in opens in a popup so the wizard keeps its state.</p>
+              <p class="muted small">Delegated permissions:</p>
+              <ul class="small">
+                <li><code>User.Read</code> who you are and which tenant</li>
+                <li>SharePoint <code>.default</code> (the app's SharePoint permission, <code>AllSites.FullControl</code>) to read, write and delete files, set metadata, list all sites and take ownership</li>
+                <li><code>User.ReadBasic.All</code> only when you use the OneDrive (by user) picker</li>
+              </ul>
+              <div id="sourceConnState" class="conn-state"></div>
+              <button id="sourceSignInBtn" class="btn btn-primary" type="button"><i data-icon="i-login"></i>Sign in to the source tenant</button>
+            </div>
+          </div>
         </div>
 
-        <!-- Step: source location -->
-        <div class="wiz-step hidden" data-step="sourceLoc">
+        <div class="wiz-step" data-step="sourceLoc" hidden>
           <h2>Pick the source location</h2>
-          <p class="muted">Search for a site or paste its URL, choose a document library, then optionally drill into a subfolder. Everything under the selected folder is transferred.</p>
+          <p class="muted">Search for a site or paste its URL, pick a document library and optionally a subfolder. Everything under that folder is transferred.</p>
           <div id="sourcePicker" class="picker"></div>
         </div>
 
-        <!-- Step: connect target -->
-        <div class="wiz-step hidden" data-step="targetConnect">
-          <h2>Connect the target tenant</h2>
-          <p class="muted">Sign in to the destination tenant. This opens a second sign-in popup so both connections stay active at the same time.</p>
-          <div id="targetConnState" class="conn-state"></div>
-          <button id="targetSignInBtn" class="primary-btn">Sign in to target tenant</button>
+        <div class="wiz-step" data-step="targetConnect" hidden>
+          <div class="connect-card">
+            <div class="connect-art"><i data-icon="t-SPOMove"></i></div>
+            <div>
+              <h2>Connect the target tenant</h2>
+              <p>Sign in to the destination tenant in a second popup. Both connections stay active side by side.</p>
+              <div id="targetConnState" class="conn-state"></div>
+              <button id="targetSignInBtn" class="btn btn-primary" type="button"><i data-icon="i-login"></i>Sign in to the target tenant</button>
+            </div>
+          </div>
         </div>
 
-        <!-- Step: target location -->
-        <div class="wiz-step hidden" data-step="targetLoc">
+        <div class="wiz-step" data-step="targetLoc" hidden>
           <h2>Pick the target location</h2>
-          <p class="muted">Choose where the files should land. Folders that do not exist yet are created automatically.</p>
+          <p class="muted">Where the files should land. Missing folders are created.</p>
           <div id="targetPicker" class="picker"></div>
+          <div id="overlapNotice" class="notice notice-err" hidden><i data-icon="i-ban"></i><div id="overlapText"></div></div>
         </div>
 
-        <!-- Step: options -->
-        <div class="wiz-step hidden" data-step="options">
+        <div class="wiz-step" data-step="options" hidden>
           <h2>Transfer options</h2>
           <div class="opt-grid">
-            <label class="opt"><input type="radio" name="operation" value="copy" checked /> <span><strong>Copy</strong><br><span class="muted">Leave the originals in place.</span></span></label>
-            <label class="opt"><input type="radio" name="operation" value="move" /> <span><strong>Move</strong><br><span class="muted">Delete each original after it is transferred successfully.</span></span></label>
+            <label class="opt"><input type="radio" name="operation" value="copy" checked /><span><strong>Copy</strong><br><span class="muted small">The originals stay where they are.</span></span></label>
+            <label class="opt"><input type="radio" name="operation" value="move" /><span><strong>Move</strong><br><span class="muted small">Each original goes to the source recycle bin once it is on the target.</span></span></label>
           </div>
-          <hr class="soft" />
-          <label class="checkbox big"><input type="checkbox" id="optMetadata" checked /> Preserve metadata (Author, Editor, Created, Modified)</label>
-          <p class="opt-hint">When off, the target files get fresh metadata (you as author/editor, now as the timestamps). Author/Editor are only preserved if the same user can be resolved in the target tenant.</p>
-          <label class="checkbox big"><input type="checkbox" id="optVersions" /> Include previous versions</label>
-          <p class="opt-hint">Replays each historical version in order. This streams every version through your browser and is significantly slower.</p>
-          <label class="checkbox big"><input type="checkbox" id="optOverwrite" /> Overwrite files that already exist in the target</label>
-          <label class="checkbox big"><input type="checkbox" id="optOnlyNewer" disabled /> Only overwrite when the source file is newer than the target</label>
-          <p class="opt-hint">Compares the last-modified date/time (UTC, so time-zone safe). Target files that are the same age or newer are skipped. Only applies when overwrite is on.</p>
+          <hr />
+          <label class="checkbox opt-check"><input type="checkbox" id="optMetadata" checked />Keep metadata (Author, Editor, Created, Modified)</label>
+          <p class="opt-hint muted small">Off: target files get you as author and editor and now as the dates. Author and Editor only carry over when the same user exists in the target.</p>
+          <label class="checkbox opt-check"><input type="checkbox" id="optVersions" />Include previous versions</label>
+          <p class="opt-hint muted small">Replays every older version in order. All versions stream through your browser, so this is a lot slower.</p>
+          <label class="checkbox opt-check"><input type="checkbox" id="optOverwrite" />Overwrite files that already exist in the target</label>
+          <p class="opt-hint muted small">Off: a file that already exists on the target is skipped and left alone, also when versions are included.</p>
+          <label class="checkbox opt-check"><input type="checkbox" id="optOnlyNewer" disabled />Only overwrite when the source file is newer</label>
+          <p class="opt-hint muted small">Compares the last modified time (UTC). Target files of the same age or newer are skipped.</p>
           <div class="row">
-            <label>Parallel files: <input type="number" id="optConcurrency" value="4" min="1" max="12" style="width:64px" /></label>
+            <label class="opt-num">Parallel files <input type="number" id="optConcurrency" value="4" min="1" max="12" /></label>
           </div>
-          <div id="optWarning" class="notice notice-warn hidden"></div>
+          <div id="optWarning" class="notice notice-warn" hidden><i data-icon="i-alert"></i><div id="optWarningText"></div></div>
         </div>
 
-        <!-- Step: review -->
-        <div class="wiz-step hidden" data-step="review">
-          <h2>Review &amp; start</h2>
+        <div class="wiz-step" data-step="review" hidden>
+          <h2>Review and start</h2>
           <dl class="detail-list" id="reviewList"></dl>
-          <div id="reviewWarning" class="notice notice-info"></div>
+          <div class="notice notice-info"><i data-icon="i-info"></i><div>SPOMove first scans the source folder for the file list, then starts transferring. Follow it, pause, resume or cancel on the Jobs tab.</div></div>
         </div>
 
         <div class="wiz-nav">
-          <button id="wizBack" class="ghost-btn" disabled>Back</button>
+          <button id="wizBack" class="btn" type="button" disabled><i data-icon="i-arrow-left"></i>Back</button>
           <div class="wiz-nav-right">
-            <button id="wizNext" class="primary-btn" disabled>Next</button>
-            <button id="wizStart" class="primary-btn hidden">Start transfer</button>
+            <button id="wizNext" class="btn btn-primary" type="button" disabled>Next<i data-icon="i-arrow-right"></i></button>
+            <button id="wizStart" class="btn btn-primary" type="button" hidden><i data-icon="i-play"></i>Start transfer</button>
           </div>
         </div>
       </div>
     </section>
 
-    <!-- JOBS TAB -->
     <section class="tab-panel" id="tab-jobs">
       <div class="card">
-        <div class="row between">
-          <h2>Transfer jobs</h2>
+        <div class="card-head">
           <div>
-            <button id="newJobBtn" class="ghost-btn">+ New transfer</button>
-            <button id="clearFinishedBtn" class="ghost-btn">Clear finished</button>
+            <h2>Transfer jobs</h2>
+            <p class="muted small">Jobs live in this browser. If a run stops (tab closed, network gone) resume it here; files already done are skipped.</p>
+          </div>
+          <div class="row tight">
+            <button id="newJobBtn" class="btn btn-small" type="button"><i data-icon="i-plus"></i>New transfer</button>
+            <button id="clearFinishedBtn" class="btn btn-small" type="button"><i data-icon="i-check"></i>Clear finished</button>
+            <button id="clearAllBtn" class="btn btn-small btn-danger" type="button"><i data-icon="i-trash"></i>Clear all job data</button>
           </div>
         </div>
-        <p class="muted">Jobs are stored in this browser. If a transfer is interrupted (tab closed, network drop) you can resume it here - files already transferred are skipped.</p>
         <div id="jobsList" class="jobs-list"></div>
-        <div id="jobsEmpty" class="empty-state">No jobs yet. Start one from the <strong>New transfer</strong> tab.</div>
+        <div id="jobsEmpty" class="empty-state"><i data-icon="i-history"></i><h3>No jobs yet</h3><p>Start one on the New transfer tab.</p></div>
       </div>
-    </section>
 
-    <!-- DEBUG TAB -->
-    <section class="tab-panel" id="tab-debug">
-      <div class="card">
-        <div class="row between">
-          <h2>Debug log</h2>
+      <div class="card" id="elevCard" hidden>
+        <div class="card-head">
           <div>
-            <label class="checkbox"><input type="checkbox" id="verboseLog" /> Verbose</label>
-            <button id="clearLogBtn" class="ghost-btn">Clear</button>
+            <h2>Site admin rights added by SPOMove</h2>
+            <p class="muted small">Take ownership grants that are not linked to a job (any more). They stay until you remove them.</p>
           </div>
+          <button id="revokePendingBtn" class="btn btn-small btn-primary" type="button"><i data-icon="i-shield"></i>Remove my site admin rights</button>
         </div>
-        <pre id="logPanel" class="log-panel"></pre>
+        <div class="table-wrap">
+          <table class="data-table" id="elevTable">
+            <thead><tr><th>Site</th><th>Account</th><th>Tenant</th><th>Added</th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
       </div>
     </section>
 
-    <!-- ABOUT TAB -->
+    <section class="tab-panel" id="tab-debug">
+      <div data-tk="debug"></div>
+    </section>
+
     <section class="tab-panel" id="tab-about">
-      <div class="card">
+      <div class="card about">
         <h2>About SPOMove</h2>
-        <p>SPOMove is a fully client-side single-page app for moving and copying SharePoint Online files between sites - in the same tenant or across two tenants. No backend, no telemetry, no data leaves your browser. It signs you in with Microsoft (OAuth2 PKCE) using the public Lieben Consulting multi-tenant app and calls the Microsoft Graph and SharePoint REST APIs directly as you.</p>
+        <p>SPOMove moves or copies SharePoint Online files between sites, in one tenant or between two tenants. It signs you in with Microsoft and calls Microsoft Graph and the SharePoint REST API as you. File contents go from Microsoft to your browser and back to Microsoft, nowhere else.</p>
+        <div data-tk="about"></div>
 
         <h3>How transfers run</h3>
         <ul>
-          <li><strong>Same tenant</strong>: uses SharePoint's server-side <code>SP.MoveCopyUtil</code> so file bytes never travel through your browser - fast and efficient even for large libraries.</li>
-          <li><strong>Between tenants</strong>: downloads each file from the source and uploads it to the target (chunked upload for large files). Because the data passes through your browser, very large libraries are slower and bound by your connection and memory.</li>
-          <li><strong>Previous versions</strong>: when enabled, each historical version is replayed in order onto the target (best-effort; streams through the browser).</li>
-          <li><strong>Metadata</strong>: Author, Editor, Created and Modified are preserved where the principals can be resolved in the target web.</li>
+          <li><strong>Same tenant</strong>: SharePoint's server-side <code>SP.MoveCopyUtil</code>, so the bytes never pass through your browser. Fast, also for big libraries.</li>
+          <li><strong>Between tenants</strong>: download from the source, upload to the target (chunked above 10 MB). Bound by your connection and memory.</li>
+          <li><strong>Previous versions</strong>: every older version is replayed in order onto the target, best effort, through the browser.</li>
+          <li><strong>Metadata</strong>: Author, Editor, Created and Modified are kept where the users resolve in the target web.</li>
+          <li><strong>Overwrite off</strong>: a file that already exists on the target is skipped, versions included.</li>
+          <li><strong>Deletes</strong>: everything SPOMove removes (move sources, replaced targets, sync deletes) goes to the site recycle bin.</li>
+          <li>Source and target may not be the same folder or inside each other.</li>
         </ul>
 
-        <h3>Finding source &amp; target locations</h3>
+        <h3>Finding source and target</h3>
         <ul>
-          <li><strong>Sites</strong>: search by name for sites you can access, or paste a site URL.</li>
-          <li><strong>OneDrive (by user)</strong>: type a person's name or UPN to open their OneDrive directly.</li>
-          <li><strong>All sites (admin)</strong>: SharePoint Administrators can list every site collection in the tenant - including ones they have no access to yet - and use <strong>Take ownership</strong> to elevate.</li>
+          <li><strong>Sites</strong>: search sites you can reach, or paste a site URL of the connected tenant.</li>
+          <li><strong>OneDrive (by user)</strong>: type a name or UPN to open that user's OneDrive.</li>
+          <li><strong>All sites (admin)</strong>: with the SharePoint Administrator role, every site collection in the tenant, also the ones you cannot open yet.</li>
         </ul>
+
+        <h3>Jobs, resume and sync</h3>
+        <p>Jobs and their per-file progress are kept in this browser (local storage and IndexedDB, no tokens). After an interruption, <strong>Resume</strong> only does what is left. Several jobs can run at once. A finished job can be re-run: <strong>Sync changes</strong> transfers new and changed files. For copy jobs it also lists files that are gone from the source and deletes those on the target only after you confirm the list. When a source folder cannot be listed, the run shows which ones and deletes nothing. <strong>Clear all job data</strong> removes the history.</p>
 
         <h3>Reports</h3>
-        <p>When a job finishes, a report opens with a success/failure chart, totals, duration and a searchable, filterable list of every file - so you can drill straight into failures and their error messages, or export the full list as CSV.</p>
-
-        <h3>Resumable jobs</h3>
-        <p>Every job and its per-file progress are kept in your browser's local storage. If a run is interrupted you can resume it from the <strong>Jobs</strong> tab and only the remaining files are processed.</p>
+        <p>When a job finishes its report opens: result chart, totals, duration, average speed and every file with its status and error, filterable and exportable to Excel or CSV.</p>
 
         <h3>Taking ownership</h3>
-        <p>If you cannot read a site you need, and you hold the <strong>SharePoint Administrator</strong> role, SPOMove can temporarily add you as a site collection administrator so the transfer can proceed.</p>
+        <p>When you cannot open a site and you hold the <strong>SharePoint Administrator</strong> role, SPOMove can add you as site collection admin after you confirm it. The grant is recorded on the job (or in the Jobs tab when no job uses it) and stays until you click <strong>Remove my site admin rights</strong>, which removes exactly the grants SPOMove made. The job card and the report remind you while any are left.</p>
 
-        <h3>Required delegated permissions</h3>
-        <ul>
-          <li><code>User.Read</code> - sign-in identity and tenant detection</li>
-          <li><code>User.ReadBasic.All</code> - look up a user's OneDrive (only requested when you use the OneDrive-by-user picker)</li>
-          <li><code>AllSites.FullControl</code> / <code>Sites.FullControl.All</code> (SharePoint) - read source files, write target files, set metadata, list all sites and take ownership</li>
-        </ul>
-        <p class="muted">The first sign-in may trigger an admin-consent prompt if your tenant has not consented to the app yet.</p>
+        <h3>Sign-in</h3>
+        <p>Two connections, source and target, each in its own popup. Tokens stay in this tab. Resuming a job after a reload only reuses the exact account the job ran as; otherwise you sign in again with that account filled in, and a sign-in to another tenant is refused.</p>
       </div>
     </section>
   </main>
 
-  <div id="toast" class="toast hidden"></div>
-
-  <!-- Job report modal -->
-  <div id="reportModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="reportTitle">
-    <div class="modal-backdrop" data-close="1"></div>
-    <div class="modal-card report-card">
-      <div class="modal-head">
-        <h2 id="reportTitle">Transfer report</h2>
-        <button id="reportClose" class="icon-btn" title="Close" data-close="1">✕</button>
-      </div>
-      <div id="reportBody" class="modal-body"></div>
-    </div>
-  </div>
-
-  <!-- Reconnect prompt: makes it explicit WHICH tenant (source/target) to sign in to -->
-  <div id="reconnectModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="reconnectTitle">
-    <div class="modal-backdrop" data-close="1"></div>
-    <div class="modal-card reconnect-card">
-      <div class="modal-head">
-        <h2 id="reconnectTitle">Reconnect tenant</h2>
-      </div>
-      <div class="modal-body">
-        <div id="reconnectRole" class="reconnect-role"></div>
-        <p id="reconnectMsg" class="reconnect-msg"></p>
-        <div id="reconnectErr" class="notice notice-warn hidden"></div>
-        <div class="row reconnect-actions">
-          <button id="reconnectCancel" class="ghost-btn" data-close="1">Cancel</button>
-          <button id="reconnectSignIn" class="primary-btn">Sign in</button>
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <script src="src/log.js?v=24"></script>
-  <script src="src/concurrency.js?v=24"></script>
-  <script src="src/auth.js?v=24"></script>
-  <script src="src/graph.js?v=24"></script>
-  <script src="src/sharepoint.js?v=24"></script>
-  <script src="src/jobs.js?v=24"></script>
-  <script src="src/transfer.js?v=24"></script>
-  <script src="src/app.js?v=24"></script>
+  <div data-tk="related"></div>
+  <div data-tk="footer"></div>
 </body>
 </html>

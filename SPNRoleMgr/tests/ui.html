@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>SPNRoleMgr - UI flow tests</title>
+  <style>
+    body { font: 14px/1.4 -apple-system,Segoe UI,sans-serif; padding: 20px; }
+    .pass { color: #1f7a3a; } .fail { color: #b32026; font-weight: bold; }
+    iframe { width: 1300px; height: 900px; border: 1px solid #ccc; }
+  </style>
+</head>
+<body>
+  <h1>SPNRoleMgr - UI flows with stubbed Graph and SharePoint</h1>
+  <div id="out"></div>
+  <iframe id="app" src="../index.html"></iframe>
+  <script>
+    // Drives the real page; only the network layer (Graph, Spo, Auth tokens) is stubbed.
+    const out = document.getElementById('out');
+    let pass = 0, fail = 0;
+    const log = (ok, name, extra) => { out.insertAdjacentHTML('beforeend', `<div class="${ok ? 'pass' : 'fail'}">${ok ? 'PASS' : 'FAIL'} ${name}${extra ? ': ' + extra : ''}</div>`); ok ? pass++ : fail++; };
+    const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+    async function until(fn, ms = 4000) { const t = Date.now(); while (Date.now() - t < ms) { try { if (fn()) return true; } catch { /* not yet */ } await sleep(25); } return false; }
+    async function check(name, fn, ms) { log(await until(fn, ms), name); }
+
+    const GRAPH = '00000003-0000-0000-c000-000000000000';
+    const SPN = { id: 'sp1', appId: 'app-1', displayName: 'Backup app', servicePrincipalType: 'Application', accountEnabled: true, appOwnerOrganizationId: 'tid-1', appRoles: [], oauth2PermissionScopes: [] };
+    const GRAPH_SP = { id: 'res-graph', appId: GRAPH, displayName: 'Microsoft Graph', appOwnerOrganizationId: 'f8cdef31-a31e-4b4a-93e4-5f571e91255a',
+      appRoles: [{ id: 'r-sites', value: 'Sites.Selected', allowedMemberTypes: ['Application'] }, { id: 'r-mail', value: 'Mail.Read', allowedMemberTypes: ['Application'] }, { id: 'r-user', value: 'User.Read.All', allowedMemberTypes: ['Application'] }],
+      oauth2PermissionScopes: [{ id: 's1', value: 'User.Read' }] };
+    const site = (name, path, n) => ({ id: null, displayName: name, webUrl: `https://contoso.sharepoint.com/sites/${path}`, gid: `contoso.sharepoint.com,${n}0000000-0000-0000-0000-000000000000,${n}1111111-1111-1111-1111-111111111111` });
+    const SITES = [site('Alpha', 'alpha', 1), site('Bravo', 'bravo', 2), site('Charlie', 'charlie', 3)];
+
+    const calls = [];
+    let appRoles, grants, perms, adminOn, confirms;
+    const denied = () => Object.assign(new Error('HTTP 403: accessDenied'), { status: 403 });
+
+    async function run() {
+      const w = document.getElementById('app').contentWindow;
+      await until(() => w.Graph && w.Spo && w.Auth && w.Toolkit && w.document.getElementById('loadSpnsBtn'), 8000);
+      const $ = (id) => w.document.getElementById(id);
+      const q = (sel) => w.document.querySelector(sel);
+      const qa = (sel) => [...w.document.querySelectorAll(sel)];
+      try { w.localStorage.removeItem('SPNRoleMgr.siteAdmin'); } catch { /* blocked */ }
+
+      appRoles = [
+        { id: 'a-sites', resourceId: 'res-graph', appRoleId: 'r-sites' },
+        { id: 'a-mail', resourceId: 'res-graph', appRoleId: 'r-mail' },
+        { id: 'a-user', resourceId: 'res-graph', appRoleId: 'r-user' },
+      ];
+      grants = [{ id: 'g1', resourceId: 'res-graph', consentType: 'AllPrincipals', scope: 'User.Read Mail.Read Files.Read' }];
+      // Alpha: SPN has read. Bravo: you are not admin. Charlie: other app only.
+      perms = {
+        alpha: [{ id: 'p-a1', roles: ['read'], grantedToIdentitiesV2: [{ application: { id: 'app-1', displayName: 'Backup app' } }] }],
+        charlie: [{ id: 'p-c1', roles: ['write'], grantedToIdentitiesV2: [{ application: { id: 'app-9', displayName: 'Old tool' } }] }],
+        bravo: [{ id: 'p-b1', roles: ['read'], grantedToIdentitiesV2: [{ application: { id: 'app-8', displayName: 'Other' } }] }],
+      };
+      adminOn = new Set(['alpha', 'charlie']);
+      confirms = [];
+
+      // ---- stubs ----
+      w.Auth.getAccount = () => ({ username: 'jo@contoso.com' });
+      w.Auth.tenantInfo = () => ({ tenantId: 'tid-1', domain: 'contoso.com', upn: 'jo@contoso.com', name: 'Jo' });
+      w.Toolkit.confirm = async (o) => { confirms.push(o.title); return true; };
+      w.Graph.tokens.write = async () => 't';
+      w.Graph.tokens.sites = async () => 't';
+      w.Graph.listAllServicePrincipals = async () => [SPN, GRAPH_SP];
+      w.Graph.getServicePrincipal = async (id) => (id === 'res-graph' ? GRAPH_SP : SPN);
+      w.Graph.listAppRoleAssignments = async () => appRoles.slice();
+      w.Graph.listOAuth2Grants = async () => grants.map((g) => ({ ...g }));
+      w.Graph.removeAppRoleAssignment = async (sp, id) => { calls.push(`delAR ${id}`); appRoles = appRoles.filter((a) => a.id !== id); };
+      w.Graph.updateOAuth2Grant = async (id, { scope }) => { calls.push(`patch ${id} ${scope}`); grants = grants.map((g) => (g.id === id ? { ...g, scope } : g)); };
+      w.Graph.deleteOAuth2Grant = async (id) => { calls.push(`delG ${id}`); grants = grants.filter((g) => g.id !== id); };
+      const pathOf = (url) => url.split('/sites/')[1].split('/')[0].toLowerCase();
+      const byPath = (p) => SITES.find((s) => s.webUrl.endsWith(`/${p}`));
+      const pathOfId = (id) => SITES.find((s) => s.gid === id).webUrl.split('/sites/')[1];
+      w.Graph.getSiteCollectionByUrl = async (url) => { const p = pathOf(url); if (!adminOn.has(p)) throw denied(); const s = byPath(p); return { id: s.gid, displayName: s.displayName, webUrl: s.webUrl }; };
+      w.Graph.getSitePermissions = async (id) => { const p = pathOfId(id); if (!adminOn.has(p)) throw denied(); return (perms[p] || []).slice(); };
+      w.Graph.addSitePermission = async (id, b) => { const p = pathOfId(id); calls.push(`addSP ${p} ${b.roles}`); if (!adminOn.has(p)) throw denied(); perms[p] = [...(perms[p] || []), { id: `p-new-${p}`, roles: b.roles, grantedToIdentitiesV2: [{ application: { id: b.appId, displayName: b.displayName } }] }]; };
+      w.Graph.deleteSitePermission = async (id, pid) => { const p = pathOfId(id); calls.push(`delSP ${p} ${pid}`); if (!adminOn.has(p)) throw denied(); perms[p] = perms[p].filter((x) => x.id !== pid); };
+      w.Spo.listSites = async () => SITES.map(({ gid, ...s }) => s);
+      w.Spo.setSiteAdmin = async (url, upn, on) => { const p = pathOf(url); calls.push(`admin ${p} ${on}`); if (on) adminOn.add(p); else adminOn.delete(p); };
+
+      // ---- 1: bulk revoke ----
+      $('loadSpnsBtn').click();
+      await until(() => q('#spnTable tbody tr[data-id="sp1"]'));
+      // hide-Microsoft filter is on, so only the SPN shows
+      q('#spnTable tbody tr[data-id="sp1"]').click();
+      await check('permissions render with checkboxes', () => qa('#appRolesTable tbody input[data-act="sel-role"]').length === 3 && qa('#oauth2Table tbody input[data-act="sel-scope"]').length === 3);
+      log(!$('mailboxHint').hidden, 'mailbox hint shows for Mail.Read');
+      log($('revokeAppsBtn').disabled, 'revoke selected disabled with nothing ticked');
+      const tick = (sel) => { const cb = q(sel); cb.checked = true; cb.dispatchEvent(new w.Event('change', { bubbles: true })); };
+      tick('#appRolesTable tbody tr[data-id="a-mail"] input');
+      tick('#appRolesTable tbody tr[data-id="a-user"] input');
+      log($('appRolesSelCount').textContent === '2' && !$('revokeAppsBtn').disabled && $('appRolesAll').indeterminate, 'two ticked: count, button, indeterminate select-all');
+      $('revokeAppsBtn').click();
+      await check('two app roles revoked, Sites.Selected kept', () => calls.includes('delAR a-mail') && calls.includes('delAR a-user') && !calls.includes('delAR a-sites') && qa('#appRolesTable tbody tr').length === 1);
+      await check('mailbox hint gone after revoking Mail.Read', () => $('mailboxHint').hidden);
+      tick(`#oauth2Table tbody tr[data-key="g1|Mail.Read"] input`);
+      tick(`#oauth2Table tbody tr[data-key="g1|Files.Read"] input`);
+      $('revokeScopesBtn').click();
+      await check('two scopes removed with one PATCH', () => calls.includes('patch g1 User.Read') && qa('#oauth2Table tbody tr').length === 1);
+      $('oauth2All').checked = true; $('oauth2All').dispatchEvent(new w.Event('change', { bubbles: true }));
+      $('revokeScopesBtn').click();
+      await check('last scope removed deletes the grant', () => calls.includes('delG g1') && !$('oauth2Empty').hidden);
+
+      // ---- 2 + 4: site list, partial filter, access sorted first ----
+      await until(() => !$('manageSitesBtn').disabled);
+      $('manageSitesBtn').click();
+      await check('site manager opens with all sites', () => !$('sitePickerModal').hidden && qa('#siteResults li[data-idx]').length === 3);
+      await check('Alpha (has access) is first and highlighted', () => { const li = qa('#siteResults li[data-idx]'); return li[0].dataset.key.endsWith('/alpha') && li[0].classList.contains('has-access') && /read/.test(li[0].textContent); });
+      await check('Bravo is marked as not checkable', () => qa('#siteResults li[data-idx]').find((li) => li.dataset.key.endsWith('/bravo')).querySelector('.site-mark'));
+      log(/has access to 1/.test($('siteSearchStatus').textContent) && /1 could not be checked/.test($('siteSearchStatus').textContent), 'status counts access and denied', $('siteSearchStatus').textContent);
+      if (location.search.includes('pause=sites')) { q('#siteResults li[data-idx]').click(); return; } // for a screenshot of the dialog
+      $('siteSearch').value = 'arli';
+      $('siteSearch').dispatchEvent(new w.Event('input'));
+      await check('partial filter "arli" finds Charlie', () => qa('#siteResults li[data-idx]').length === 1 && /Charlie/.test(q('#siteResults li').textContent));
+
+      // ---- 3: remove another app's grant ----
+      q('#siteResults li[data-idx]').click();
+      await check('Charlie permissions load with a checkbox for the other app', () => q('#sitePermsTable tbody input[data-perm="p-c1"]') && !q('#sitePermsTable tbody input[data-perm="p-c1"]').disabled);
+      tick('#sitePermsTable tbody input[data-perm="p-c1"]');
+      $('sitePermsRemoveBtn').click();
+      await check('other app removed from Charlie', () => calls.includes('delSP charlie p-c1') && !$('sitePermsEmpty').hidden);
+
+      // ---- 5: denied site, elevate, grant, demote ----
+      $('siteSearch').value = 'bravo';
+      $('siteSearch').dispatchEvent(new w.Event('input'));
+      await until(() => qa('#siteResults li[data-idx]').length === 1 && /Bravo/.test(q('#siteResults li').textContent));
+      q('#siteResults li[data-idx]').click();
+      await check('Bravo shows the not-admin notice and hides the grant box', () => !$('siteDeniedNote').hidden && $('siteGrantBox').hidden);
+      confirms = [];
+      $('siteElevateBtn').click();
+      await check('after elevation Bravo is readable', () => calls.includes('admin bravo true') && $('siteDeniedNote').hidden && !$('siteGrantBox').hidden && !$('siteElevatedNote').hidden, 6000);
+      log(!$('elevationBanner').hidden, 'page banner lists the temporary admin site');
+      let stored = []; try { stored = JSON.parse(w.localStorage.getItem('SPNRoleMgr.siteAdmin') || '[]'); } catch { /* blocked */ }
+      log(stored.length === 1 && stored[0].siteUrl === 'https://contoso.sharepoint.com/sites/bravo', 'elevation stored before use');
+      tick('#siteRolePicker input[data-role="write"]');
+      $('siteGrantBtn').click();
+      await check('grant on Bravo, then demotion offered and done', () => calls.includes('addSP bravo write') && calls.includes('admin bravo false'), 6000);
+      log(confirms.includes('Remove your temporary site admin rights?'), 'demotion prompt shown after the change');
+      await check('banner gone and Bravo back to not-admin', () => $('elevationBanner').hidden && !$('siteDeniedNote').hidden);
+
+      // a change attempt after demotion prompts to elevate again
+      calls.length = 0;
+      $('siteElevateBtn').click();
+      await until(() => !$('siteGrantBox').hidden, 6000);
+      adminOn.delete('bravo'); // lost rights behind the tool's back
+      q('#sitePermsTable tbody input[data-perm="p-b1"]').checked = true;
+      q('#sitePermsTable tbody input[data-perm="p-b1"]').dispatchEvent(new w.Event('change', { bubbles: true }));
+      $('sitePermsRemoveBtn').click();
+      await check('403 on a change prompts elevation again', () => calls.filter((c) => c === 'admin bravo true').length === 2, 6000);
+
+      // closing with an open elevation offers removal
+      confirms = [];
+      $('siteModalCloseBtn').click();
+      await check('closing the dialog offers removal of open elevations', () => confirms.includes('Remove your temporary site admin rights?') && calls.includes('admin bravo false'));
+
+      out.insertAdjacentHTML('beforeend', `<h2>${pass} passed, ${fail} failed</h2><p id="result">TEST-RESULT: ${fail ? 'FAIL' : 'PASS'} ${pass}/${pass + fail}</p>`);
+    }
+    document.getElementById('app').addEventListener('load', () => run().catch((e) => { log(false, 'run threw', e.stack || e.message); out.insertAdjacentHTML('beforeend', `<p id="result">TEST-RESULT: FAIL</p>`); }));
+  </script>
+</body>
+</html>

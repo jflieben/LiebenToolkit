@@ -28,7 +28,6 @@
   async function run(tests, { target } = {}) {
     if (!target) target = new EventTarget();
     Graph.clearCache();
-    if (window.Exo) Exo.clearCache();
     _abort = { cancelled: false };
     const scanId = 'scan-' + Date.now();
     const startedAt = new Date().toISOString();
@@ -48,9 +47,7 @@
       emit(target, 'progress', { done, total: tests.length, current: test, sub: null });
       let row;
       let calls = [];
-      const testScopes = Array.isArray(test.requiredScopes) && test.requiredScopes.length
-        ? test.requiredScopes
-        : Auth.SCOPES.graphFull;
+      const testScopes = test.requiredScopes || 'read';
       let consentOk = true;
       try {
         consentOk = await Auth.ensureScopes(testScopes);
@@ -68,13 +65,13 @@
           row = {
             id: test.id,
             status: 'Skipped',
-            reason: 'Consent flow was started for this test. Complete consent and run the scan again.',
+            reason: 'Consent was not completed for this test. Run the scan again after consenting.',
             durationMs: 0,
           };
         }
         results.push({
           id: test.id, title: test.title, severity: test.severity, tag: test.tag, category: test.category,
-          docUrl: test.docUrl, description: test.description, detailMd: test.detailMd,
+          docUrl: test.docUrl, description: test.description,
           ...row,
           graphCalls: [],
         });
@@ -102,7 +99,7 @@
       // Backfill metadata from the catalog entry.
       row = {
         id: test.id, title: test.title, severity: test.severity, tag: test.tag, category: test.category,
-        docUrl: test.docUrl, description: test.description, detailMd: test.detailMd,
+        docUrl: test.docUrl, description: test.description,
         ...row,
         graphCalls: calls,
       };

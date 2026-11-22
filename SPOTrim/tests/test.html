@@ -1,362 +1,454 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="utf-8" />
-  <title>SPOTrim - Tests</title>
+  <meta charset="UTF-8" />
+  <title>SPOTrim - tests</title>
   <style>
-    body { font-family: -apple-system, "Segoe UI", sans-serif; background: #f6f8fb; padding: 20px; }
-    .test { padding: 8px 12px; margin: 4px 0; border-radius: 6px; font-family: monospace; font-size: 13px; }
-    .pass { background: #d6f3e3; color: #128d4f; }
-    .fail { background: #fde2e1; color: #c0392b; }
+    body { font: 14px/1.4 -apple-system,Segoe UI,sans-serif; padding: 20px; max-width: 900px; margin: 0 auto; }
+    .pass { color: #1f7a3a; } .fail { color: #b32026; font-weight: bold; }
+    pre { background: #f4f4f6; padding: 10px; border-radius: 6px; overflow: auto; }
     h1 { font-size: 18px; }
-    summary { font-weight: 600; cursor: pointer; }
-    pre { background: #fff; padding: 10px; border-radius: 6px; border: 1px solid #e3e8f0; overflow: auto; }
   </style>
 </head>
 <body>
-  <h1>SPOTrim - Unit Tests</h1>
-  <p>These tests cover pure logic that does not require a Microsoft 365 sign-in (auth-file parsing, redirect-URI selection, CSV parsing of the usage report, staleness scoring, exporter row building). Open this file via <code>pwsh ../serve.ps1</code> then navigate to <code>/tests/test.html</code>.</p>
-  <div id="results"></div>
-
-  <!-- Stub Log so the modules can load without the full DOM. -->
-  <script>
-    window.Log = { dbg(){}, info(){}, warn(){}, err(){}, setVerbose(){}, getEntries(){return[]}, clear(){} };
-    // MSAL stub so auth.js can load without erroring.
-    window.msal = { PublicClientApplication: function(){} };
-  </script>
-
-  <script src="../src/log.js"></script>
-  <script src="../src/concurrency.js"></script>
-  <script src="../src/auth.js"></script>
+  <h1>SPOTrim - unit tests</h1>
+  <div id="out"></div>
+  <script src="../../shared/log.js"></script>
+  <script src="../../shared/concurrency.js"></script>
+  <script src="../../shared/http.js"></script>
+  <script src="../../shared/auth.js"></script>
+  <script src="../../shared/export.js"></script>
+  <script src="../src/sites.js"></script>
+  <script src="../src/elevation.js"></script>
   <script src="../src/graph.js"></script>
   <script src="../src/sharepoint.js"></script>
   <script src="../src/analysis.js"></script>
-  <script src="../src/export.js"></script>
-
   <script>
-    const results = document.getElementById('results');
+    const out = document.getElementById('out');
     let pass = 0, fail = 0;
-    function record(name, ok, detail) {
-      const div = document.createElement('div');
-      div.className = 'test ' + (ok ? 'pass' : 'fail');
-      div.textContent = (ok ? '✓ ' : '✗ ') + name + (detail ? '  - ' + detail : '');
-      results.appendChild(div);
-      if (ok) pass++; else fail++;
+    const tests = [];
+    function test(name, fn) { tests.push([name, fn]); }
+    function eq(a, b, m = '') {
+      const A = JSON.stringify(a), B = JSON.stringify(b);
+      if (A !== B) throw new Error(`${m} expected ${B}, got ${A}`);
     }
-    function eq(name, actual, expected) {
-      const ok = JSON.stringify(actual) === JSON.stringify(expected);
-      record(name, ok, ok ? '' : `expected ${JSON.stringify(expected)} got ${JSON.stringify(actual)}`);
+    function ok(cond, m = 'assertion failed') { if (!cond) throw new Error(m); }
+    function memStore() {
+      const m = new Map();
+      return { getItem: (k) => (m.has(k) ? m.get(k) : null), setItem: (k, v) => m.set(k, String(v)), removeItem: (k) => m.delete(k), raw: m };
     }
-    function ok(name, cond, detail) { record(name, !!cond, detail); }
+    const httpErr = (status) => Object.assign(new Error(`HTTP ${status}`), { status });
+    const DAY = 86400000;
+    const emptyEng = {
+      allTimeViews: 0, allTimeActors: 0, allTimeStart: null, allTimeEnd: null,
+      recentViews: 0, recentActors: 0, recentStart: null, recentEnd: null,
+      last30Views: 0, last30Actors: 0, last30LastDay: null, lastPageEdit: null, quotaUsedBytes: null,
+    };
+    // analyzeSite with stubbed SharePoint and Graph calls.
+    async function analyzeWith({ web, libs, eng, owners }, site, opts = { staleDays: 365 }) {
+      const real = [SharePoint.getWebInfo, SharePoint.getDocLibsLastModified, SharePoint.getSiteOwners, Graph.getSiteEngagement];
+      SharePoint.getWebInfo = web || (async () => ({}));
+      SharePoint.getDocLibsLastModified = libs || (async () => []);
+      SharePoint.getSiteOwners = owners || (async () => []);
+      Graph.getSiteEngagement = eng || (async () => ({ ...emptyEng }));
+      try { return await Analysis.analyzeSite(site, opts); }
+      finally { [SharePoint.getWebInfo, SharePoint.getDocLibsLastModified, SharePoint.getSiteOwners, Graph.getSiteEngagement] = real; }
+    }
+    const webModified = (days) => async () => ({ LastItemUserModifiedDate: new Date(Date.now() - days * DAY).toISOString() });
 
-    // ---------- Auth tests ----------
-    (function testAuthParse() {
-      const text = `# comment\nclientId: 271bf19c-6935-42dc-be52-67cb3bd93962\nredirect-url-local: http://localhost:8080\nredirect-url-web: https://lieben.nu/tools/SPOTrim\n\n`;
-      const cfg = Auth._parseAuthFile(text);
-      eq('parse .auth: clientId',        cfg.clientId,             '271bf19c-6935-42dc-be52-67cb3bd93962');
-      eq('parse .auth: local URI',       cfg['redirect-url-local'],'http://localhost:8080');
-      eq('parse .auth: web URI',         cfg['redirect-url-web'],  'https://lieben.nu/tools/SPOTrim');
-    })();
+    // ---------- shared auth helpers with this tool's .auth ----------
+    test('parse .auth', () => {
+      const cfg = ToolkitAuth.parseAuthFile('# c\nclientId: 271bf19c-6935-42dc-be52-67cb3bd93962\nredirect-url-local: http://localhost:1985\nredirect-url-web: https://lieben.nu/tools/SPOTrim\n');
+      eq(cfg.clientId, '271bf19c-6935-42dc-be52-67cb3bd93962');
+      eq(cfg['redirect-url-local'], 'http://localhost:1985');
+      eq(cfg['redirect-url-web'], 'https://lieben.nu/tools/SPOTrim');
+    });
+    test('redirect URI per origin', () => {
+      const cfg = { 'redirect-url-local': 'http://localhost:1985', 'redirect-url-web': 'https://lieben.nu/x' };
+      eq(ToolkitAuth.pickRedirectUriForOrigin(cfg, 'http://localhost:1996'), 'http://localhost:1985');
+      eq(ToolkitAuth.pickRedirectUriForOrigin(cfg, 'http://127.0.0.1:9000'), 'http://localhost:1985');
+      eq(ToolkitAuth.pickRedirectUriForOrigin(cfg, 'https://lieben.nu/x/'), 'https://lieben.nu/x');
+    });
 
-    (function testRedirectPick() {
-      const cfg = { 'redirect-url-local': 'http://localhost:8080', 'redirect-url-web': 'https://lieben.nu/x' };
-      eq('pickRedirect localhost', Auth._pickRedirectUriForOrigin(cfg, 'http://localhost:8080'),     'http://localhost:8080');
-      eq('pickRedirect 127.0.0.1', Auth._pickRedirectUriForOrigin(cfg, 'http://127.0.0.1:9000'),     'http://localhost:8080');
-      eq('pickRedirect prod',       Auth._pickRedirectUriForOrigin(cfg, 'https://lieben.nu/x/'),     'https://lieben.nu/x');
-      eq('pickRedirect any host',   Auth._pickRedirectUriForOrigin(cfg, 'https://contoso.com/spo/'), 'https://lieben.nu/x');
-    })();
+    // ---------- classification ----------
+    test('categoryOf', () => {
+      eq(Sites.categoryOf({ webUrl: 'https://x.sharepoint.com/sites/foo' }), 'SharePoint');
+      eq(Sites.categoryOf({ webUrl: 'https://x-my.sharepoint.com/personal/u_x_com' }), 'OneDrive');
+      eq(Sites.categoryOf({ webUrl: 'https://x.sharepoint.com/whatever', isPersonalSite: true }), 'OneDrive');
+    });
+    test('classifyType', () => {
+      eq(Sites.classifyType({ webUrl: 'https://x-my.sharepoint.com/personal/u' }), 'OneDrive');
+      eq(Sites.classifyType({ root: { '@odata.type': 'GROUP#0' } }), 'Group / Teams site');
+      eq(Sites.classifyType({ root: { '@odata.type': 'TEAMCHANNEL#0' } }), 'Teams private channel');
+      eq(Sites.classifyType({ root: { '@odata.type': 'TEAMCHANNEL#1' } }), 'Teams shared channel');
+      eq(Sites.classifyType({ root: { '@odata.type': 'SITEPAGEPUBLISHING#0' } }), 'Communication site');
+      eq(Sites.classifyType({ root: { '@odata.type': 'STS#3' } }), 'Modern team site');
+      eq(Sites.classifyType({ root: { '@odata.type': 'STS#0' } }), 'Classic team site');
+      eq(Sites.classifyType({ root: { '@odata.type': 'APPCATALOG#0' } }), 'App catalog');
+      eq(Sites.classifyType({ root: { '@odata.type': 'WEIRDTEMPLATE#9' } }), 'WEIRDTEMPLATE#9');
+      eq(Sites.classifyType({ webUrl: 'https://x.sharepoint.com/sites/foo' }), 'SharePoint');
+    });
 
-    // ---------- Analysis: classify (Exporter) ----------
-    (function testClassify() {
-      eq('classify SharePoint',         Exporter.classify({ webUrl: 'https://x.sharepoint.com/sites/foo' }), 'SharePoint');
-      eq('classify OneDrive (URL)',     Exporter.classify({ webUrl: 'https://x-my.sharepoint.com/personal/u_x_com' }), 'OneDrive');
-      eq('classify OneDrive (flag)',    Exporter.classify({ webUrl: 'https://x.sharepoint.com/whatever', isPersonalSite: true }), 'OneDrive');
-
-      // Detailed classifyType
-      eq('classifyType OneDrive', Exporter.classifyType({ webUrl: 'https://x-my.sharepoint.com/personal/u' }), 'OneDrive');
-      eq('classifyType Group/Teams', Exporter.classifyType({ root: { '@odata.type': 'GROUP#0' } }), 'Group / Teams site');
-      eq('classifyType Teams private channel', Exporter.classifyType({ root: { '@odata.type': 'TEAMCHANNEL#0' } }), 'Teams private channel');
-      eq('classifyType Teams shared channel', Exporter.classifyType({ root: { '@odata.type': 'TEAMCHANNEL#1' } }), 'Teams shared channel');
-      eq('classifyType Communication site', Exporter.classifyType({ root: { '@odata.type': 'SITEPAGEPUBLISHING#0' } }), 'Communication site');
-      eq('classifyType Modern team site', Exporter.classifyType({ root: { '@odata.type': 'STS#3' } }), 'Modern team site');
-      eq('classifyType Classic team site', Exporter.classifyType({ root: { '@odata.type': 'STS#0' } }), 'Classic team site');
-      eq('classifyType App catalog', Exporter.classifyType({ root: { '@odata.type': 'APPCATALOG#0' } }), 'App catalog');
-      eq('classifyType fallback to template', Exporter.classifyType({ root: { '@odata.type': 'WEIRDTEMPLATE#9' } }), 'WEIRDTEMPLATE#9');
-      eq('classifyType blank → SharePoint', Exporter.classifyType({ webUrl: 'https://x.sharepoint.com/sites/foo' }), 'SharePoint');
-    })();
-
-    // ---------- Analysis: scoring ----------
-    (async function testAnalysisScoring() {
-      // Stub SharePoint REST + Graph engagement so analyzeSite is fully deterministic.
-      const realWeb  = SharePoint.getWebInfo;
-      const realLibs = SharePoint.getDocLibsLastModified;
-      const realOwners = SharePoint.getSiteOwners;
-      const realEng  = Graph.getSiteEngagement;
-      SharePoint.getSiteOwners = async () => ([]);
-      const emptyEng = {
-        allTimeViews: 0, allTimeActors: 0, allTimeStart: null, allTimeEnd: null,
-        recentViews: 0, recentActors: 0, recentStart: null, recentEnd: null,
-        last30Views: 0, last30Actors: 0, last30LastDay: null,
-        lastPageEdit: null, quotaUsedBytes: null,
-      };
+    // ---------- tenant host checks ----------
+    test('hostsFromRoot: tenant host gives my and admin hosts', () => {
+      eq(Sites.hostsFromRoot('Contoso.SharePoint.com'), { tenant: 'contoso.sharepoint.com', my: 'contoso-my.sharepoint.com', admin: 'contoso-admin.sharepoint.com' });
+    });
+    test('hostsFromRoot: refuses anything that is not a tenant root host', () => {
+      eq(Sites.hostsFromRoot('evil.com'), null);
+      eq(Sites.hostsFromRoot('contoso.sharepoint.com.evil.com'), null);
+      eq(Sites.hostsFromRoot('contoso-my.sharepoint.com'), null);
+      eq(Sites.hostsFromRoot('contoso-admin.sharepoint.com'), null);
+      eq(Sites.hostsFromRoot(''), null);
+      eq(Sites.hostsFromRoot(undefined), null);
+    });
+    test('isTenantSiteUrl: only https on the tenant or OneDrive host', () => {
+      const hosts = Sites.hostsFromRoot('contoso.sharepoint.com');
+      ok(Sites.isTenantSiteUrl('https://contoso.sharepoint.com/sites/a', hosts));
+      ok(Sites.isTenantSiteUrl('https://contoso-my.sharepoint.com/personal/u_contoso_com', hosts));
+      ok(!Sites.isTenantSiteUrl('http://contoso.sharepoint.com/sites/a', hosts), 'http');
+      ok(!Sites.isTenantSiteUrl('https://fabrikam.sharepoint.com/sites/a', hosts), 'other tenant');
+      ok(!Sites.isTenantSiteUrl('https://contoso.sharepoint.com.evil.com/sites/a', hosts), 'suffix trick');
+      ok(!Sites.isTenantSiteUrl('https://user@contoso.sharepoint.com/sites/a', hosts), 'userinfo');
+      ok(!Sites.isTenantSiteUrl('https://contoso-admin.sharepoint.com/', hosts), 'admin host is not a site');
+      ok(!Sites.isTenantSiteUrl('javascript:alert(1)', hosts), 'javascript');
+      ok(!Sites.isTenantSiteUrl('https://contoso.sharepoint.com/sites/a', null), 'no hosts yet');
+    });
+    test('SharePoint REST never sends a token to a foreign host', async () => {
+      const realFetch = window.fetch, realAuth = window.Auth;
+      let fetched = 0, tokens = 0;
+      window.fetch = async () => { fetched++; return new Response('{}', { status: 200, headers: { 'Content-Type': 'application/json' } }); };
+      let lastOpts = null;
+      window.Auth = { getToken: async (set, opts) => { tokens++; lastOpts = opts; return 'tok'; } };
       try {
-        // Site 1: modified recently → Keep
-        SharePoint.getWebInfo = async () => ({
-          Title: 'A', Url: 'x', Created: '2020-01-01T00:00:00Z',
-          LastItemUserModifiedDate: new Date(Date.now() - 30 * 86400000).toISOString(),
-          LastItemModifiedDate:     new Date(Date.now() - 30 * 86400000).toISOString(),
-        });
-        SharePoint.getDocLibsLastModified = async () => ([]);
-        Graph.getSiteEngagement = async () => ({ ...emptyEng });
-        let r = await Analysis.analyzeSite({ webUrl: 'https://x.sharepoint.com/sites/a', lastModifiedDateTime: null }, { staleDays: 365 });
-        eq('Recent → Keep', r.advice, 'Keep');
-
-        // Site 2: stale + 0 page views → Clean up
-        SharePoint.getWebInfo = async () => ({
-          LastItemUserModifiedDate: new Date(Date.now() - 800 * 86400000).toISOString(),
-        });
-        Graph.getSiteEngagement = async () => ({ ...emptyEng });
-        r = await Analysis.analyzeSite(
-          { webUrl: 'https://x.sharepoint.com/sites/b', lastModifiedDateTime: null },
-          { staleDays: 365 });
-        eq('Stale + 0 views → Clean up', r.advice, 'Clean up');
-
-        // Site 3: stale + still has all-time views → Review
-        SharePoint.getWebInfo = async () => ({
-          LastItemUserModifiedDate: new Date(Date.now() - 800 * 86400000).toISOString(),
-        });
-        Graph.getSiteEngagement = async () => ({
-          ...emptyEng, allTimeViews: 50, allTimeActors: 5,
-        });
-        r = await Analysis.analyzeSite(
-          { webUrl: 'https://x.sharepoint.com/sites/c', lastModifiedDateTime: null },
-          { staleDays: 365 });
-        eq('Stale + still viewed → Review', r.advice, 'Review');
-
-        // Site 4: no signals at all, both 403 → No access
-        SharePoint.getWebInfo = async () => { throw new Error('403 Forbidden'); };
-        SharePoint.getDocLibsLastModified = async () => { throw new Error('403 Forbidden'); };
-        Graph.getSiteEngagement = async () => ({ ...emptyEng });
-        r = await Analysis.analyzeSite(
-          { webUrl: 'https://x.sharepoint.com/sites/d', lastModifiedDateTime: null },
-          { staleDays: 365 });
-        eq('Both 403 → No access', r.advice, 'No access');
-        ok('No access flag set',         r.accessDenied === true, 'accessDenied: ' + r.accessDenied);
-        ok('No access reason mentions 401/403', /401\/403/.test(r.reason), 'reason: ' + r.reason);
-
-        // Site 5: web 403 but lib succeeds with items → still has lib signal → analyses normally
-        SharePoint.getWebInfo = async () => { throw Object.assign(new Error('SPO 403: denied'), { status: 403 }); };
-        SharePoint.getDocLibsLastModified = async () => [{ LastItemUserModifiedDate: new Date(Date.now() - 10 * 86400000).toISOString(), ItemCount: 5 }];
-        Graph.getSiteEngagement = async () => ({ ...emptyEng });
-        r = await Analysis.analyzeSite(
-          { webUrl: 'https://x.sharepoint.com/sites/e', lastModifiedDateTime: null },
-          { staleDays: 365 });
-        ok('Partial denial does not become No access', r.advice !== 'No access', 'advice: ' + r.advice);
-
-        // Site 6: web 500 + lib 403 → mixed errors → still Unknown (not No access)
-        SharePoint.getWebInfo = async () => { throw new Error('SPO 500: server error'); };
-        SharePoint.getDocLibsLastModified = async () => { throw new Error('SPO 403: denied'); };
-        Graph.getSiteEngagement = async () => ({ ...emptyEng });
-        r = await Analysis.analyzeSite(
-          { webUrl: 'https://x.sharepoint.com/sites/f', lastModifiedDateTime: null },
-          { staleDays: 365 });
-        eq('Mixed errors -> Unknown', r.advice, 'Unknown');
-      } finally {
-        SharePoint.getWebInfo = realWeb;
-        SharePoint.getDocLibsLastModified = realLibs;
-        SharePoint.getSiteOwners = realOwners;
-        Graph.getSiteEngagement = realEng;
-      }
-    })();
-
-    // ---------- Per-site Graph engagement signals ----------
-    (async function testSiteEngagement() {
-      const realWeb = SharePoint.getWebInfo;
-      const realLibs = SharePoint.getDocLibsLastModified;
-      const realOwners = SharePoint.getSiteOwners;
-      const realEng = Graph.getSiteEngagement;
-      SharePoint.getSiteOwners = async () => ([]);
-      const baseEng = {
-        allTimeViews: 0, allTimeActors: 0, allTimeStart: null, allTimeEnd: null,
-        recentViews: 0, recentActors: 0, recentStart: null, recentEnd: null,
-        last30Views: 0, last30Actors: 0, last30LastDay: null,
-        lastPageEdit: null, quotaUsedBytes: null,
-      };
+        SharePoint.setHosts(Sites.hostsFromRoot('contoso.sharepoint.com'));
+        let err = null;
+        try { await SharePoint.getWebInfo('https://evil.example/sites/x'); } catch (e) { err = e; }
+        ok(err && /Not a SharePoint URL/.test(err.message), 'expected refusal');
+        err = null;
+        try { await SharePoint.setSiteAdmin('https://evil.example/sites/x', 'a@contoso.com', true); } catch (e) { err = e; }
+        ok(err, 'setSiteAdmin refuses too');
+        eq(fetched, 0, 'fetch calls');
+        eq(tokens, 0, 'token requests');
+        await SharePoint.getWebInfo('https://contoso.sharepoint.com/sites/x');
+        eq(fetched, 1, 'tenant host is fine');
+        eq(lastOpts, { interactive: false, noRedirect: true }, 'run tokens are silent and never redirect');
+      } finally { window.fetch = realFetch; window.Auth = realAuth; SharePoint.setHosts(null); }
+    });
+    test('SharePoint scopes: read on tenant host, full control only on admin host', () => {
+      SharePoint.setHosts(Sites.hostsFromRoot('contoso.sharepoint.com'));
       try {
-        // Stale site, all-time views > 0 → Review
-        SharePoint.getWebInfo = async () => ({ LastItemUserModifiedDate: new Date(Date.now() - 800 * 86400000).toISOString() });
-        SharePoint.getDocLibsLastModified = async () => ([]);
-        Graph.getSiteEngagement = async () => ({
-          ...baseEng,
-          allTimeViews: 42, allTimeActors: 5, allTimeStart: '2020-01-01', allTimeEnd: '2026-04-20',
-        });
-        let r = await Analysis.analyzeSite(
-          { id: 'tenant,site,web', webUrl: 'https://x.sharepoint.com/sites/g', lastModifiedDateTime: null },
-          { staleDays: 365 });
-        eq('All-time views populates pageViews', r.pageViews, 42);
-        eq('pageViewsSource = siteAnalyticsAllTime', r.pageViewsSource, 'siteAnalyticsAllTime');
-        eq('Stale + all-time views → Review', r.advice, 'Review');
-        ok('Why mentions all-time', /all-time/.test(r.reason), 'reason: ' + r.reason);
+        eq(SharePoint.readScopes(), ['https://contoso.sharepoint.com/AllSites.Read']);
+        eq(SharePoint.adminScopes(), ['https://contoso-admin.sharepoint.com/AllSites.FullControl']);
+      } finally { SharePoint.setHosts(null); }
+    });
+    test('SetSiteAdmin XML escapes site and login', () => {
+      const xml = SharePoint.setSiteAdminXml('https://x.sharepoint.com/sites/a&b<c', "i:0#.f|membership|o'neil@x.com", false);
+      ok(xml.includes('https://x.sharepoint.com/sites/a&amp;b&lt;c'), 'site escaped');
+      ok(xml.includes('o&apos;neil@x.com'), 'login escaped');
+      ok(xml.includes('<Parameter Type="Boolean">false</Parameter>'), 'boolean');
+      eq(SharePoint.buildClaimLoginName('a@x.com'), 'i:0#.f|membership|a@x.com');
+    });
 
-        // Stale site, 0 all-time views → Clean up
-        Graph.getSiteEngagement = async () => ({ ...baseEng });
-        r = await Analysis.analyzeSite(
-          { id: 'tenant,site,web', webUrl: 'https://x.sharepoint.com/sites/h', lastModifiedDateTime: null },
-          { staleDays: 365 });
-        eq('0 all-time views + stale → Clean up', r.advice, 'Clean up');
-
-        // Last 7 days has activity → lastViewed approx + Review
-        SharePoint.getWebInfo = async () => ({ LastItemUserModifiedDate: new Date(Date.now() - 800 * 86400000).toISOString() });
-        Graph.getSiteEngagement = async () => ({
-          ...baseEng,
-          allTimeViews: 100, allTimeActors: 10,
-          recentViews: 3, recentActors: 1, recentStart: '2026-04-13', recentEnd: '2026-04-20',
-        });
-        r = await Analysis.analyzeSite(
-          { id: 'tenant,site,web', webUrl: 'https://x.sharepoint.com/sites/i', lastModifiedDateTime: null },
-          { staleDays: 365 });
-        ok('Recent views populate lastViewed', r.lastViewed instanceof Date);
-        ok('lastViewedApprox flag set when sourced from lastSevenDays', r.lastViewedApprox === true);
-        ok('Why mentions last 7 days', /last 7 days/.test(r.reason), 'reason: ' + r.reason);
-
-        // last30LastDay populates lastViewed exactly (NOT approx) and last30Views > 0 → Review (highest priority)
-        const last30Day = new Date(Date.now() - 5 * 86400000).toISOString();
-        Graph.getSiteEngagement = async () => ({
-          ...baseEng,
-          allTimeViews: 100, allTimeActors: 10,
-          last30Views: 7, last30Actors: 2, last30LastDay: last30Day,
-        });
-        r = await Analysis.analyzeSite(
-          { id: 'tenant,site,web', webUrl: 'https://x.sharepoint.com/sites/i30', lastModifiedDateTime: null },
-          { staleDays: 365 });
-        ok('last30LastDay populates lastViewed', r.lastViewed instanceof Date);
-        ok('lastViewedApprox NOT set when sourced from last30LastDay', !r.lastViewedApprox);
-        eq('last30Views > 0 + stale → Review', r.advice, 'Review');
-        ok('Why mentions last 30 days', /last 30 days/.test(r.reason), 'reason: ' + r.reason);
-
-        // lastPageEdit doubles as a modification signal
-        const pageEditDate = new Date(Date.now() - 100 * 86400000).toISOString();
-        SharePoint.getWebInfo = async () => ({ LastItemUserModifiedDate: new Date(Date.now() - 800 * 86400000).toISOString() });
-        Graph.getSiteEngagement = async () => ({
-          ...baseEng,
-          lastPageEdit: { date: pageEditDate, name: 'Home.aspx', webUrl: 'https://x/p', modifiedBy: 'u@x' },
-        });
-        r = await Analysis.analyzeSite(
-          { id: 'tenant,site,web', webUrl: 'https://x.sharepoint.com/sites/pe', lastModifiedDateTime: null },
-          { staleDays: 365 });
-        eq('lastPageEditDate captured in signals', r.signals.lastPageEditDate.toISOString(), pageEditDate);
-        ok('Page edit extends lastModified', r.lastModified.getTime() === new Date(pageEditDate).getTime());
-        eq('lastPageEditName captured', r.signals.lastPageEditName, 'Home.aspx');
-
-        // quotaUsedBytes → storageMB
-        Graph.getSiteEngagement = async () => ({ ...baseEng, quotaUsedBytes: 5 * 1048576 });
-        r = await Analysis.analyzeSite(
-          { id: 'tenant,site,web', webUrl: 'https://x.sharepoint.com/sites/q', lastModifiedDateTime: null },
-          { staleDays: 365 });
-        eq('quotaUsedBytes → storageMB', r.storageMB, 5);
-
-        // Engagement throws → still works, no crash, error captured
-        Graph.getSiteEngagement = async () => { throw new Error('graph 500'); };
-        r = await Analysis.analyzeSite(
-          { id: 'tenant,site,web', webUrl: 'https://x.sharepoint.com/sites/j', lastModifiedDateTime: null },
-          { staleDays: 365 });
-        ok('Engagement error captured', (r.errors || []).some(e => e && /graph 500/.test(e)), 'errors: ' + JSON.stringify(r.errors));
-      } finally {
-        SharePoint.getWebInfo = realWeb;
-        SharePoint.getDocLibsLastModified = realLibs;
-        SharePoint.getSiteOwners = realOwners;
-        Graph.getSiteEngagement = realEng;
-      }
-    })();
-
-    // ---------- System site detection ----------
-    (async function testSystemSiteOverride() {
-      const realWeb = SharePoint.getWebInfo;
-      const realLibs = SharePoint.getDocLibsLastModified;
-      const realOwners = SharePoint.getSiteOwners;
-      const realEng = Graph.getSiteEngagement;
-      // Make every site look very stale + zero views so the rule engine would
-      // normally say "Clean up". The override should still force "Keep".
-      SharePoint.getWebInfo = async () => ({ LastItemUserModifiedDate: new Date(Date.now() - 1500 * 86400000).toISOString() });
-      SharePoint.getDocLibsLastModified = async () => ([]);
-      SharePoint.getSiteOwners = async () => ([]);
-      Graph.getSiteEngagement = async () => ({
-        allTimeViews: 0, allTimeActors: 0, allTimeStart: null, allTimeEnd: null,
-        recentViews: 0, recentActors: 0, recentStart: null, recentEnd: null,
-        last30Views: 0, last30Actors: 0, last30LastDay: null,
-        lastPageEdit: null, quotaUsedBytes: null,
+    // ---------- force scan: admin check ----------
+    test('adminState: only a clear answer counts', () => {
+      eq(Elevation.adminState({ IsSiteAdmin: true }), 'admin');
+      eq(Elevation.adminState({ IsSiteAdmin: false }), 'notAdmin');
+      eq(Elevation.adminState(null, httpErr(403)), 'notAdmin');
+      eq(Elevation.adminState(null, httpErr(401)), 'unknown');
+      eq(Elevation.adminState(null, httpErr(429)), 'unknown');
+      eq(Elevation.adminState(null, httpErr(500)), 'unknown');
+      eq(Elevation.adminState(null, httpErr(503)), 'unknown');
+      eq(Elevation.adminState(null, new Error('network error')), 'unknown');
+      eq(Elevation.adminState(null, new Error('Cancelled')), 'unknown');
+      eq(Elevation.adminState({}), 'unknown');
+      eq(Elevation.adminState(null), 'unknown');
+    });
+    const S = (name, od) => ({ id: name, webUrl: od ? `https://c-my.sharepoint.com/personal/${name}` : `https://c.sharepoint.com/sites/${name}`, isPersonalSite: !!od });
+    const isOd = (s) => Sites.categoryOf(s) === 'OneDrive';
+    test('plan: elevate only confirmed not-admin, OneDrives off by default', () => {
+      const sites = [S('a'), S('b'), S('c'), S('d', true)];
+      const checks = [{ state: 'admin' }, { state: 'notAdmin' }, { state: 'unknown', error: 'HTTP 429' }, { state: 'notAdmin' }];
+      const p = Elevation.plan(sites, checks, { isOneDrive: isOd });
+      eq(p.elevate.map((s) => s.id), ['b']);
+      eq(p.admin.map((s) => s.id), ['a']);
+      eq(p.unknown.map((u) => [u.site.id, u.error]), [['c', 'HTTP 429']]);
+      eq(p.oneDriveSkipped.map((s) => s.id), ['d']);
+      eq(Elevation.plan(sites, checks, { includeOneDrive: true, isOneDrive: isOd }).elevate.map((s) => s.id), ['b', 'd']);
+    });
+    test('plan: missing check result is unknown, not elevated', () => {
+      const p = Elevation.plan([S('a')], [], { isOneDrive: isOd });
+      eq(p.elevate.length, 0);
+      eq(p.unknown.length, 1);
+    });
+    test('check: maps errors through adminState', async () => {
+      const answers = { a: { IsSiteAdmin: true }, b: { IsSiteAdmin: false }, c: httpErr(429), d: httpErr(403) };
+      const checks = await Elevation.check([S('a'), S('b'), S('c'), S('d')], {
+        currentUser: async (url) => { const v = answers[url.split('/').pop()]; if (v instanceof Error) throw v; return v; },
       });
-      try {
-        const cases = [
-          { label: 'tenant root site',  site: { webUrl: 'https://contoso.sharepoint.com/' } },
-          { label: 'admin host',        site: { webUrl: 'https://contoso-admin.sharepoint.com/' } },
-          { label: 'mysite host root',  site: { webUrl: 'https://contoso-my.sharepoint.com/' } },
-          { label: '/search',           site: { webUrl: 'https://contoso.sharepoint.com/search' } },
-          { label: '/sites/appcatalog', site: { webUrl: 'https://contoso.sharepoint.com/sites/appcatalog' } },
-          { label: 'content type hub',  site: { webUrl: 'https://contoso.sharepoint.com/sites/contenttypehub' } },
-          { label: 'APPCATALOG template', site: { webUrl: 'https://x.sharepoint.com/sites/whatever', root: { '@odata.type': '#SP.SiteCollection.APPCATALOG#0' } } },
-          { label: 'TENANTADMIN template', site: { webUrl: 'https://x.sharepoint.com/sites/random', root: { '@odata.type': '#SP.SiteCollection.TENANTADMIN#0' } } },
-          { label: 'POINTPUBLISHINGTOPIC template', site: { webUrl: 'https://x.sharepoint.com/sites/topics', root: { '@odata.type': '#SP.SiteCollection.POINTPUBLISHINGTOPIC#0' } } },
-        ];
-        for (const c of cases) {
-          const r = await Analysis.analyzeSite(c.site, { staleDays: 365 });
-          eq(`System site forced to Keep: ${c.label}`, r.advice, 'Keep');
-          ok(`System site reason mentions 'System site' (${c.label})`, /System site/i.test(r.reason), 'reason: ' + r.reason);
-        }
-        // Sanity: a regular site collection in /sites/ does NOT get forced.
-        const normal = await Analysis.analyzeSite({ webUrl: 'https://contoso.sharepoint.com/sites/marketing' }, { staleDays: 365 });
-        ok('Normal site is not forced to Keep', normal.advice !== 'Keep' || !/System site/i.test(normal.reason));
+      eq(checks.map((c) => c.state), ['admin', 'notAdmin', 'unknown', 'notAdmin']);
+    });
 
-        // Direct helper checks (no analyze flow)
-        eq('isSystemSite admin host',   !!Analysis.isSystemSite({ webUrl: 'https://x-admin.sharepoint.com/' }), true);
-        eq('isSystemSite mysite root',  !!Analysis.isSystemSite({ webUrl: 'https://x-my.sharepoint.com/' }), true);
-        eq('isSystemSite individual OneDrive is NOT system', !!Analysis.isSystemSite({ webUrl: 'https://x-my.sharepoint.com/personal/u_x_com' }), false);
-        eq('isSystemSite normal /sites/foo', !!Analysis.isSystemSite({ webUrl: 'https://x.sharepoint.com/sites/foo' }), false);
-      } finally {
-        SharePoint.getWebInfo = realWeb;
-        SharePoint.getDocLibsLastModified = realLibs;
-        SharePoint.getSiteOwners = realOwners;
-        Graph.getSiteEngagement = realEng;
-      }
-    })();
+    // ---------- force scan: ledger ----------
+    test('ledger: record keeps only url, account, tenant and time', () => {
+      const st = memStore();
+      Elevation.record(st, { siteUrl: 'https://c.sharepoint.com/sites/a', account: 'Admin@C.com', tenantId: 't1', accessToken: 'eyJ.secret', extra: 1 }, new Date('2026-01-01T00:00:00Z'));
+      const raw = st.getItem(Elevation.KEY);
+      ok(!/secret|accessToken|extra/.test(raw), raw);
+      eq(Elevation.load(st), [{ siteUrl: 'https://c.sharepoint.com/sites/a', account: 'Admin@C.com', tenantId: 't1', at: '2026-01-01T00:00:00.000Z' }]);
+    });
+    test('ledger: no duplicates, forget removes, empty list removes key', () => {
+      const st = memStore();
+      const e = { siteUrl: 'https://c.sharepoint.com/sites/a', account: 'a@c.com', tenantId: 't1' };
+      Elevation.record(st, e);
+      Elevation.record(st, { ...e, siteUrl: 'https://c.sharepoint.com/sites/A/' });
+      eq(Elevation.load(st).length, 1);
+      Elevation.forget(st, e);
+      eq(st.getItem(Elevation.KEY), null);
+    });
+    test('ledger: corrupt or hostile content is ignored', () => {
+      const st = memStore();
+      st.setItem(Elevation.KEY, '{not json');
+      eq(Elevation.load(st), []);
+      st.setItem(Elevation.KEY, JSON.stringify([{ siteUrl: 'javascript:alert(1)', account: 'a' }, { siteUrl: 'https://c.sharepoint.com/x' }, 5, null, { siteUrl: 'https://c.sharepoint.com/ok', account: 'a@c.com' }]));
+      eq(Elevation.load(st).map((e) => e.siteUrl), ['https://c.sharepoint.com/ok']);
+      st.setItem(Elevation.KEY, '{"a":1}');
+      eq(Elevation.load(st), []);
+    });
+    test('ledger: mine filters on account and tenant, case-insensitive', () => {
+      const list = [
+        { siteUrl: 'https://c.sharepoint.com/a', account: 'Admin@C.com', tenantId: 'T1' },
+        { siteUrl: 'https://c.sharepoint.com/b', account: 'other@c.com', tenantId: 't1' },
+        { siteUrl: 'https://c.sharepoint.com/c', account: 'admin@c.com', tenantId: 't2' },
+      ];
+      eq(Elevation.mine(list, 'admin@c.com', 't1').map((e) => e.siteUrl), ['https://c.sharepoint.com/a']);
+    });
+    test('storageWorks detects blocked storage', () => {
+      ok(Elevation.storageWorks(memStore()));
+      ok(!Elevation.storageWorks({ setItem() { throw new Error('QuotaExceeded'); }, removeItem() {}, getItem() { return null; } }));
+    });
 
-    // ---------- normalizeUrl ----------
-    (function testNormalizeUrl() {
-      eq('normalizeUrl trailing slash', Graph.normalizeUrl('https://X.SharePoint.com/sites/Foo/'), 'https://x.sharepoint.com/sites/foo');
-      eq('normalizeUrl percent decode', Graph.normalizeUrl('https://x.sharepoint.com/sites/My%20Site'), 'https://x.sharepoint.com/sites/my site');
-    })();
-
-    // ---------- Concurrency ----------
-    (async function testPmap() {
-      const items = [1,2,3,4,5,6,7,8,9,10];
-      let progressFinal = 0;
-      const { results } = await Concurrency.pmap(items, async (n) => n * 2, {
-        concurrency: 3,
-        onProgress: (d) => { progressFinal = d; },
+    // ---------- force scan: grant and revoke ----------
+    test('grant: ledger entry is written before SetSiteAdmin is sent', async () => {
+      const st = memStore();
+      let seenInLedger = false;
+      await Elevation.grant([S('b')], {
+        store: st, account: 'a@c.com', tenantId: 't1',
+        setAdmin: async (url) => { seenInLedger = Elevation.load(st).some((e) => e.siteUrl === url); },
       });
-      eq('pmap maps each item', results, items.map(x => x * 2));
-      eq('pmap calls onProgress to completion', progressFinal, items.length);
-
-      // Cancellation
+      ok(seenInLedger);
+    });
+    test('grant: refused grants leave the list, unclear ones stay on it', async () => {
+      const st = memStore();
+      const behaviour = { ok: null, refused: httpErr(400), csom: Object.assign(new Error('csom'), { csom: true }), network: new Error('Failed to fetch') };
+      const r = await Elevation.grant(['ok', 'refused', 'csom', 'network'].map((n) => S(n)), {
+        store: st, account: 'a@c.com', tenantId: 't1', concurrency: 1,
+        setAdmin: async (url) => { const b = behaviour[url.split('/').pop()]; if (b) throw b; },
+      });
+      eq(r.toRevoke.map((e) => e.siteUrl.split('/').pop()), ['ok', 'network']);
+      eq(r.failed.map((f) => f.site.id), ['refused', 'csom', 'network']);
+      eq(Elevation.load(st).map((e) => e.siteUrl.split('/').pop()), ['ok', 'network']);
+    });
+    test('grant: stops granting after cancel', async () => {
+      const st = memStore();
       const ct = new Concurrency.CancelToken();
-      let cancelled = false;
-      setTimeout(() => ct.cancel(), 20);
-      const r2 = await Concurrency.pmap([1,2,3,4,5], async (n) => {
-        await Concurrency.sleep(50);
-        ct.throwIfCancelled();
-        return n;
-      }, { concurrency: 1, cancelToken: ct });
-      cancelled = r2.results.some(x => x && x.__error);
-      ok('pmap respects cancelToken', cancelled);
-    })();
+      let calls = 0;
+      const r = await Elevation.grant([S('a'), S('b'), S('c')], {
+        store: st, account: 'a@c.com', tenantId: 't1', concurrency: 1, cancelToken: ct,
+        setAdmin: async () => { calls++; ct.cancel(); },
+      });
+      eq(calls, 1);
+      eq(r.skipped, 2);
+      eq(Elevation.load(st).length, 1);
+    });
+    test('revoke: success clears the entry, failure keeps it for recovery', async () => {
+      const st = memStore();
+      const a = Elevation.record(st, { siteUrl: 'https://c.sharepoint.com/sites/a', account: 'a@c.com', tenantId: 't1' });
+      const b = Elevation.record(st, { siteUrl: 'https://c.sharepoint.com/sites/b', account: 'a@c.com', tenantId: 't1' });
+      const calls = [];
+      const r = await Elevation.revoke([a, b], {
+        store: st, concurrency: 1,
+        setAdmin: async (url, on, upn) => { calls.push([url.split('/').pop(), on, upn]); if (url.endsWith('/b')) throw httpErr(429); },
+      });
+      eq(calls, [['a', false, 'a@c.com'], ['b', false, 'a@c.com']]);
+      eq(r.removed.length, 1);
+      eq(Elevation.load(st).map((e) => e.siteUrl), ['https://c.sharepoint.com/sites/b']);
+    });
+    test('audit scenario: throttled check on a site you already administer never removes your rights', async () => {
+      const st = memStore();
+      const sites = [S('mine'), S('locked')];
+      // "mine": you are already admin but the check is throttled. "locked": confirmed no access.
+      const checks = await Elevation.check(sites, {
+        currentUser: async (url) => { throw url.endsWith('/mine') ? httpErr(429) : httpErr(403); },
+      });
+      const p = Elevation.plan(sites, checks, { isOneDrive: isOd });
+      const changes = [];
+      const setAdmin = async (url, on) => { changes.push([url.split('/').pop(), on]); };
+      await Elevation.grant(p.elevate, { store: st, account: 'a@c.com', tenantId: 't1', setAdmin });
+      await Elevation.revoke(Elevation.mine(Elevation.load(st), 'a@c.com', 't1'), { store: st, setAdmin });
+      eq(changes, [['locked', true], ['locked', false]]);
+      eq(p.unknown.map((u) => u.site.id), ['mine']);
+      eq(Elevation.load(st), []);
+    });
 
-    // ---------- Final summary ----------
-    setTimeout(() => {
-      const summary = document.createElement('h2');
-      summary.textContent = `Summary: ${pass} passed, ${fail} failed`;
-      summary.style.color = fail === 0 ? '#128d4f' : '#c0392b';
-      results.appendChild(summary);
-    }, 500);
+    // ---------- export ----------
+    test('export rows: every column present, formulas neutralised', () => {
+      const r = {
+        site: { displayName: '=HYPERLINK("https://evil","x")', webUrl: 'https://c.sharepoint.com/sites/a', root: { '@odata.type': 'STS#3' } },
+        signals: { lastPageEditName: '+cmd', libCount: 2, graphSiteLastModified: new Date('2025-01-02T03:04:05Z') },
+        owners: [{ title: 'Ann', email: 'ann@c.com' }, { title: '@bob', email: '' }],
+        lastModified: new Date('2025-01-02T03:04:05Z'), advice: 'Clean up', reason: 'r', errors: ['e1', 'e2'],
+      };
+      const row = Sites.exportRow(r);
+      eq(Sites.EXPORT_COLUMNS.map((c) => c.key).filter((k) => !(k in row)), []);
+      eq(row.LastModified, '2025-01-02');
+      eq(row.GraphLastModified, '2025-01-02');
+      eq(row.Owners, 'Ann; @bob');
+      eq(row.Errors, 'e1 | e2');
+      const t = Export.table([row], Sites.EXPORT_COLUMNS);
+      const col = (k) => t.body[0][Sites.EXPORT_COLUMNS.findIndex((c) => c.key === k)];
+      eq(col('Title'), '\'=HYPERLINK("https://evil","x")');
+      eq(col('LastPageEditName'), "'+cmd");
+      eq(t.header[0], 'Title');
+    });
+
+    // ---------- Graph engagement parsing ----------
+    test('parseEngagement: sums 30 days, 404 means no data, errors collected', () => {
+      const e = Graph.parseEngagement({ responses: [
+        { id: 'a', status: 404 },
+        { id: 'r', status: 200, body: { access: { actionCount: 3, actorCount: 1 }, endDateTime: '2026-01-07T00:00:00Z' } },
+        { id: 'i', status: 200, body: { value: [
+          { access: { actionCount: 2, actorCount: 1 }, endDateTime: '2026-01-02T00:00:00Z' },
+          { access: { actionCount: 0, actorCount: 0 }, endDateTime: '2026-01-05T00:00:00Z' },
+          { access: { actionCount: 4, actorCount: 3 }, endDateTime: '2026-01-04T00:00:00Z' },
+        ] } },
+        { id: 'p', status: 403, body: { error: { message: 'denied' } } },
+        { id: 'q', status: 200, body: { quota: { used: 2048 } } },
+      ] });
+      eq(e.allTimeViews, 0);
+      eq(e.recentViews, 3);
+      eq(e.last30Views, 6);
+      eq(e.last30Actors, 3);
+      eq(e.last30LastDay, '2026-01-04T00:00:00.000Z');
+      eq(e.lastPageEdit, null);
+      eq(e.quotaUsedBytes, 2048);
+      ok(e._errors.length === 1 && /p: HTTP 403 denied/.test(e._errors[0]), JSON.stringify(e._errors));
+    });
+
+    // ---------- analysis scoring ----------
+    test('recent change -> Keep', async () => {
+      eq((await analyzeWith({ web: webModified(30) }, { webUrl: 'https://x.sharepoint.com/sites/a' })).advice, 'Keep');
+    });
+    test('stale and no views -> Clean up', async () => {
+      eq((await analyzeWith({ web: webModified(800) }, { id: 's', webUrl: 'https://x.sharepoint.com/sites/b' })).advice, 'Clean up');
+    });
+    test('stale but viewed -> Review', async () => {
+      const r = await analyzeWith({ web: webModified(800), eng: async () => ({ ...emptyEng, allTimeViews: 42, allTimeActors: 5 }) }, { id: 's', webUrl: 'https://x.sharepoint.com/sites/c' });
+      eq(r.advice, 'Review');
+      eq(r.pageViews, 42);
+      eq(r.pageViewsSource, 'siteAnalyticsAllTime');
+      ok(/all-time/.test(r.reason), r.reason);
+    });
+    test('both 403 -> No access', async () => {
+      const deny = async () => { throw httpErr(403); };
+      const r = await analyzeWith({ web: deny, libs: deny }, { webUrl: 'https://x.sharepoint.com/sites/d' });
+      eq(r.advice, 'No access');
+      ok(r.accessDenied === true);
+      ok(/401\/403/.test(r.reason), r.reason);
+    });
+    test('message-only 403 errors also count as denied', async () => {
+      const deny = async () => { throw new Error('403 Forbidden'); };
+      eq((await analyzeWith({ web: deny, libs: deny }, { webUrl: 'https://x.sharepoint.com/sites/d2' })).advice, 'No access');
+    });
+    test('partial denial is not No access', async () => {
+      const r = await analyzeWith({
+        web: async () => { throw httpErr(403); },
+        libs: async () => [{ LastItemUserModifiedDate: new Date(Date.now() - 10 * DAY).toISOString(), ItemCount: 5 }],
+      }, { webUrl: 'https://x.sharepoint.com/sites/e' });
+      ok(r.advice !== 'No access', r.advice);
+    });
+    test('web 500 + lists 403 -> Unknown', async () => {
+      const r = await analyzeWith({ web: async () => { throw httpErr(500); }, libs: async () => { throw httpErr(403); } }, { webUrl: 'https://x.sharepoint.com/sites/f' });
+      eq(r.advice, 'Unknown');
+    });
+    test('last 7 days activity -> approx lastViewed', async () => {
+      const r = await analyzeWith({ web: webModified(800), eng: async () => ({ ...emptyEng, allTimeViews: 100, recentViews: 3, recentEnd: '2026-04-20' }) }, { id: 's', webUrl: 'https://x.sharepoint.com/sites/i' });
+      ok(r.lastViewed instanceof Date);
+      ok(r.lastViewedApprox === true);
+      ok(/last 7 days/.test(r.reason), r.reason);
+    });
+    test('last 30 days activity -> exact lastViewed and Review', async () => {
+      const r = await analyzeWith({ web: webModified(800), eng: async () => ({ ...emptyEng, allTimeViews: 100, last30Views: 7, last30LastDay: new Date(Date.now() - 5 * DAY).toISOString() }) }, { id: 's', webUrl: 'https://x.sharepoint.com/sites/i30' });
+      ok(r.lastViewed instanceof Date);
+      ok(!r.lastViewedApprox);
+      eq(r.advice, 'Review');
+      ok(/last 30 days/.test(r.reason), r.reason);
+    });
+    test('page edit counts as modification', async () => {
+      const pageEdit = new Date(Date.now() - 100 * DAY).toISOString();
+      const r = await analyzeWith({ web: webModified(800), eng: async () => ({ ...emptyEng, lastPageEdit: { date: pageEdit, name: 'Home.aspx', modifiedBy: 'u@x' } }) }, { id: 's', webUrl: 'https://x.sharepoint.com/sites/pe' });
+      eq(r.signals.lastPageEditDate.toISOString(), pageEdit);
+      eq(r.lastModified.getTime(), new Date(pageEdit).getTime());
+      eq(r.signals.lastPageEditName, 'Home.aspx');
+    });
+    test('quota -> storageMB', async () => {
+      eq((await analyzeWith({ web: webModified(10), eng: async () => ({ ...emptyEng, quotaUsedBytes: 5 * 1048576 }) }, { id: 's', webUrl: 'https://x.sharepoint.com/sites/q' })).storageMB, 5);
+    });
+    test('engagement error is captured, not fatal', async () => {
+      const r = await analyzeWith({ web: webModified(10), eng: async () => { throw new Error('graph 500'); } }, { id: 's', webUrl: 'https://x.sharepoint.com/sites/j' });
+      ok((r.errors || []).some((e) => /graph 500/.test(e)), JSON.stringify(r.errors));
+    });
+
+    // ---------- system sites ----------
+    test('system sites are always Keep', async () => {
+      const cases = [
+        { webUrl: 'https://contoso.sharepoint.com/' },
+        { webUrl: 'https://contoso-admin.sharepoint.com/' },
+        { webUrl: 'https://contoso-my.sharepoint.com/' },
+        { webUrl: 'https://contoso.sharepoint.com/search' },
+        { webUrl: 'https://contoso.sharepoint.com/sites/appcatalog' },
+        { webUrl: 'https://contoso.sharepoint.com/sites/contenttypehub' },
+        { webUrl: 'https://x.sharepoint.com/sites/whatever', root: { '@odata.type': 'APPCATALOG#0' } },
+        { webUrl: 'https://x.sharepoint.com/sites/random', root: { '@odata.type': 'TENANTADMIN#0' } },
+        { webUrl: 'https://x.sharepoint.com/sites/topics', root: { '@odata.type': 'POINTPUBLISHINGTOPIC#0' } },
+      ];
+      for (const site of cases) {
+        const r = await analyzeWith({ web: webModified(1500) }, site);
+        eq(r.advice, 'Keep', site.webUrl);
+        ok(/System site/.test(r.reason), r.reason);
+      }
+      const normal = await analyzeWith({ web: webModified(1500) }, { webUrl: 'https://contoso.sharepoint.com/sites/marketing' });
+      ok(!/System site/.test(normal.reason));
+    });
+    test('isSystemSite helper', () => {
+      ok(Analysis.isSystemSite({ webUrl: 'https://x-admin.sharepoint.com/' }));
+      ok(Analysis.isSystemSite({ webUrl: 'https://x-my.sharepoint.com/' }));
+      ok(!Analysis.isSystemSite({ webUrl: 'https://x-my.sharepoint.com/personal/u_x_com' }));
+      ok(!Analysis.isSystemSite({ webUrl: 'https://x.sharepoint.com/sites/foo' }));
+    });
+
+    test('normalizeUrl', () => {
+      eq(Graph.normalizeUrl('https://X.SharePoint.com/sites/Foo/'), 'https://x.sharepoint.com/sites/foo');
+      eq(Graph.normalizeUrl('https://x.sharepoint.com/sites/My%20Site'), 'https://x.sharepoint.com/sites/my site');
+    });
+
+    test('pmap maps, reports progress and respects cancel', async () => {
+      let last = 0;
+      const { results } = await Concurrency.pmap([1, 2, 3, 4, 5], async (n) => n * 2, { concurrency: 3, onProgress: (d) => { last = d; } });
+      eq(results, [2, 4, 6, 8, 10]);
+      eq(last, 5);
+      const ct = new Concurrency.CancelToken();
+      setTimeout(() => ct.cancel(), 20);
+      const r2 = await Concurrency.pmap([1, 2, 3, 4, 5], async (n) => { await Concurrency.sleep(50); ct.throwIfCancelled(); return n; }, { concurrency: 1, cancelToken: ct });
+      ok(r2.results.some((x) => x && x.__error));
+    });
+
+    (async () => {
+      for (const [name, fn] of tests) {
+        try { await fn(); out.insertAdjacentHTML('beforeend', `<div class="pass">PASS ${name}</div>`); pass++; }
+        catch (e) { out.insertAdjacentHTML('beforeend', `<div class="fail">FAIL ${name}<br><pre>${(e.stack || e.message).replace(/</g, '&lt;')}</pre></div>`); fail++; }
+      }
+      out.insertAdjacentHTML('beforeend', `<h2>${pass} passed, ${fail} failed</h2><p id="result">TEST-RESULT: ${fail ? 'FAIL' : 'PASS'} ${pass}/${pass + fail}</p>`);
+    })();
   </script>
 </body>
 </html>

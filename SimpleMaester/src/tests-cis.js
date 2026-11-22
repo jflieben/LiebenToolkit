@@ -110,7 +110,7 @@
           for (const m of (r.members || [])) {
             if (m['@odata.type'] !== '#microsoft.graph.user') continue;
             try {
-              const u = await Graph.graph(`users/${m.id}?$select=onPremisesSyncEnabled,userPrincipalName`, { apiVersion: 'v1.0' });
+              const u = await Graph.graph(`users/${encodeURIComponent(m.id)}?$select=onPremisesSyncEnabled,userPrincipalName`, { apiVersion: 'v1.0' });
               if (u.onPremisesSyncEnabled) synced.push(`${u.userPrincipalName} (${r.displayName})`);
             } catch (_) { /* skip */ }
           }
@@ -132,7 +132,7 @@
         const roles = await Graph.graphAll('directoryRoles', { apiVersion: 'v1.0' });
         const ga = roles.find(r => r.roleTemplateId === '62e90394-69f5-4237-9190-012177145e10');
         if (!ga) return row('CIS.M365.1.1.3', 'Skipped', 'Global Administrator role not activated in this tenant.', { durationMs: ms(start) });
-        const members = await Graph.graphAll(`directoryRoles/${ga.id}/members`, { apiVersion: 'v1.0' });
+        const members = await Graph.graphAll(`directoryRoles/${encodeURIComponent(ga.id)}/members`, { apiVersion: 'v1.0' });
         const userCount = members.filter(m => m['@odata.type'] === '#microsoft.graph.user').length;
         const ok = userCount >= 2 && userCount <= 4;
         return row('CIS.M365.1.1.3', ok ? 'Passed' : 'Failed', `Found ${userCount} Global Administrator user(s).`, { actual: userCount, durationMs: ms(start) });

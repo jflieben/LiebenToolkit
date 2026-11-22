@@ -1,18 +1,42 @@
+// SimpleZTA UI: sign-in, run tab, catalog and boot.
 (() => {
-  // Suppress known non-blocking MSAL 3.27.0 iframe sandbox warnings.
-  // These warnings indicate the iframe sandbox can escape or attempt top-level navigation,
-  // but do not prevent the auth redirect flow from completing successfully.
-  // See: https://github.com/AzureAD/microsoft-authentication-library-for-js/issues/
-  const origWarn = console.warn;
-  console.warn = function(...args) {
-    const text = args.map(a => `${a}`).join(' ');
-    if (text.includes('iframe') && text.includes('sandbox') && text.includes('allow-')) return; // MSAL iframe warnings
-    if (text.includes('allow-top-navigation') && text.includes('microsoftonline')) return;      // MSAL redirect warnings
-    return origWarn.apply(console, args);
-  };
+  const { esc, toast, confirm, busy, setUser, h } = Toolkit;
 
-  const THEME_KEY = 'SimpleZTA:theme';
+  const GRAPH_READ = [
+    'User.Read',
+    'Directory.Read.All',
+    'Policy.Read.All',
+    'Application.Read.All',
+    'RoleManagement.Read.Directory',
+    'UserAuthenticationMethod.Read.All',
+    'AuditLog.Read.All',
+    'Reports.Read.All',
+    'AccessReview.Read.All',
+    'DirectoryRecommendations.Read.All',
+    'DeviceManagementConfiguration.Read.All',
+    'DeviceManagementServiceConfig.Read.All',
+    'DeviceManagementManagedDevices.Read.All',
+    'DeviceManagementApps.Read.All',
+    'EntitlementManagement.Read.All',
+    'DeviceManagementRBAC.Read.All',
+    'IdentityRiskEvent.Read.All',
+    'IdentityRiskyUser.Read.All',
+    'NetworkAccess.Read.All',
+    'InformationProtectionPolicy.Read',
+  ];
+
+  // 'arm' is only requested when a run contains Azure controls.
+  window.Auth = ToolkitAuth.create({
+    scopes: {
+      read: GRAPH_READ,
+      arm: ['https://management.azure.com/user_impersonation'],
+    },
+  });
+
   const PENDING_RUN_KEY = 'SimpleZTA:pending-run:v1';
+  const PENDING_MAX_AGE_MS = 10 * 60 * 1000;
+  const $ = (id) => document.getElementById(id);
+  let showTab = () => {};
 
   function fmtDuration(ms) {
     if (!Number.isFinite(Number(ms))) return '-';
@@ -20,378 +44,327 @@
     if (val < 1000) return `${val} ms`;
     const sec = Math.round(val / 1000);
     if (sec < 60) return `${sec}s`;
-    const min = Math.floor(sec / 60);
-    const rem = sec % 60;
-    return `${min}m ${rem}s`;
+    return `${Math.floor(sec / 60)}m ${sec % 60}s`;
   }
 
-  function toast(text) {
-    const el = document.getElementById('toast');
-    el.textContent = text;
-    el.classList.remove('hidden');
-    setTimeout(() => el.classList.add('hidden'), 3500);
+  function implBadge(level) {
+    if (level === 'full') return '<span class="badge ok">full</span>';
+    if (level === 'partial') return '<span class="badge warn">partial</span>';
+    return '<span class="badge neutral">planned</span>';
   }
 
-  function setTheme(theme) {
-    document.documentElement.dataset.theme = theme;
-    localStorage.setItem(THEME_KEY, theme);
+  // ---------- pending run (survives a consent redirect when the popup is blocked) ----------
+  function savePendingRun(ids) {
+    try { sessionStorage.setItem(PENDING_RUN_KEY, JSON.stringify({ ids, createdAt: Date.now() })); } catch { /* storage blocked */ }
   }
-
-  function initTheme() {
-    const t = localStorage.getItem(THEME_KEY) || 'light';
-    setTheme(t);
-    document.getElementById('themeBtn').addEventListener('click', () => {
-      setTheme(document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark');
-    });
-  }
-
-  function initTabs() {
-    document.querySelectorAll('.tab').forEach(btn => {
-      btn.addEventListener('click', () => {
-        const tab = btn.dataset.tab;
-        document.querySelectorAll('.tab').forEach(x => x.classList.toggle('active', x === btn));
-        document.querySelectorAll('.panel').forEach(p => p.classList.toggle('active', p.id === `panel-${tab}`));
-        if (tab === 'history') UIHistory.refresh();
-        if (tab === 'dashboard') UIDashboard.refresh();
-      });
-    });
-  }
-
-  function statusBadge(level) {
-    if (level === 'full') return '<span class="badge implemented">implemented</span>';
-    if (level === 'partial') return '<span class="badge partial">partial</span>';
-    return '<span class="badge">planned</span>';
-  }
-
-  function savePendingRun(testIds) {
-    try {
-      sessionStorage.setItem(PENDING_RUN_KEY, JSON.stringify({
-        ids: testIds,
-        createdAt: Date.now(),
-      }));
-    } catch {
-      // Ignore storage failures.
-    }
-  }
-
   function loadPendingRun() {
     try {
-      const raw = sessionStorage.getItem(PENDING_RUN_KEY);
-      if (!raw) return null;
-      const parsed = JSON.parse(raw);
-      const ids = Array.isArray(parsed?.ids) ? parsed.ids.map(x => `${x}`) : [];
-      if (!ids.length) return null;
-      return { ids, createdAt: Number(parsed?.createdAt || 0) };
-    } catch {
-      return null;
-    }
+      const parsed = JSON.parse(sessionStorage.getItem(PENDING_RUN_KEY) || 'null');
+      const ids = Array.isArray(parsed?.ids) ? parsed.ids.map((x) => `${x}`) : [];
+      if (!ids.length || Date.now() - Number(parsed.createdAt || 0) > PENDING_MAX_AGE_MS) return null;
+      return { ids };
+    } catch { return null; }
   }
-
   function clearPendingRun() {
-    try {
-      sessionStorage.removeItem(PENDING_RUN_KEY);
-    } catch {
-      // Ignore storage failures.
-    }
+    try { sessionStorage.removeItem(PENDING_RUN_KEY); } catch { /* storage blocked */ }
   }
 
-  function renderRunList(tests) {
-    const q = (document.getElementById('searchBox').value || '').toLowerCase();
-    const pillar = document.getElementById('pillarSelect').value;
-    const tenantType = document.getElementById('tenantTypeSelect').value;
-    const risk = document.getElementById('riskSelect').value;
-    const impl = document.getElementById('implementationSelect').value;
+  // ---------- auth ----------
+  function refreshAuthUI() {
+    const signedIn = !!Auth.getAccount();
+    setUser(Auth.userInfo(onSignOut));
+    $('connectCard').hidden = signedIn;
+    $('runCard').hidden = !signedIn;
+  }
 
-    const filtered = tests.filter(t => {
+  async function onSignIn() {
+    try { await Auth.signIn('read'); }
+    catch (e) { Log.err('Sign-in failed:', e); toast(`Sign-in failed: ${e.message}`, 'err'); }
+  }
+
+  async function onSignOut() {
+    const scans = Store.loadScans();
+    if (scans.length) {
+      const wipe = await confirm({
+        title: 'Also clear the scan history?',
+        body: 'Signing out ends the session in this tab. The scan history stays in this browser unless you clear it now.',
+        items: [Store.describeHistory(scans)],
+        okLabel: 'Clear history and sign out',
+        cancelLabel: 'Keep history',
+        danger: true,
+      });
+      if (wipe) Store.clearScans();
+    }
+    await Auth.signOut();
+  }
+
+  // ---------- run list ----------
+  function renderRunList(tests) {
+    const q = ($('searchBox').value || '').toLowerCase();
+    const pillar = $('pillarSelect').value;
+    const tenantType = $('tenantTypeSelect').value;
+    const risk = $('riskSelect').value;
+    const impl = $('implementationSelect').value;
+
+    const filtered = tests.filter((t) => {
       if (pillar && pillar !== 'All' && !(t.pillars && t.pillars.length ? t.pillars : [t.pillar]).includes(pillar)) return false;
       if (tenantType && !(t.tenantType || []).includes(tenantType)) return false;
       if (risk && t.risk !== risk) return false;
-      if (impl === 'full' && t.implementationLevel !== 'full') return false;
-      if (impl === 'partial' && t.implementationLevel !== 'partial') return false;
-      if (impl === 'none' && t.implementationLevel !== 'none') return false;
+      if (impl && t.implementationLevel !== impl) return false;
       if (!q) return true;
       return `${t.id} ${t.title} ${t.category} ${t.pillar}`.toLowerCase().includes(q);
     });
 
-    const selected = new Set((window.__selectedTests || []).map(x => `${x}`));
-    const html = filtered.map(t => {
-      const checked = selected.has(t.id) ? 'checked' : '';
+    const selected = new Set((window.__selectedTests || []).map((x) => `${x}`));
+    const html = filtered.map((t) => {
       const partialNotes = t.implementationLevel === 'partial' && t.implementationNotes
-        ? `<div class="partial-notes"><div><strong>Implemented:</strong> ${t.implementationNotes.implemented || '-'}</div><div><strong>Not implemented:</strong> ${t.implementationNotes.notImplemented || '-'}</div></div>`
+        ? `<div class="partial-notes"><div><strong>Implemented:</strong> ${esc(t.implementationNotes.implemented || '-')}</div><div><strong>Not implemented:</strong> ${esc(t.implementationNotes.notImplemented || '-')}</div></div>`
         : '';
       const docs = t.documentationUrl
-        ? `<div class="test-docs"><a href="${t.documentationUrl}" target="_blank" rel="noopener noreferrer">Docs root</a> · <a href="${t.documentationSearchUrl}" target="_blank" rel="noopener noreferrer">Search docs</a></div>`
+        ? `<div class="test-docs"><a href="${esc(Toolkit.safeUrl(t.documentationUrl))}" target="_blank" rel="noopener noreferrer">Docs root</a> <a href="${esc(Toolkit.safeUrl(t.documentationSearchUrl))}" target="_blank" rel="noopener noreferrer">Search docs</a></div>`
         : '';
-      return `<label class="test-item"><input type="checkbox" data-id="${t.id}" ${checked}/><div><div><strong>${t.id}</strong> ${t.title}</div><div class="test-meta">${t.pillar} | ${t.category} | risk ${t.risk}</div>${partialNotes}${docs}</div><div>${statusBadge(t.implementationLevel)}</div></label>`;
+      return `<label class="test-item"><input type="checkbox" data-id="${esc(t.id)}" ${selected.has(t.id) ? 'checked' : ''}/><div><div><strong>${esc(t.id)}</strong> ${esc(t.title)}</div><div class="test-meta">${esc(t.pillar)} | ${esc(t.category)} | risk ${esc(t.risk)}${t.needsArm ? ' | Azure' : ''}</div>${partialNotes}${docs}</div><div>${implBadge(t.implementationLevel)}</div></label>`;
     }).join('');
 
-    document.getElementById('testList').innerHTML = html || '<div class="test-item">No tests match this filter.</div>';
-    const fullCount = filtered.filter(x => x.implementationLevel === 'full').length;
-    const partialCount = filtered.filter(x => x.implementationLevel === 'partial').length;
-    const plannedCount = filtered.filter(x => x.implementationLevel === 'none').length;
-    document.getElementById('runStats').textContent = `${filtered.length} visible of ${tests.length} total controls | full ${fullCount} | partial ${partialCount} | planned ${plannedCount}`;
+    $('testList').innerHTML = html || '<div class="empty-state small">No controls match this filter.</div>';
+    lastFiltered = filtered;
+    window.__visibleTests = filtered.map((x) => x.id);
+    renderRunStats(tests.length);
+  }
 
-    document.querySelectorAll('#testList input[type="checkbox"]').forEach(cb => {
-      cb.addEventListener('change', () => {
-        const id = cb.dataset.id;
-        const s = new Set(window.__selectedTests || []);
-        if (cb.checked) s.add(id); else s.delete(id);
-        window.__selectedTests = Array.from(s);
-      });
+  let lastFiltered = [];
+  function renderRunStats(total) {
+    const count = (lvl) => lastFiltered.filter((x) => x.implementationLevel === lvl).length;
+    $('runStats').textContent = `${lastFiltered.length} of ${total} controls shown, ${(window.__selectedTests || []).length} selected | full ${count('full')} | partial ${count('partial')} | planned ${count('none')}`;
+  }
+
+  // ---------- profiles ----------
+  const BUILTIN_PROFILES = {
+    'Quick wins (high risk, low effort)': (t) => t.risk === 'High' && t.implementationCost === 'Low' && t.implemented,
+    'High risk only': (t) => t.risk === 'High',
+    'Identity baseline': (t) => (t.pillars || [t.pillar]).includes('Identity') && t.implemented,
+    'Implemented controls only': (t) => t.implemented,
+  };
+
+  function refreshProfilePicker() {
+    const picker = $('profileSelect');
+    const saved = Object.keys(Store.loadProfiles()).sort();
+    picker.innerHTML = '<option value="">Profiles...</option>'
+      + Object.keys(BUILTIN_PROFILES).map((n) => `<option value="builtin:${esc(n)}">${esc(n)}</option>`).join('')
+      + saved.map((n) => `<option value="saved:${esc(n)}">Saved: ${esc(n)}</option>`).join('');
+    $('deleteProfileBtn').disabled = !saved.length;
+  }
+
+  async function askProfileName(count) {
+    const input = h('input', { type: 'text', maxlength: '80', 'aria-label': 'Profile name', class: 'profile-name' });
+    const body = h('div', null, [h('p', { text: `Save the ${count} selected controls as a profile in this browser.` }), input]);
+    setTimeout(() => input.focus(), 0);
+    const ok = await Toolkit.modal({ title: 'Save profile', body, actions: [{ label: 'Cancel', value: false }, { label: 'Save', value: true, variant: 'primary' }] });
+    return ok ? Store.cleanProfileName(input.value) : '';
+  }
+
+  async function deleteProfileDialog() {
+    const names = Object.keys(Store.loadProfiles()).sort();
+    if (!names.length) return;
+    const select = h('select', { 'aria-label': 'Profile' }, names.map((n) => h('option', { value: n, text: n })));
+    const ok = await Toolkit.modal({
+      title: 'Delete a saved profile',
+      body: h('div', null, [h('p', { text: 'Only the profile is removed, scans stay.' }), select]),
+      actions: [{ label: 'Cancel', value: false }, { label: 'Delete', value: true, variant: 'danger' }],
     });
+    if (!ok) return;
+    Store.deleteProfile(select.value);
+    refreshProfilePicker();
+    toast(`Profile "${select.value}" deleted`, 'ok');
+  }
 
-    window.__visibleTests = filtered.map(x => x.id);
+  // ---------- run ----------
+  function setProgress({ done, total, current, elapsedTotalMs, elapsedCurrentMs, etaMs, currentEstimateMs, subProgress }) {
+    const pct = total ? Math.round((100 * done) / total) : 0;
+    $('progressFill').style.width = `${pct}%`;
+    $('progressText').textContent = `${done}/${total} ${current ? `${current.id} ${current.title}` : ''}`;
+    $('progressMeta').textContent = `Elapsed ${fmtDuration(elapsedTotalMs)}, about ${fmtDuration(etaMs)} left`;
+    const testInfo = current ? `Control running ${fmtDuration(elapsedCurrentMs)}${currentEstimateMs ? ` of about ${fmtDuration(currentEstimateMs)}` : ''}` : '';
+    const subInfo = subProgress?.message
+      ? `${subProgress.message}${Number.isFinite(subProgress.percent) ? ` (${Math.round(subProgress.percent)}%)` : ''}`
+      : '';
+    $('subTestProgress').textContent = [testInfo, subInfo].filter(Boolean).join(' | ');
+  }
+
+  async function runSelectedTests(selected, { resume = false } = {}) {
+    if (!selected.length) { toast('Select at least one control.', 'warn'); return; }
+    if (!Auth.getAccount()) { toast('Sign in first.', 'warn'); return; }
+    const ids = selected.map((t) => t.id);
+    Store.rememberSelection(ids);
+
+    // A blocked consent popup falls back to a redirect; the run resumes once after it.
+    // On resume the marker is cleared first so a second redirect cannot loop.
+    if (resume) clearPendingRun(); else savePendingRun(ids);
+    try {
+      await Auth.getToken('read');
+    } catch (e) {
+      clearPendingRun();
+      Log.err('Graph token failed:', e);
+      toast(`Could not get a Microsoft Graph token: ${e.message}`, 'err');
+      return;
+    }
+    if (selected.some((t) => t.needsArm)) {
+      try {
+        await Auth.getToken('arm');
+        Log.info('Azure Resource Manager token acquired for the Azure controls.');
+      } catch (e) {
+        Log.warn('No Azure Resource Manager token, Azure controls will be skipped:', e.message || e);
+        toast('No Azure access granted. Azure controls are skipped in this run.', 'warn');
+      }
+    }
+    clearPendingRun();
+
+    $('progressBox').hidden = false;
+    $('progressLog').textContent = '';
+    try {
+      const scan = await Runner.run(selected, {
+        collectTenantInfo: $('tenantInfoToggle').checked,
+        tenantInfoDays: Number($('signInDaysSelect').value) || 7,
+        progress: setProgress,
+        log: (line) => {
+          const el = $('progressLog');
+          el.textContent += `${line}\n`;
+          el.scrollTop = el.scrollHeight;
+          Log.info(line);
+        },
+      });
+
+      UIResults.refreshPicker(scan.id);
+      UIHistory.refresh();
+      if (scan?.persistence?.saved === false) toast('Scan done, but it could not be stored: browser storage is full. Export it and clear the history.', 'warn');
+      else if (scan?.persistence?.warning) toast(`Scan done. ${scan.persistence.warning}`, 'warn');
+      else toast(`Scan done: ${scan.summary.passed} passed, ${scan.summary.failed} failed.`, 'ok');
+      showTab('dashboard');
+    } catch (e) {
+      Log.err('Run failed:', e);
+      toast(`Run failed: ${e.message || e}`, 'err');
+    } finally {
+      $('progressBox').hidden = true;
+    }
+  }
+
+  function renderCatalog(tests) {
+    const partial = tests.filter((t) => t.implementationLevel === 'partial');
+    const count = (lvl) => tests.filter((t) => t.implementationLevel === lvl).length;
+    const partialRows = partial.length
+      ? `<div class="table-wrap"><table class="data-table"><thead><tr><th>Control</th><th>What is implemented</th><th>What is not</th></tr></thead><tbody>${partial.map((t) => `<tr><td><strong>${esc(t.id)}</strong> ${esc(t.title)}</td><td>${esc(t.implementationNotes?.implemented || '-')}</td><td>${esc(t.implementationNotes?.notImplemented || '-')}</td></tr>`).join('')}</tbody></table></div>`
+      : '<p class="muted">No partial implementations registered.</p>';
+    $('catalogStats').innerHTML = `
+      <div class="grid grid-4 stats">
+        <div class="stat accent-primary"><span class="label">Controls</span><span class="value">${tests.length}</span><span class="foot">from Microsoft metadata</span></div>
+        <div class="stat accent-ok"><span class="label">Full</span><span class="value">${count('full')}</span><span class="foot">same logic as the module</span></div>
+        <div class="stat accent-warn"><span class="label">Partial</span><span class="value">${partial.length}</span><span class="foot">approximation, see below</span></div>
+        <div class="stat"><span class="label">Azure controls</span><span class="value">${tests.filter((t) => t.needsArm).length}</span><span class="foot">need Azure Resource Manager</span></div>
+      </div>
+      <h3>Partial implementations</h3>
+      ${partialRows}`;
   }
 
   async function initRunUi() {
     const tests = await Registry.getAll();
     window.__allTests = tests;
-
     const remembered = Store.loadSelection();
-    window.__selectedTests = remembered.length ? remembered.filter(id => tests.some(t => t.id === id)) : tests.map(t => t.id);
+    window.__selectedTests = remembered.length ? remembered.filter((id) => tests.some((t) => t.id === id)) : tests.map((t) => t.id);
 
     const refresh = () => renderRunList(tests);
-    ['searchBox', 'pillarSelect', 'tenantTypeSelect', 'riskSelect', 'implementationSelect'].forEach(id => {
-      document.getElementById(id).addEventListener('input', refresh);
-      document.getElementById(id).addEventListener('change', refresh);
-    });
+    ['searchBox', 'pillarSelect', 'tenantTypeSelect', 'riskSelect', 'implementationSelect'].forEach((id) => $(id).addEventListener('input', refresh));
 
-    document.getElementById('selectVisibleBtn').addEventListener('click', () => {
+    $('testList').addEventListener('change', (e) => {
+      const cb = e.target.closest('input[type="checkbox"][data-id]');
+      if (!cb) return;
+      const s = new Set(window.__selectedTests || []);
+      if (cb.checked) s.add(cb.dataset.id); else s.delete(cb.dataset.id);
+      window.__selectedTests = Array.from(s);
+      renderRunStats(tests.length);
+    });
+    $('selectVisibleBtn').addEventListener('click', () => {
       window.__selectedTests = Array.from(new Set([...(window.__selectedTests || []), ...(window.__visibleTests || [])]));
-      renderRunList(tests);
+      refresh();
     });
+    $('clearSelectionBtn').addEventListener('click', () => { window.__selectedTests = []; refresh(); });
 
-    document.getElementById('clearSelectionBtn').addEventListener('click', () => {
-      window.__selectedTests = [];
-      renderRunList(tests);
-    });
-
-    // Scan profiles: built-in selections plus user-saved ones (stored locally).
-    const BUILTIN_PROFILES = {
-      'Quick wins (high risk, low effort)': t => t.risk === 'High' && t.implementationCost === 'Low' && t.implemented,
-      'High risk only': t => t.risk === 'High',
-      'Identity baseline': t => (t.pillars || [t.pillar]).includes('Identity') && t.implemented,
-      'Implemented controls only': t => t.implemented,
-    };
-
-    function refreshProfilePicker() {
-      const picker = document.getElementById('profileSelect');
-      const saved = Object.keys(Store.loadProfiles()).sort();
-      picker.innerHTML = '<option value="">Profiles...</option>'
-        + Object.keys(BUILTIN_PROFILES).map(n => `<option value="builtin:${n}">${n}</option>`).join('')
-        + saved.map(n => `<option value="saved:${n}">★ ${n}</option>`).join('');
-    }
-
-    document.getElementById('profileSelect').addEventListener('change', e => {
+    $('profileSelect').addEventListener('change', (e) => {
       const value = e.target.value;
       if (!value) return;
       if (value.startsWith('builtin:')) {
         const fn = BUILTIN_PROFILES[value.slice(8)];
-        if (fn) window.__selectedTests = tests.filter(fn).map(t => t.id);
+        if (fn) window.__selectedTests = tests.filter(fn).map((t) => t.id);
       } else if (value.startsWith('saved:')) {
-        const ids = Store.loadProfiles()[value.slice(6)] || [];
-        window.__selectedTests = ids.filter(id => tests.some(t => t.id === id));
+        const list = Store.loadProfiles()[value.slice(6)] || [];
+        window.__selectedTests = list.filter((id) => tests.some((t) => t.id === id));
       }
-      renderRunList(tests);
-      toast(`Profile applied: ${(window.__selectedTests || []).length} controls selected.`);
+      refresh();
+      toast(`Profile applied: ${(window.__selectedTests || []).length} controls selected.`, 'info');
       e.target.value = '';
     });
-
-    document.getElementById('saveProfileBtn').addEventListener('click', () => {
-      const selected = window.__selectedTests || [];
-      if (!selected.length) {
-        toast('Select at least one control before saving a profile.');
-        return;
-      }
-      const name = prompt(`Save ${selected.length} selected controls as profile:`);
-      if (!name || !name.trim()) return;
-      Store.saveProfile(name.trim(), selected);
+    $('saveProfileBtn').addEventListener('click', async () => {
+      const sel = window.__selectedTests || [];
+      if (!sel.length) { toast('Select at least one control before saving a profile.', 'warn'); return; }
+      const name = await askProfileName(sel.length);
+      if (!name) return;
+      Store.saveProfile(name, sel);
       refreshProfilePicker();
-      toast(`Profile "${name.trim()}" saved.`);
+      toast(`Profile "${name}" saved.`, 'ok');
     });
-
+    $('deleteProfileBtn').addEventListener('click', deleteProfileDialog);
     refreshProfilePicker();
 
-    async function runSelectedTests(selected, options) {
-      const opts = options || {};
-      if (!selected.length) {
-        toast('Select at least one test.');
-        return;
-      }
+    $('runBtn').addEventListener('click', () => busy($('runBtn'), () => {
+      const ids = new Set(window.__selectedTests || []);
+      return runSelectedTests(tests.filter((t) => ids.has(t.id)));
+    }));
+    $('cancelBtn').addEventListener('click', () => { Runner.cancel(); toast('Cancelling after the current control.', 'info'); });
 
-      if (!Auth.getAccount()) {
-        if (!opts.resume) savePendingRun(selected.map(t => t.id));
-        toast('Signing in first. Scan will continue automatically after redirect.');
-        await Auth.signIn();
-        return;
-      }
+    refresh();
+    renderCatalog(tests);
 
-      Store.rememberSelection(selected.map(t => t.id));
-      const scopes = Array.from(new Set(selected.flatMap(t => t.requiredScopes || Auth.coreScopes)));
-
-      if (!opts.resume) {
-        savePendingRun(selected.map(t => t.id));
-      } else {
-        // One-shot resume: clear pending before scope check so a second redirect
-        // cannot trap the app in a refresh/consent loop.
-        clearPendingRun();
-      }
-      let ok = false;
-      try {
-        ok = await Auth.ensureScopes(scopes, { forceConsent: false });
-      } catch (scopeErr) {
-        Log.err('Scope preflight failed', scopeErr?.message || `${scopeErr}`);
-        clearPendingRun();
-        toast(`Could not acquire required scopes: ${scopeErr?.message || scopeErr}`);
-        return;
-      }
-      if (!ok) {
-        if (opts.resume) {
-          toast('Consent still required. Click Run selected again after consent completes.');
-        } else {
-          toast('Completing consent/sign-in. Scan will start automatically after redirect.');
-        }
-        return;
-      }
-
-      clearPendingRun();
-
-      document.getElementById('progressCard').classList.remove('hidden');
-      document.getElementById('cancelBtn').classList.remove('hidden');
-      document.getElementById('runBtn').disabled = true;
-      document.getElementById('progressLog').textContent = '';
-
-      try {
-        const scan = await Runner.run(selected, {
-          collectTenantInfo: document.getElementById('tenantInfoToggle')?.checked !== false,
-          tenantInfoDays: Number(document.getElementById('signInDaysSelect')?.value) || 7,
-          progress: ({ done, total, current, elapsedTotalMs, elapsedCurrentMs, etaMs, currentEstimateMs, subProgress }) => {
-            const pct = total ? Math.round((100 * done) / total) : 0;
-            document.getElementById('progressFill').style.width = `${pct}%`;
-            document.getElementById('progressText').textContent = `${done}/${total} ${current ? `${current.id} ${current.title}` : ''}`;
-            document.getElementById('progressMeta').textContent = `Elapsed ${fmtDuration(elapsedTotalMs)} | Est. remaining ${fmtDuration(etaMs)}`;
-            const testInfo = current
-              ? `Test elapsed ${fmtDuration(elapsedCurrentMs)}${currentEstimateMs ? ` / est ${fmtDuration(currentEstimateMs)}` : ''}`
-              : '';
-            const subInfo = subProgress?.message
-              ? `${subProgress.message}${Number.isFinite(subProgress.percent) ? ` (${Math.round(subProgress.percent)}%)` : ''}`
-              : '';
-            document.getElementById('subTestProgress').textContent = [testInfo, subInfo].filter(Boolean).join(' | ');
-          },
-          log: (line) => {
-            const el = document.getElementById('progressLog');
-            el.textContent += `${line}\n`;
-            el.scrollTop = el.scrollHeight;
-            Log.info(line);
-          },
-        });
-
-        UIResults.refreshPicker(scan.id);
-        UIHistory.refresh();
-        if (scan?.persistence?.saved === false) {
-          toast('Scan completed, but results could not be stored locally due to browser storage limits. Consider exporting and clearing history.');
-        } else if (scan?.persistence?.warning) {
-          toast(`Scan complete with storage cleanup: ${scan.persistence.warning}`);
-        } else {
-          toast(`Scan complete: ${scan.summary.passed} passed, ${scan.summary.failed} failed.`);
-        }
-
-        UIDashboard.refresh();
-        document.querySelectorAll('.tab').forEach(x => x.classList.toggle('active', x.dataset.tab === 'dashboard'));
-        document.querySelectorAll('.panel').forEach(p => p.classList.toggle('active', p.id === 'panel-dashboard'));
-      } catch (e) {
-        Log.err('Run failed', e.message || `${e}`);
-        toast(`Run failed: ${e.message || e}`);
-      } finally {
-        document.getElementById('runBtn').disabled = false;
-        document.getElementById('cancelBtn').classList.add('hidden');
-      }
-    }
-
-    document.getElementById('runBtn').addEventListener('click', async () => {
-      const selectedIds = new Set(window.__selectedTests || []);
-      const selected = tests.filter(t => selectedIds.has(t.id));
-      await runSelectedTests(selected);
-    });
-
-    document.getElementById('cancelBtn').addEventListener('click', () => Runner.cancel());
-
-    renderRunList(tests);
-
-    const implCount = tests.filter(t => t.implemented).length;
-    const partial = tests.filter(t => t.implementationLevel === 'partial');
-    const docsCount = tests.filter(t => !!t.documentationUrl).length;
-    const partialRows = partial.length
-      ? `<table class="results-table"><thead><tr><th>Test</th><th>What is implemented</th><th>What is not implemented</th></tr></thead><tbody>${partial.map(t => `<tr><td>${t.id} ${t.title}</td><td>${t.implementationNotes?.implemented || '-'}</td><td>${t.implementationNotes?.notImplemented || '-'}</td></tr>`).join('')}</tbody></table>`
-      : '<div class="muted">No partial implementations registered.</div>';
-
-    document.getElementById('catalogStats').innerHTML = `
-      <p><strong>${tests.length}</strong> controls loaded from Microsoft metadata.</p>
-      <p><strong>${implCount}</strong> implemented (${tests.filter(t => t.implementationLevel === 'full').length} full, ${partial.length} partial), ${tests.filter(t => t.implementationLevel === 'none').length} planned.</p>
-      <p><strong>${docsCount}</strong> controls with supporting documentation links.</p>
-      <h3>Partial implementation details</h3>
-      ${partialRows}
-    `;
-
-    // Resume a pending run after redirect-based consent/sign-in.
     const pending = loadPendingRun();
-    if (pending && pending.ids.length) {
-      const pendingSelected = tests.filter(t => pending.ids.includes(t.id));
+    if (pending && Auth.getAccount()) {
+      const pendingSelected = tests.filter((t) => pending.ids.includes(t.id));
       if (pendingSelected.length) {
-        window.__selectedTests = pendingSelected.map(t => t.id);
-        renderRunList(tests);
-        toast('Resuming scan after sign-in/consent...');
-        await runSelectedTests(pendingSelected, { resume: true });
-      } else {
-        clearPendingRun();
+        window.__selectedTests = pendingSelected.map((t) => t.id);
+        refresh();
+        toast('Resuming the scan after sign-in or consent.', 'info');
+        await busy($('runBtn'), () => runSelectedTests(pendingSelected, { resume: true }));
+        return;
       }
     }
+    clearPendingRun();
   }
 
   async function boot() {
-    initTheme();
-    initTabs();
+    if (ToolkitAuth.isAuthPopup()) return;
+    showTab = Toolkit.tabs('#tabs', {
+      onChange: (id) => {
+        if (id === 'history') UIHistory.refresh();
+        if (id === 'dashboard') UIDashboard.refresh();
+      },
+    });
+    window.ZtaApp = { showTab: (id) => showTab(id) };
     UIResults.init();
     UIHistory.init();
-
-    document.getElementById('clearLogBtn').addEventListener('click', () => Log.clear());
-    document.getElementById('toolkitBtn').addEventListener('click', () => {
-      window.location.href = '../index.html';
-    });
-
-    document.getElementById('signInBtn').addEventListener('click', async () => {
-      try {
-        await Auth.signIn();
-      } catch (e) {
-        Log.err('Sign-in failed', e.message || `${e}`);
-        toast(`Sign-in failed: ${e.message || e}`);
-      }
-    });
-
-    document.getElementById('signOutBtn').addEventListener('click', async () => {
-      try { await Auth.signOut(); }
-      catch (e) { Log.warn('Sign-out warning', e.message || `${e}`); }
-    });
+    $('signInBtn').addEventListener('click', onSignIn);
 
     try {
-      const account = await Auth.init();
-      const redirectErr = Auth.getLastRedirectError?.();
-      if (redirectErr) {
-        Log.err('Auth redirect error', redirectErr?.message || `${redirectErr}`);
-        toast(`Sign-in/consent error: ${redirectErr?.message || redirectErr}`);
-      }
-      if (account) {
-        document.getElementById('connectCard').classList.add('hidden');
-        document.getElementById('runCard').classList.remove('hidden');
-        document.getElementById('userBox').classList.remove('hidden');
-        document.getElementById('userText').textContent = account.username || account.name || 'Signed in';
-      }
-      await initRunUi();
+      await Auth.init();
+      refreshAuthUI();
+    } catch (e) {
+      Log.err('Start-up failed:', e);
+      toast(`Start-up failed: ${e.message}`, 'err');
+    }
+    try {
       UIResults.refreshPicker();
       UIHistory.refresh();
+      await initRunUi();
+      Log.info('SimpleZTA ready.');
     } catch (e) {
-      Log.err('Startup error', e.message || `${e}`);
-      toast(`Startup error: ${e.message || e}`);
+      Log.err('Loading the control catalog failed:', e);
+      toast(`Loading the control catalog failed: ${e.message}`, 'err');
     }
   }
 

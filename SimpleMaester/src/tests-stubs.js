@@ -36,7 +36,7 @@
   const AI_REASON = 'Requires Microsoft 365 Copilot admin APIs not yet fully exposed in Graph. Run using the Maester PowerShell module.';
 
   const stubs = [
-    // ── Intune diagnostics — requires additional Intune scope not worth consent for one test
+    // ── Intune diagnostics - requires additional Intune scope not worth consent for one test
     stub('MT.1103', 'Intune diagnostics log collection is enabled', 'Intune', 'Low', 'Requires DeviceManagementManagedDevices.Read.All scope and specific diagnostics endpoint. Run using Maester PowerShell module.'),
 
     // ── Teams admin REST (MT.1037, MT.1042, MT.1045–MT.1048) ────────────────────

@@ -8,32 +8,37 @@
     .pass { color: #1f7a3a; } .fail { color: #b32026; font-weight: bold; }
     pre { background: #f4f4f6; padding: 10px; border-radius: 6px; overflow: auto; }
     h1 { font-size: 18px; }
-    #summary { font-weight: bold; margin: 12px 0; }
   </style>
 </head>
 <body>
-  <h1>SPOMove - unit tests for pure helpers</h1>
-  <div id="summary"></div>
+  <h1>SPOMove - unit tests</h1>
   <div id="out"></div>
-  <script src="../src/log.js"></script>
-  <script src="../src/concurrency.js"></script>
+  <script src="../../shared/log.js"></script>
+  <script src="../../shared/concurrency.js"></script>
+  <script src="../../shared/http.js"></script>
+  <script src="../../shared/auth.js"></script>
+  <script src="../src/rules.js"></script>
   <script src="../src/auth.js"></script>
   <script src="../src/graph.js"></script>
   <script src="../src/sharepoint.js"></script>
+  <script src="../src/jobs.js"></script>
   <script src="../src/transfer.js"></script>
   <script>
     const out = document.getElementById('out');
     let pass = 0, fail = 0;
-    function test(name, fn) {
-      try { fn(); out.insertAdjacentHTML('beforeend', `<div class="pass">PASS ${name}</div>`); pass++; }
-      catch (e) { out.insertAdjacentHTML('beforeend', `<div class="fail">FAIL ${name}<br><pre>${e.stack || e.message}</pre></div>`); fail++; }
+    function report(ok, name, e) {
+      if (ok) { out.insertAdjacentHTML('beforeend', `<div class="pass">PASS ${name}</div>`); pass++; }
+      else { out.insertAdjacentHTML('beforeend', `<div class="fail">FAIL ${name}<br><pre>${(e && (e.stack || e.message)) || ''}</pre></div>`); fail++; }
     }
-    function eq(a, b, msg = '') {
+    function test(name, fn) { try { fn(); report(true, name); } catch (e) { report(false, name, e); } }
+    async function atest(name, fn) { try { await fn(); report(true, name); } catch (e) { report(false, name, e); } }
+    function eq(a, b, m = '') {
       const A = JSON.stringify(a), B = JSON.stringify(b);
-      if (A !== B) throw new Error(`${msg} expected ${B}, got ${A}`);
+      if (A !== B) throw new Error(`${m} expected ${B}, got ${A}`);
     }
 
     const SP = window.SharePoint;
+    const R = window.MoveRules;
 
     // ---- path helpers ----
     test('trimUrl strips trailing slashes', () => {
@@ -43,9 +48,7 @@
     test('serverRelativeOf returns pathname', () => {
       eq(SP.serverRelativeOf('https://t.sharepoint.com/sites/A/Shared Documents/f.docx'), '/sites/A/Shared Documents/f.docx');
     });
-    test('hostOf returns host', () => {
-      eq(SP.hostOf('https://contoso.sharepoint.com/sites/A'), 'contoso.sharepoint.com');
-    });
+    test('hostOf returns host', () => { eq(SP.hostOf('https://contoso.sharepoint.com/sites/A'), 'contoso.sharepoint.com'); });
     test('folderOf returns parent folder', () => {
       eq(SP.folderOf('/sites/A/Docs/sub/file.txt'), '/sites/A/Docs/sub');
       eq(SP.folderOf('/file.txt'), '/');
@@ -58,67 +61,200 @@
       eq(SP.joinPath('/sites/A/Docs/', 'file.txt'), '/sites/A/Docs/file.txt');
       eq(SP.joinPath('/sites/A/Docs', 'file.txt'), '/sites/A/Docs/file.txt');
     });
-
-    // ---- OData path encoding ----
     test('spPath doubles single quotes and encodes', () => {
       eq(SP.spPath("/sites/A/O'Brien/f.txt"), encodeURIComponent("/sites/A/O''Brien/f.txt"));
     });
     test('spPath encodes spaces and hash', () => {
       eq(SP.spPath('/sites/A/My Docs/a#b.txt'), encodeURIComponent('/sites/A/My Docs/a#b.txt'));
     });
-
-    // ---- claim login name ----
-    test('buildClaimLoginName wraps a UPN', () => {
+    test('buildClaimLoginName wraps a UPN and passes a claim through', () => {
       eq(SP.buildClaimLoginName('user@contoso.com'), 'i:0#.f|membership|user@contoso.com');
-    });
-    test('buildClaimLoginName passes through an existing claim', () => {
       eq(SP.buildClaimLoginName('i:0#.f|membership|user@contoso.com'), 'i:0#.f|membership|user@contoso.com');
     });
-
-    // ---- byte formatting ----
     test('fmtBytes formats magnitudes', () => {
-      eq(window.Transfer.fmtBytes(0), '0 B');
-      eq(window.Transfer.fmtBytes(1024), '1.0 KB');
-      eq(window.Transfer.fmtBytes(1048576), '1.0 MB');
+      eq(Transfer.fmtBytes(0), '0 B');
+      eq(Transfer.fmtBytes(1024), '1.0 KB');
+      eq(Transfer.fmtBytes(1048576), '1.0 MB');
     });
-
-    // ---- .auth parsing ----
-    test('Auth._parseAuthFile parses key:value and skips comments', () => {
-      const cfg = window.Auth._parseAuthFile('# comment\nclientId: abc\nredirect-url-local: http://localhost:1985\n');
+    test('.auth format parses with the shared parser', () => {
+      const cfg = ToolkitAuth.parseAuthFile('# comment\nclientId:abc\nredirect-url-local: http://localhost:1985\n');
       eq(cfg.clientId, 'abc');
       eq(cfg['redirect-url-local'], 'http://localhost:1985');
     });
-
-    // ---- OneDrive site URL derivation ----
-    test('oneDriveSiteUrlFromWebUrl strips the default document library', () => {
-      eq(window.Graph.oneDriveSiteUrlFromWebUrl('https://lieben-my.sharepoint.com/personal/jos_lieben_nu/Documents'),
-         'https://lieben-my.sharepoint.com/personal/jos_lieben_nu');
-    });
-    test('oneDriveSiteUrlFromWebUrl handles a nested library folder', () => {
-      eq(window.Graph.oneDriveSiteUrlFromWebUrl('https://t-my.sharepoint.com/personal/a_b_com/Documents/Sub/Deep'),
-         'https://t-my.sharepoint.com/personal/a_b_com');
-    });
-    test('oneDriveSiteUrlFromWebUrl returns null for empty input', () => {
-      eq(window.Graph.oneDriveSiteUrlFromWebUrl(''), null);
+    test('oneDriveSiteUrlFromWebUrl strips the library and nested folders', () => {
+      eq(Graph.oneDriveSiteUrlFromWebUrl('https://lieben-my.sharepoint.com/personal/jos_lieben_nu/Documents'), 'https://lieben-my.sharepoint.com/personal/jos_lieben_nu');
+      eq(Graph.oneDriveSiteUrlFromWebUrl('https://t-my.sharepoint.com/personal/a_b_com/Documents/Sub/Deep'), 'https://t-my.sharepoint.com/personal/a_b_com');
+      eq(Graph.oneDriveSiteUrlFromWebUrl(''), null);
     });
 
-    // ---- concurrency limiter (async) ----
+    // ---- source/target overlap (data-loss guard) ----
+    const loc = (folder, extra = {}) => ({ tenantId: 't1', siteUrl: 'https://contoso.sharepoint.com/sites/A', folder, ...extra });
+    test('overlap: same folder is refused', () => {
+      if (!R.overlapError(loc('/sites/A/Docs'), loc('/sites/A/Docs'))) throw new Error('not refused');
+    });
+    test('overlap: target inside source is refused', () => {
+      if (!R.overlapError(loc('/sites/A/Docs'), loc('/sites/A/Docs/Sub/Deeper'))) throw new Error('not refused');
+    });
+    test('overlap: source inside target is refused', () => {
+      if (!R.overlapError(loc('/sites/A/Docs/Sub'), loc('/sites/A/Docs'))) throw new Error('not refused');
+    });
+    test('overlap: case and encoding differences still match', () => {
+      if (!R.overlapError(loc('/sites/A/Shared Documents'), loc('/SITES/a/Shared%20Documents/x/'))) throw new Error('not refused');
+    });
+    test('overlap: sibling with a common prefix is allowed', () => {
+      eq(R.overlapError(loc('/sites/A/Docs'), loc('/sites/A/Docs2')), null);
+    });
+    test('overlap: other library on the same site is allowed', () => {
+      eq(R.overlapError(loc('/sites/A/Docs'), loc('/sites/A/Archive')), null);
+    });
+    test('overlap: other tenant or other host is allowed', () => {
+      eq(R.overlapError(loc('/sites/A/Docs'), loc('/sites/A/Docs', { tenantId: 't2' })), null);
+      eq(R.overlapError(loc('/sites/A/Docs'), loc('/sites/A/Docs', { siteUrl: 'https://fabrikam.sharepoint.com/sites/A' })), null);
+    });
+    test('sameFile compares host and path case-insensitively', () => {
+      eq(R.sameFile('https://c.sharepoint.com/sites/A/Docs/a.txt', 'https://C.sharepoint.com/sites/a/docs/A.txt'), true);
+      eq(R.sameFile('https://c.sharepoint.com/sites/A/Docs/a.txt', 'https://c.sharepoint.com/sites/A/Docs2/a.txt'), false);
+    });
+
+    // ---- existing target / overwrite off (version replay guard) ----
+    const existing = { modified: '2025-01-02T00:00:00Z' };
+    test('existing target with overwrite off is skipped, in byte mode too', () => {
+      eq(R.existingTargetAction({ overwrite: false }, existing, '2025-06-01T00:00:00Z', true), 'skip-exists');
+      eq(R.existingTargetAction({ overwrite: false }, existing, '2025-06-01T00:00:00Z', false), 'skip-exists');
+    });
+    test('missing target proceeds', () => {
+      eq(R.existingTargetAction({ overwrite: false }, null, null, true), 'proceed');
+      eq(R.existingTargetAction({ overwrite: true }, null, null, true), 'proceed');
+    });
+    test('overwrite on: replace in byte mode, proceed server-side', () => {
+      eq(R.existingTargetAction({ overwrite: true }, existing, '2025-06-01T00:00:00Z', true), 'replace');
+      eq(R.existingTargetAction({ overwrite: true }, existing, '2025-06-01T00:00:00Z', false), 'proceed');
+    });
+    test('only-newer skips a target of the same age or newer', () => {
+      eq(R.existingTargetAction({ overwrite: true, onlyNewer: true }, existing, '2025-01-01T00:00:00Z', true), 'skip-not-newer');
+      eq(R.existingTargetAction({ overwrite: true, onlyNewer: true }, existing, '2025-01-02T00:00:00Z', true), 'skip-not-newer');
+      eq(R.existingTargetAction({ overwrite: true, onlyNewer: true }, existing, '2025-03-01T00:00:00Z', true), 'replace');
+    });
+    test('uploadOverwrite: first upload follows the option, later ones replace our own file', () => {
+      eq(R.uploadOverwrite(false, false), false);
+      eq(R.uploadOverwrite(false, true), true);
+      eq(R.uploadOverwrite(true, false), true);
+    });
+    test('isSourceNewer treats unknown dates as newer', () => {
+      eq(R.isSourceNewer(null, '2025-01-01'), true);
+      eq(R.isSourceNewer('2025-01-02', '2025-01-01'), true);
+      eq(R.isSourceNewer('2025-01-01', '2025-01-01'), false);
+    });
+
+    // ---- sync plan (deletes) ----
+    const prev = [
+      { subPath: 'a.txt', modified: '2025-01-01', status: 'done' },
+      { subPath: 'Sub2/b.txt', modified: '2025-01-01', status: 'done' },
+      { subPath: 'old.txt', modified: '2025-01-01', status: 'skipped', skipReason: 'Target file exists and overwrite is off' },
+      { subPath: 'carried.txt', modified: '2025-01-01', status: 'skipped', transferred: true },
+      { subPath: 'gone.txt', status: 'deleted', op: 'delete' },
+      { subPath: 'todo.txt', status: 'failed', op: 'delete' },
+    ];
+    const fresh = [{ subPath: 'a.txt', modified: '2025-01-01', size: 1 }, { subPath: 'new.txt', modified: '2025-02-01', size: 2 }];
+    test('sync proposes deletes only for files this job put on the target', () => {
+      const p = R.planRerun('incremental', prev, fresh, { operation: 'copy' });
+      eq(p.deletes.map((d) => d.subPath).sort(), ['Sub2/b.txt', 'carried.txt', 'todo.txt']);
+      eq(p.blockedDeletes, 0);
+      eq(p.items.map((i) => [i.subPath, i.status]), [['a.txt', 'skipped'], ['new.txt', 'pending']]);
+    });
+    test('sync with an unlisted folder deletes nothing', () => {
+      const p = R.planRerun('incremental', prev, fresh, { operation: 'copy', unlistedFolders: [{ folder: '/sites/A/Docs/Sub2' }] });
+      eq(p.deletes, []);
+      eq(p.blockedDeletes, 3);
+      eq(p.items.length, 2);
+    });
+    test('sync of a move job never deletes', () => {
+      eq(R.planRerun('incremental', prev, fresh, { operation: 'move' }).deletes, []);
+    });
+    test('full re-run transfers everything and deletes nothing', () => {
+      const p = R.planRerun('full', prev, fresh, { operation: 'copy' });
+      eq(p.deletes, []);
+      eq(p.items.map((i) => i.status), ['pending', 'pending']);
+    });
+    test('unchanged files carry the transferred flag for the next sync', () => {
+      const p = R.planRerun('incremental', prev, fresh, { operation: 'copy' });
+      eq(p.items[0].transferred, true);
+    });
+    test('deleteItems builds pending delete ops; deleteShare is the ratio', () => {
+      eq(R.deleteItems([{ subPath: 'x', modified: 'm' }]), [{ subPath: 'x', size: 0, modified: 'm', status: 'pending', error: null, op: 'delete' }]);
+      eq(R.deleteShare(2, [{ status: 'done' }, { status: 'done' }, { status: 'done' }, { status: 'skipped' }]), 2 / 3);
+      eq(R.deleteShare(1, []), 0);
+    });
+
+    // ---- hosts, accounts, stored data ----
+    test('isTenantSpoHost accepts tenant, -my, -admin and multi-geo hosts only', () => {
+      eq(R.isTenantSpoHost('contoso.sharepoint.com', 'contoso.sharepoint.com'), true);
+      eq(R.isTenantSpoHost('contoso-my.sharepoint.com', 'contoso.sharepoint.com'), true);
+      eq(R.isTenantSpoHost('CONTOSO-admin.sharepoint.com', 'contoso.sharepoint.com'), true);
+      eq(R.isTenantSpoHost('contosoeur-my.sharepoint.com', 'contoso.sharepoint.com'), true);
+      eq(R.isTenantSpoHost('fabrikam.sharepoint.com', 'contoso.sharepoint.com'), false);
+      eq(R.isTenantSpoHost('contoso.sharepoint.com.evil.net', 'contoso.sharepoint.com'), false);
+      eq(R.isTenantSpoHost('evil.net', 'contoso.sharepoint.com'), false);
+      eq(R.isTenantSpoHost('contoso.sharepoint.com', null), false);
+    });
+    test('accountMatches needs tenant id and UPN of the job', () => {
+      const job = { tenantId: 't1', upn: 'Admin@Contoso.com' };
+      eq(R.accountMatches({ tenantId: 't1', username: 'admin@contoso.com' }, job), true);
+      eq(R.accountMatches({ tenantId: 't1', username: 'user2@contoso.com' }, job), false);
+      eq(R.accountMatches({ tenantId: 't2', username: 'admin@contoso.com' }, job), false);
+      eq(R.accountMatches({ tenantId: 't1', username: 'admin@contoso.com' }, { tenantId: 't1' }), false);
+    });
+    test('containsSecret spots tokens and token fields', () => {
+      eq(R.containsSecret({ a: 'eyJhbGciOiJSUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.c2lnbmF0dXJl' }), true);
+      eq(R.containsSecret({ nested: { accessToken: 'x' } }), true);
+      eq(R.containsSecret({ h: 'Bearer abcdefghijklmnopqrstuvwxyz0123' }), true);
+      eq(R.containsSecret({ config: { upn: 'a@b.com', siteUrl: 'https://c.sharepoint.com/sites/A' } }), false);
+    });
+    test('a job record as the wizard builds it holds no token, and items stay out of it', () => {
+      const side = { tenantId: 't1', tenantHost: 'c.sharepoint.com', tenantName: 'Contoso', upn: 'a@c.com', siteUrl: 'https://c.sharepoint.com/sites/A', siteTitle: 'A', library: 'Docs', folder: '/sites/A/Docs' };
+      const job = { id: '1', status: 'draft', config: { mode: 'same', operation: 'copy', source: side, target: { ...side, folder: '/sites/A/Other' } }, elevations: [{ id: 'e', siteUrl: side.siteUrl, upn: 'a@c.com' }], stats: {}, items: [{ subPath: 'x' }] };
+      const rec = Jobs.stripItems(job);
+      eq('items' in rec, false);
+      eq(R.containsSecret(rec), false);
+    });
+
+    // ---- async: enumeration reports folders it could not list ----
     async function asyncTests() {
-      let ok = true, err = null;
-      try {
+      await atest('Concurrency.pmap runs all items and reports progress', async () => {
         let seen = 0;
-        const { results } = await window.Concurrency.pmap([1, 2, 3, 4], async (n) => n * 2, {
-          concurrency: 2, onProgress: () => seen++,
-        });
+        const { results } = await Concurrency.pmap([1, 2, 3, 4], async (n) => n * 2, { concurrency: 2, onProgress: () => seen++ });
         eq(results, [2, 4, 6, 8]);
         eq(seen, 4);
-      } catch (e) { ok = false; err = e; }
-      if (ok) { out.insertAdjacentHTML('beforeend', `<div class="pass">PASS Concurrency.pmap runs all items and reports progress</div>`); pass++; }
-      else { out.insertAdjacentHTML('beforeend', `<div class="fail">FAIL Concurrency.pmap<br><pre>${err.stack || err.message}</pre></div>`); fail++; }
+      });
+
+      await atest('enumerateFiles reports a folder that fails to list instead of treating it as empty', async () => {
+        const origToken = Auth.getSpoToken, origReq = Http.request;
+        const json = (value) => new Response(JSON.stringify({ value }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+        Auth.getSpoToken = async () => 'test';
+        Http.request = async (url) => {
+          const u = decodeURIComponent(url);
+          if (u.includes('/Docs/Sub2')) return new Response('{"error":{"message":"Access denied"}}', { status: 403, headers: { 'Content-Type': 'application/json' } });
+          if (u.includes("decodedurl='/sites/A/Docs')/Folders")) return json([{ Name: 'Sub1', ServerRelativeUrl: '/sites/A/Docs/Sub1', ItemCount: 1 }, { Name: 'Sub2', ServerRelativeUrl: '/sites/A/Docs/Sub2', ItemCount: 1 }]);
+          if (u.includes("decodedurl='/sites/A/Docs/Sub1')/Files")) return json([{ Name: 'a.txt', ServerRelativeUrl: '/sites/A/Docs/Sub1/a.txt', Length: 5, TimeLastModified: '2025-01-01' }]);
+          return json([]);
+        };
+        try {
+          const scan = await SP.enumerateFiles('source', 'https://contoso.sharepoint.com/sites/A', '/sites/A/Docs');
+          eq(scan.files.map((f) => f.subPath), ['Sub1/a.txt']);
+          eq(scan.failedFolders.map((f) => f.folder), ['/sites/A/Docs/Sub2']);
+          eq(scan.failedFolders[0].status, 403);
+          const p = R.planRerun('incremental', [{ subPath: 'Sub1/a.txt', modified: '2025-01-01', status: 'done' }, { subPath: 'Sub2/b.txt', modified: '2025-01-01', status: 'done' }], scan.files, { operation: 'copy', unlistedFolders: scan.failedFolders });
+          eq(p.deletes, []);
+          eq(p.blockedDeletes, 1);
+        } finally {
+          Auth.getSpoToken = origToken;
+          Http.request = origReq;
+        }
+      });
     }
 
     asyncTests().finally(() => {
-      document.getElementById('summary').innerHTML = `<span class="${fail ? 'fail' : 'pass'}">${pass} passed, ${fail} failed</span>`;
+      out.insertAdjacentHTML('beforeend', `<h2>${pass} passed, ${fail} failed</h2><p id="result">TEST-RESULT: ${fail ? 'FAIL' : 'PASS'} ${pass}/${pass + fail}</p>`);
     });
   </script>
 </body>

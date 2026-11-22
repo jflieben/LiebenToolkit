@@ -64,7 +64,7 @@
       const now = Date.now();
       if (now < _tc.gateUntil) {
         // Backoff window: wait in randomized chunks so threads wake near expiry in a random
-        // order — whoever wakes first grabs the single probe slot.
+        // order; whoever wakes first grabs the single probe slot.
         const remaining = _tc.gateUntil - now;
         await Concurrency.sleep(Math.min(remaining, 1000) + Math.random() * 300);
         continue;
@@ -79,7 +79,7 @@
     if (slot.recovery) _tc.inFlight = Math.max(0, _tc.inFlight - 1);
     const now = Date.now();
     if (ok) {
-      // Server responded (2xx, or even a 4xx like 404) → not throttling.
+      // Server responded (2xx, or even a 4xx like 404): not throttling.
       if (_tc.backoffMs !== 0 && slot.recovery && slot.epoch === _tc.epoch) {
         _tc.permits += 1;                                     // ramp the allowance up
         if (_tc.permits >= HEALTHY_AT) {
@@ -94,12 +94,12 @@
       // First throttle: open the circuit with a substantial initial backoff.
       _tc.backoffMs = Math.min(MAX_BACKOFF, Math.max(INITIAL_BACKOFF, raMs));
       _tc.gateUntil = now + _tc.backoffMs; _tc.permits = 0; _tc.inFlight = 0; _tc.epoch++;
-      _logThrottle(`SPO throttled → pausing all requests, backing off ${Math.round(_tc.backoffMs / 1000)}s`);
+      _logThrottle(`SPO throttled, pausing all requests, backing off ${Math.round(_tc.backoffMs / 1000)}s`);
     } else if (slot.recovery && slot.epoch === _tc.epoch) {
       // The current round's probe failed: escalate and reset the ramp.
       _tc.backoffMs = Math.min(MAX_BACKOFF, Math.max(_tc.backoffMs * 2, raMs));
       _tc.gateUntil = now + _tc.backoffMs; _tc.permits = 0; _tc.inFlight = 0; _tc.epoch++;
-      _logThrottle(`SPO still throttled → backing off ${Math.round(_tc.backoffMs / 1000)}s`);
+      _logThrottle(`SPO still throttled, backing off ${Math.round(_tc.backoffMs / 1000)}s`);
     } else if (raMs) {
       // Stale / herd 429 while already backing off: honor a longer Retry-After, never escalate.
       _tc.gateUntil = Math.max(_tc.gateUntil, now + raMs);
@@ -115,43 +115,43 @@
   }
 
   // ---------- generic REST ----------
-  async function callRest(role, siteUrl, relativePath, { method = 'GET', body, headers = {}, raw = false, digest, attempt = 0 } = {}) {
-    const slot = await _throttleAcquire();
+  // Http.request does the fetch with retries off: the circuit breaker above owns throttling
+  // for all SharePoint calls of all jobs. The token is fetched first so an auth error is
+  // never mistaken for a dropped connection.
+  async function callRest(role, siteUrl, relativePath, { method = 'GET', body, headers = {}, raw = false, digest, attempt = 0, signal } = {}) {
     const token = await Auth.getSpoToken(role, hostOf(siteUrl));
+    const slot = await _throttleAcquire();
     const url = trimUrl(siteUrl) + relativePath;
-    Log.dbg(`SPO[${role}] ${method} ${url}`);
-    const h = {
-      Authorization: `Bearer ${token}`,
-      Accept: 'application/json;odata=nometadata',
-      ...headers,
-    };
+    const h = { Accept: 'application/json;odata=nometadata', ...headers };
     if (digest) h['X-RequestDigest'] = digest;
-    const opts = { method, headers: h };
-    if (body !== undefined && body !== null) opts.body = body;
+    const again = () => callRest(role, siteUrl, relativePath, { method, body, headers, raw, digest, attempt: attempt + 1, signal });
 
     let res;
     try {
-      res = await fetch(url, opts);
+      res = await Http.request(url, { method, headers: h, body: body == null ? undefined : body, token, retries: 0, raw: true, signal, label: `SPO[${role}]` });
     } catch (e) {
+      if (/^Cancelled$/.test(e.message || '')) {
+        if (slot.recovery) _tc.inFlight = Math.max(0, _tc.inFlight - 1);
+        throw e;
+      }
       // A dropped connection ("Failed to fetch") under load is almost always throttling.
-      if (e && e.name === 'AbortError') throw e;
       _throttleReport(false, 0, slot);
       if (attempt >= 10) throw errWith(`SPO throttled (connection dropped) after retries: ${url}`, 0);
-      return callRest(role, siteUrl, relativePath, { method, body, headers, raw, digest, attempt: attempt + 1 });
+      return again();
     }
 
     if (res.status === 429 || res.status === 503 || res.status === 504) {
       const ra = parseInt(res.headers.get('Retry-After') || '0', 10);
       _throttleReport(false, ra, slot);
       if (attempt >= 10) throw errWith(`SPO ${res.status} after retries: ${url}`, res.status);
-      return callRest(role, siteUrl, relativePath, { method, body, headers, raw, digest, attempt: attempt + 1 });
+      return again();
     }
 
-    // Server responded → circuit sees a healthy signal (even a 4xx means it's reachable).
+    // Any answer, even a 4xx, means the server is reachable and not throttling.
     _throttleReport(true, 0, slot);
     if (!res.ok) {
       const txt = await res.text().catch(() => '');
-      throw errWith(`SPO ${res.status}: ${txt.substring(0, 300)}`, res.status);
+      throw new Http.HttpError(res.status, `SPO ${Http.errorMessage(res.status, res.statusText, txt)}`, txt, url);
     }
     if (raw) return res;
     if (res.status === 204) return null;
@@ -162,8 +162,8 @@
 
   function errWith(msg, status) { const e = new Error(msg); e.status = status; return e; }
 
-  const _digestCache = new Map(); // key = role|siteUrl → { value, exp }
-  const _digestInflight = new Map(); // key → Promise (coalesce concurrent cold fetches)
+  const _digestCache = new Map(); // key = role|siteUrl -> { value, exp }
+  const _digestInflight = new Map(); // key -> Promise (coalesce concurrent cold fetches)
   async function getFormDigest(role, siteUrl) {
     const key = `${role}|${trimUrl(siteUrl)}`;
     const cached = _digestCache.get(key);
@@ -229,7 +229,7 @@
     }).map(toLib);
 
     let libs = pick(false);
-    // Some OneDrive/site tenants mark the default document library Hidden — retry with hidden.
+    // Some OneDrive/site tenants mark the default document library Hidden; retry with hidden.
     if (!libs.length) libs = pick(true);
     // Last resort: the lists endpoint occasionally omits the default library entirely; fetch it
     // directly by its well-known URL so the user isn't left with "no libraries".
@@ -301,17 +301,18 @@
     return { folders, files };
   }
 
-  // Recursively enumerate every file under a root folder using a pool of parallel
-  // folder workers. Folder navigation is not subject to the list-view threshold and
-  // parallelism dramatically speeds up scanning wide/deep libraries. Concurrency is
-  // kept modest and requests share a global throttle gate to avoid 429 storms.
+  // Recursively enumerate every file under a root folder with a pool of parallel folder
+  // workers (folder navigation is not subject to the list-view threshold). Resolves with
+  // { files, failedFolders: [{ folder, error }] }: a folder that cannot be listed is reported,
+  // never silently treated as empty, because a sync would read that as "deleted from source".
   async function enumerateFiles(role, siteUrl, rootFolder, { onProgress, cancelToken, recursive = true, concurrency = 6 } = {}) {
     const files = [];
+    const failedFolders = [];
     const queue = [rootFolder];
     let active = 0;
     return new Promise((resolve, reject) => {
       let settled = false;
-      const finish = (err) => { if (!settled) { settled = true; err ? reject(err) : resolve(files); } };
+      const finish = (err) => { if (!settled) { settled = true; err ? reject(err) : resolve({ files, failedFolders }); } };
       function pump() {
         if (settled) return;
         if (cancelToken?.cancelled) return finish(new Error('Cancelled'));
@@ -325,7 +326,9 @@
             }
             if (recursive) for (const d of children.folders) queue.push(d.serverRelativeUrl);
           }).catch(e => {
-            Log.warn(`Skipping folder ${folder}: ${e.message}`);
+            if (/^Cancelled$/.test(e.message || '')) return;
+            failedFolders.push({ folder, error: e.message, status: e.status });
+            Log.warn(`Could not list folder ${folder}: ${e.message}`);
           }).finally(() => {
             active--;
             if (onProgress) onProgress(files.length, queue.length);
@@ -338,33 +341,6 @@
   }
 
   // ---------- folder creation ----------
-  async function ensureFolderPath(role, siteUrl, serverRelFolder) {
-    const digest = await getFormDigest(role, siteUrl);
-    const enc = spPath(serverRelFolder);
-    // Idempotent: AddUsingPath on an existing folder simply returns it.
-    await callRest(role, siteUrl, `/_api/web/folders/AddUsingPath(decodedurl='${enc}')`, {
-      method: 'POST', digest,
-    }).catch(async (e) => {
-      // Fall back to creating each segment (older tenants).
-      if (e.status && e.status < 500) {
-        await ensureFolderSegments(role, siteUrl, serverRelFolder, digest);
-      } else { throw e; }
-    });
-  }
-
-  async function ensureFolderSegments(role, siteUrl, serverRelFolder, digest) {
-    const webRel = serverRelativeOf(await getWebServerRelative(role, siteUrl));
-    let current = webRel.replace(/\/+$/, '');
-    const rest = serverRelFolder.substring(current.length).replace(/^\/+/, '');
-    for (const seg of rest.split('/')) {
-      if (!seg) continue;
-      current = `${current}/${seg}`;
-      try {
-        await callRest(role, siteUrl, `/_api/web/folders/AddUsingPath(decodedurl='${spPath(current)}')`, { method: 'POST', digest });
-      } catch (e) { if (e.status !== 500) Log.dbg(`ensureFolder ${current}: ${e.message}`); }
-    }
-  }
-
   // Create a SINGLE folder (its parent must already exist). Tolerant of a folder that
   // already exists (resume / pre-existing), verified via a follow-up existence check.
   async function createFolder(role, siteUrl, serverRelFolder) {
@@ -384,26 +360,9 @@
     } catch { return false; }
   }
 
-  const _webRelCache = new Map();
-  async function getWebServerRelative(role, siteUrl) {
-    const key = `${role}|${trimUrl(siteUrl)}`;
-    if (_webRelCache.has(key)) return _webRelCache.get(key);
-    const web = await getWeb(role, siteUrl);
-    const rel = web.ServerRelativeUrl || serverRelativeOf(web.Url);
-    _webRelCache.set(key, rel);
-    return rel;
-  }
-
   // ---------- download / upload ----------
   async function downloadFile(role, siteUrl, serverRelPath) {
     const res = await callRest(role, siteUrl, `/_api/web/GetFileByServerRelativePath(decodedurl='${spPath(serverRelPath)}')/$value`, { raw: true });
-    return res.blob();
-  }
-
-  async function downloadByAbsoluteUrl(role, absoluteUrl) {
-    const token = await Auth.getSpoToken(role, hostOf(absoluteUrl));
-    const res = await fetch(absoluteUrl, { headers: { Authorization: `Bearer ${token}` } });
-    if (!res.ok) throw errWith(`Version download ${res.status}`, res.status);
     return res.blob();
   }
 
@@ -485,7 +444,7 @@
   // Resolve a principal to its site user id. Cached per role|site|logonName because
   // the SAME users repeat across a job's files (and reset-metadata reuses ONE user for
   // every file). Concurrent lookups of the same principal are coalesced into one call.
-  const _ensureUserCache = new Map();    // key = role|site|logonName → { id, loginName }
+  const _ensureUserCache = new Map();    // key = role|site|logonName -> { id, loginName }
   const _ensureUserInflight = new Map();
   async function ensureUser(role, siteUrl, logonName) {
     const key = `${role}|${trimUrl(siteUrl)}|${logonName}`;
@@ -586,12 +545,12 @@
   }
 
   // ---------- delete ----------
+  // Recycle instead of a hard delete, so every file SPOMove removes (sync deletes, move
+  // sources, replaced targets) can be restored from the site recycle bin.
   async function deleteFile(role, siteUrl, serverRelPath) {
     const digest = await getFormDigest(role, siteUrl);
     const enc = spPath(serverRelPath);
-    await callRest(role, siteUrl, `/_api/web/GetFileByServerRelativePath(decodedurl='${enc}')`, {
-      method: 'POST', digest, headers: { 'X-HTTP-Method': 'DELETE', 'If-Match': '*' },
-    });
+    await callRest(role, siteUrl, `/_api/web/GetFileByServerRelativePath(decodedurl='${enc}')/recycle()`, { method: 'POST', digest });
   }
 
   // Return { modified, size } if the target file exists, else null. Used for
@@ -610,14 +569,14 @@
 
   // ---------- server-side copy / move (same tenant only) ----------
   // Uses SP.MoveCopyUtil so bytes never travel through the browser.
-  // NOTE: only KeepBoth and ShouldBypassSharedLocks are sent. Older/most tenants
-  // reject ResetAuthorAndEditorOnCopy / RetainEditorAndModifiedOnMove on
-  // SP.MoveCopyOptions ("property does not exist on type 'SP.MoveCopyOptions'").
-  // Author/Editor handling is done separately via ValidateUpdateListItem.
+  // Only KeepBoth and ShouldBypassSharedLocks are sent: most tenants reject
+  // ResetAuthorAndEditorOnCopy / RetainEditorAndModifiedOnMove. Author/Editor are set
+  // afterwards. A move does not bypass shared locks, so a file open in co-authoring
+  // is not pulled away from its editors (it fails and can be retried).
   async function serverSideTransfer(role, contextSiteUrl, srcAbsoluteUrl, destAbsoluteUrl, { move = false, overwrite = true, keepBoth = false } = {}) {
     const digest = await getFormDigest(role, contextSiteUrl);
     const method = move ? 'MoveFileByPath' : 'CopyFileByPath';
-    const options = { KeepBoth: keepBoth, ShouldBypassSharedLocks: true };
+    const options = { KeepBoth: keepBoth, ShouldBypassSharedLocks: !move };
     const body = JSON.stringify({
       srcPath: { DecodedUrl: srcAbsoluteUrl },
       destPath: { DecodedUrl: destAbsoluteUrl },
@@ -656,42 +615,30 @@
     return `i:0#.f|membership|${upn}`;
   }
 
-  async function getCurrentUserAdminStatus(role, siteUrl) {
-    try {
-      const data = await callRest(role, siteUrl, '/_api/web/currentuser?$select=IsSiteAdmin,LoginName');
-      return { hasAccess: true, isSiteAdmin: !!data.IsSiteAdmin, loginName: data.LoginName || '' };
-    } catch (e) {
-      if (e.status === 401 || e.status === 403) return { hasAccess: false, isSiteAdmin: false };
-      return { hasAccess: false, isSiteAdmin: false, error: e.message };
-    }
+  // ---------- tenant admin API (SharePoint Administrator role) ----------
+  function adminOpts(role) {
+    return { label: `SPO-admin[${role}]`, token: () => Auth.getSpoAdminToken(role) };
+  }
+  function adminHost(role) {
+    const conn = Auth.getConnection(role);
+    if (!conn || !conn.adminHost) throw new Error('SharePoint admin host not detected for this tenant');
+    return conn.adminHost;
   }
 
-  // ---------- tenant-wide site enumeration (SharePoint admin) ----------
   async function getAdminFormDigest(role) {
-    const conn = Auth.getConnection(role);
-    if (!conn?.adminHost) throw new Error('SharePoint admin host not detected for this tenant');
-    const token = await Auth.getSpoAdminToken(role);
-    const res = await fetch(`https://${conn.adminHost}/_api/contextinfo`, {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${token}`, Accept: 'application/json;odata=verbose' },
+    const data = await Http.json(`https://${adminHost(role)}/_api/contextinfo`, {
+      ...adminOpts(role), method: 'POST', headers: { Accept: 'application/json;odata=verbose' },
     });
-    if (!res.ok) throw errWith(`contextinfo HTTP ${res.status}`, res.status);
-    const data = await res.json().catch(() => null);
-    const value = data?.d?.GetContextWebInformation?.FormDigestValue || data?.FormDigestValue;
+    const value = data && ((data.d && data.d.GetContextWebInformation && data.d.GetContextWebInformation.FormDigestValue) || data.FormDigestValue);
     if (!value) throw new Error('Could not obtain admin form digest');
     return value;
   }
 
-  // Enumerate EVERY site collection in the tenant, regardless of the signed-in
-  // user's per-site permissions. Requires the SharePoint Administrator role
-  // (uses the tenant admin host token). Paginates through
-  // GetSitePropertiesFromSharePointByFilters using the StartIndex cursor.
+  // Every site collection in the tenant, regardless of the user's own site permissions.
+  // Pages through GetSitePropertiesFromSharePointByFilters with the StartIndex cursor.
   async function enumerateAllSites(role, { includePersonalSites = false, onProgress } = {}) {
-    const conn = Auth.getConnection(role);
-    if (!conn?.adminHost) throw new Error('SharePoint admin host not detected for this tenant');
-    const token = await Auth.getSpoAdminToken(role);
+    const endpoint = `https://${adminHost(role)}/_api/Microsoft.Online.SharePoint.TenantAdministration.Tenant/GetSitePropertiesFromSharePointByFilters`;
     const digest = await getAdminFormDigest(role);
-    const endpoint = `https://${conn.adminHost}/_api/Microsoft.Online.SharePoint.TenantAdministration.Tenant/GetSitePropertiesFromSharePointByFilters`;
     const sites = [];
     let startIndex = null;
     let guard = 0;
@@ -705,31 +652,17 @@
         Template: '',
         Filter: '',
       };
-      const res = await fetch(endpoint, {
+      const data = await Http.json(endpoint, {
+        ...adminOpts(role),
         method: 'POST',
-        headers: {
-          Authorization: `Bearer ${token}`,
-          'X-RequestDigest': digest,
-          'Content-Type': 'application/json;odata=verbose',
-          Accept: 'application/json;odata=verbose',
-        },
+        headers: { 'X-RequestDigest': digest, 'Content-Type': 'application/json;odata=verbose', Accept: 'application/json;odata=verbose' },
         body: JSON.stringify({ speFilter }),
       });
-      if (!res.ok) {
-        const txt = await res.text().catch(() => '');
-        throw errWith(`Enumerate sites HTTP ${res.status}: ${txt.substring(0, 300)}`, res.status);
-      }
-      const data = await res.json().catch(() => null);
-      const d = data?.d?.GetSitePropertiesFromSharePointByFilters || data?.d || data || {};
+      const d = (data && data.d && (data.d.GetSitePropertiesFromSharePointByFilters || data.d)) || data || {};
       const batch = d.results || d.value || [];
       for (const s of batch) {
         if (!s.Url) continue;
-        sites.push({
-          url: trimUrl(s.Url),
-          title: s.Title || s.Url,
-          template: s.Template || '',
-          storageUsage: Number(s.StorageUsageCurrent || s.StorageUsage || 0),
-        });
+        sites.push({ url: trimUrl(s.Url), title: s.Title || s.Url, template: s.Template || '', storageUsage: Number(s.StorageUsageCurrent || s.StorageUsage || 0) });
       }
       if (onProgress) onProgress(sites.length);
       const nextIdx = d.NextStartIndexFromSharePoint;
@@ -744,10 +677,8 @@
 
   async function setSiteAdmin(role, siteUrl, claimLoginName, isSiteAdmin) {
     const conn = Auth.getConnection(role);
-    if (!conn?.adminHost) throw new Error('Admin host not detected');
-    const url = `https://${conn.adminHost}/_vti_bin/client.svc/ProcessQuery`;
-    const token = await Auth.getSpoAdminToken(role);
-    // State-changing ProcessQuery calls want the admin form digest, same as enumerateAllSites.
+    if (!conn || !MoveRules.isTenantSpoHost(hostOf(siteUrl), conn.tenantHost)) throw new Error(`${siteUrl} is not a site of the ${role} tenant`);
+    const url = `https://${adminHost(role)}/_vti_bin/client.svc/ProcessQuery`;
     const digest = await getAdminFormDigest(role).catch(() => null);
     const xml = `<?xml version="1.0" encoding="UTF-8"?>` +
       `<Request xmlns="http://schemas.microsoft.com/sharepoint/clientquery/2009" SchemaVersion="15.0.0.0" LibraryVersion="16.0.0.0" ApplicationName="SPOMove">` +
@@ -757,19 +688,15 @@
       `<Parameter Type="Boolean">${isSiteAdmin ? 'true' : 'false'}</Parameter>` +
       `</Parameters></Method></Actions>` +
       `<ObjectPaths><Constructor Id="2" TypeId="{268004ae-ef6b-4e9b-8425-127220d84719}" /></ObjectPaths></Request>`;
-    Log.dbg(`SPO[${role}] ProcessQuery SetSiteAdmin(${siteUrl}, ${isSiteAdmin})`);
-    const headers = { Authorization: `Bearer ${token}`, 'Content-Type': 'text/xml', Accept: '*/*' };
+    const headers = { 'Content-Type': 'text/xml', Accept: '*/*' };
     if (digest) headers['X-RequestDigest'] = digest;
-    const res = await fetch(url, { method: 'POST', headers, body: xml });
-    if (!res.ok) {
-      const txt = await res.text().catch(() => '');
-      throw errWith(`SetSiteAdmin HTTP ${res.status}: ${txt.substring(0, 300)}`, res.status);
-    }
+    Log.info(`SetSiteAdmin(${siteUrl}, ${claimLoginName}, ${isSiteAdmin})`);
+    const res = await Http.request(url, { ...adminOpts(role), method: 'POST', headers, body: xml });
     const bodyJson = await res.json().catch(() => null);
     if (Array.isArray(bodyJson) && bodyJson[0] && bodyJson[0].ErrorInfo) {
       const ei = bodyJson[0].ErrorInfo;
       const e = new Error(`SetSiteAdmin failed: ${ei.ErrorMessage || 'unknown'}`);
-      // -2147024891 = E_ACCESSDENIED: the tenant-admin API refused the operation.
+      // -2147024891 = E_ACCESSDENIED: the tenant admin API refused it.
       if (String(ei.ErrorCode) === '-2147024891' || /unauthorized/i.test(ei.ErrorMessage || '')) e.status = 403;
       throw e;
     }
@@ -777,18 +704,12 @@
   }
 
   window.SharePoint = {
-    // helpers
     serverRelativeOf, hostOf, folderOf, nameOf, joinPath, trimUrl, spPath,
-    // discovery
-    validateConnection, getWeb, getDocumentLibraries, getFolderChildren, enumerateFiles,
-    getWebServerRelative, enumerateAllSites,
-    // file ops
-    ensureFolderPath, createFolder, downloadFile, downloadByAbsoluteUrl, uploadFile, uploadFileSmall, uploadFileChunked,
+    validateConnection, getWeb, getDocumentLibraries, getFolderChildren, enumerateFiles, enumerateAllSites,
+    createFolder, downloadFile, uploadFile,
     getFileMetadata, setFileMetadata, resetFileMetadata, ensureUser, getFileVersions, downloadFileVersion,
     getFileInfoIfExists, deleteFile, serverSideTransfer,
-    // throttle
     getThrottleState,
-    // ownership
-    getCurrentUserAdminStatus, setSiteAdmin, buildClaimLoginName,
+    setSiteAdmin, buildClaimLoginName,
   };
 })();

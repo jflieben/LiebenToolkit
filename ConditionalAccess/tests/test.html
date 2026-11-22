@@ -2,71 +2,140 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>ConditionalAccess tests</title>
+  <title>ConditionalAccess - tests</title>
   <style>
-    body { font-family: system-ui, sans-serif; max-width: 950px; margin: 24px auto; padding: 0 16px; }
-    h1 { font-size: 18px; }
-    .test { padding: 6px 10px; margin: 3px 0; border-radius: 6px; }
-    .pass { background: #d6f3e3; color: #1f6e3a; }
-    .fail { background: #fde2e1; color: #b3261e; }
+    body { font: 14px/1.4 -apple-system,Segoe UI,sans-serif; padding: 20px; max-width: 950px; margin: 0 auto; }
+    .pass { color: #1f7a3a; } .fail { color: #b32026; font-weight: bold; }
     .group { margin-top: 18px; font-weight: 600; }
-    pre { background: #f4f6fa; padding: 8px; border-radius: 4px; font-size: 12px; }
+    pre { background: #f4f4f6; padding: 10px; border-radius: 6px; overflow: auto; }
+    h1 { font-size: 18px; }
   </style>
 </head>
 <body>
-  <h1>ConditionalAccess unit tests</h1>
-  <div id="results"></div>
-
+  <h1>ConditionalAccess - unit tests</h1>
+  <div id="out"></div>
+  <script src="../../shared/log.js"></script>
+  <script src="../../shared/http.js"></script>
   <script src="../src/policies.js"></script>
   <script>
-    const root = document.getElementById('results');
+    const out = document.getElementById('out');
     let pass = 0, fail = 0;
-
-    function group(name) {
-      const d = document.createElement('div');
-      d.className = 'group';
-      d.textContent = name;
-      root.appendChild(d);
-    }
-
+    function group(name) { out.insertAdjacentHTML('beforeend', `<div class="group">${name}</div>`); }
     function it(name, fn) {
       const d = document.createElement('div');
-      try {
-        fn();
-        d.className = 'test pass';
-        d.textContent = 'PASS - ' + name;
-        pass++;
-      } catch (e) {
-        d.className = 'test fail';
-        d.innerHTML = 'FAIL - ' + name + '<br><pre>' + (e.stack || e.message) + '</pre>';
-        fail++;
-      }
-      root.appendChild(d);
+      try { fn(); d.className = 'pass'; d.textContent = `PASS ${name}`; pass++; }
+      catch (e) { d.className = 'fail'; d.textContent = `FAIL ${name}: ${e.stack || e.message}`; fail++; }
+      out.appendChild(d);
     }
-
     function eq(a, b, msg) {
-      const sa = JSON.stringify(a);
-      const sb = JSON.stringify(b);
-      if (sa !== sb) throw new Error((msg ? msg + ' - ' : '') + 'expected ' + sb + ', got ' + sa);
+      const sa = JSON.stringify(a), sb = JSON.stringify(b);
+      if (sa !== sb) throw new Error(`${msg ? msg + ': ' : ''}expected ${sb}, got ${sa}`);
+    }
+    function truthy(v, msg) { if (!v) throw new Error(msg || `expected truthy, got ${v}`); }
+    function throws(fn, re, msg) {
+      try { fn(); } catch (e) { if (re && !re.test(e.message)) throw new Error(`${msg || 'wrong error'}: ${e.message}`); return; }
+      throw new Error(msg || 'expected an error');
     }
 
-    function truthy(v, msg) {
-      if (!v) throw new Error(msg || 'expected truthy, got ' + v);
-    }
+    const U = PolicyUtils;
+    const GA = '62e90394-69f5-4237-9190-012177145e10';
+    const ME = '11111111-1111-4111-8111-111111111111';
+    const valid = (extra = {}) => ({
+      displayName: 'P',
+      state: 'enabled',
+      conditions: { users: { includeUsers: ['All'] }, applications: { includeApplications: ['All'] } },
+      grantControls: { operator: 'OR', builtInControls: ['mfa'] },
+      ...extra,
+    });
 
     group('parseImportPayload');
     it('accepts array payload', () => {
-      const x = PolicyUtils.parseImportPayload('[{"displayName":"P1"}]');
+      const x = U.parseImportPayload('[{"displayName":"P1"}]');
       eq(x.policies.length, 1);
       eq(x.policies[0].displayName, 'P1');
     });
     it('accepts wrapped payload', () => {
-      const x = PolicyUtils.parseImportPayload('{"policies":[{"displayName":"P2"}],"metadata":{"m":1}}');
+      const x = U.parseImportPayload('{"policies":[{"displayName":"P2"}],"metadata":{"m":1}}');
       eq(x.policies.length, 1);
       eq(x.metadata.m, 1);
     });
+    it('accepts a Graph list response', () => {
+      eq(U.parseImportPayload('{"value":[{"displayName":"P3"}]}').policies.length, 1);
+    });
+    it('rejects non-object and wrong shapes', () => {
+      throws(() => U.parseImportPayload('"text"'), /Expected/);
+      throws(() => U.parseImportPayload('42'), /Expected/);
+      throws(() => U.parseImportPayload('null'), /Expected/);
+      throws(() => U.parseImportPayload('{"policies":{}}'), /Expected/);
+      throws(() => U.parseImportPayload('{not json'), /Not valid JSON/);
+    });
+    it('rejects more than 500 policies', () => {
+      throws(() => U.parseImportPayload(JSON.stringify(new Array(501).fill({}))), /limit/);
+    });
 
-    group('principal extraction and mapping');
+    group('sanitizePolicy and validateImport');
+    it('keeps only CA fields and lists what it dropped', () => {
+      const r = U.sanitizePolicy(valid({ id: 'x', createdDateTime: 'c', modifiedDateTime: 'm', templateId: 't', evil: 1, '@odata.context': 'x' }));
+      eq(r.errors, []);
+      eq(Object.keys(r.policy).sort(), ['conditions', 'displayName', 'grantControls']);
+      const paths = r.dropped.map((d) => d.path).sort();
+      eq(paths, ['@odata.context', 'createdDateTime', 'evil', 'id', 'modifiedDateTime', 'templateId']);
+      eq(r.dropped.find((d) => d.path === 'id').reason, 'read-only');
+      eq(r.dropped.find((d) => d.path === 'evil').reason, 'unknown field');
+    });
+    it('never takes the state from the file', () => {
+      const r = U.sanitizePolicy(valid());
+      eq(r.fileState, 'enabled');
+      truthy(!('state' in r.policy), 'state must not pass through');
+      const body = U.normalizePolicyForCreateOrUpdate(r.policy, 'P', undefined);
+      eq(body.state, 'enabledForReportingButNotEnforced');
+    });
+    it('drops unknown condition keys and unknown grant keys', () => {
+      const p = valid();
+      p.conditions.bogus = { a: 1 };
+      p.grantControls.extra = true;
+      const r = U.sanitizePolicy(p);
+      truthy(!('bogus' in r.policy.conditions));
+      truthy(!('extra' in r.policy.grantControls));
+      eq(r.dropped.map((d) => d.path).sort(), ['conditions.bogus', 'grantControls.extra']);
+    });
+    it('strips __proto__ and constructor keys at any depth', () => {
+      const raw = '{"displayName":"P","__proto__":{"polluted":1},"conditions":{"users":{"includeUsers":["All"],"__proto__":{"polluted":2}},"applications":{"includeApplications":["All"],"constructor":{"prototype":{"polluted":3}}}},"grantControls":{"builtInControls":["mfa"],"__proto__":{"x":1}}}';
+      const { policies } = U.validateImport(`[${raw}]`);
+      const p = policies[0].policy;
+      eq(Object.getPrototypeOf(p), Object.prototype);
+      eq(Object.getPrototypeOf(p.conditions.users), Object.prototype);
+      truthy(!Object.prototype.hasOwnProperty.call(p.conditions.applications, 'constructor'));
+      eq(({}).polluted, undefined);
+      eq(p.polluted, undefined);
+      eq(p.conditions.users.polluted, undefined);
+      truthy(policies[0].dropped.some((d) => d.reason === 'unsafe key'));
+    });
+    it('reduces authenticationStrength to its id', () => {
+      const r = U.sanitizePolicy(valid({ grantControls: { operator: 'OR', authenticationStrength: { id: '00000000-0000-0000-0000-000000000002', displayName: 'MFA', allowedCombinations: ['password,sms'] } } }));
+      eq(r.policy.grantControls.authenticationStrength, { id: '00000000-0000-0000-0000-000000000002' });
+    });
+    it('rejects non-object policies, missing name, missing conditions', () => {
+      throws(() => U.validateImport('["x"]'), /not an object/);
+      throws(() => U.validateImport('[null]'), /not an object/);
+      throws(() => U.validateImport('[[1]]'), /not an object/);
+      throws(() => U.validateImport(JSON.stringify([valid({ displayName: '' })])), /displayName/);
+      throws(() => U.validateImport(JSON.stringify([valid({ conditions: 'x' })])), /conditions/);
+      throws(() => U.validateImport(JSON.stringify([valid({ conditions: { users: { includeUsers: ['All'] } } })])), /applications/);
+      throws(() => U.validateImport('[]'), /no policies/);
+    });
+    it('rejects wrong types in id lists and controls', () => {
+      const p = valid();
+      p.conditions.users.excludeUsers = [{ id: 'x' }];
+      throws(() => U.validateImport(JSON.stringify([p])), /list of strings/);
+      throws(() => U.validateImport(JSON.stringify([valid({ grantControls: 'block' })])), /grantControls/);
+      throws(() => U.validateImport(JSON.stringify([valid({ grantControls: null })])), /no grant or session/);
+    });
+    it('one bad policy rejects the whole file', () => {
+      throws(() => U.validateImport(JSON.stringify([valid(), 7])), /Policy 2/);
+    });
+
+    group('references');
     it('extracts GUIDs from users/groups only', () => {
       const p = {
         conditions: {
@@ -78,12 +147,30 @@
           },
         },
       };
-      const ids = PolicyUtils.extractPrincipalIds(p).sort();
-      eq(ids, [
+      eq(U.extractPrincipalIds(p).sort(), [
         'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
         'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
         'cccccccc-cccc-4ccc-8ccc-cccccccccccc',
       ]);
+    });
+    it('extractRefs covers roles, apps, workload identities and locations', () => {
+      const p = {
+        conditions: {
+          users: { includeUsers: ['All'], excludeRoles: [GA] },
+          applications: { includeApplications: ['00000002-0000-0ff1-ce00-000000000000', 'Office365'] },
+          clientApplications: { includeServicePrincipals: ['dddddddd-dddd-4ddd-8ddd-dddddddddddd'] },
+          locations: { includeLocations: ['All'], excludeLocations: ['eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee'] },
+        },
+      };
+      const refs = U.extractRefs(p);
+      const ids = refs.filter((r) => r.isId).map((r) => `${r.kind}:${r.value}`);
+      eq(ids, [
+        `role:${GA}`,
+        'app:00000002-0000-0ff1-ce00-000000000000',
+        'servicePrincipal:dddddddd-dddd-4ddd-8ddd-dddddddddddd',
+        'location:eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee',
+      ]);
+      eq(refs.filter((r) => !r.isId).map((r) => r.value), ['All', 'Office365', 'All']);
     });
     it('applies mapping to principal ids', () => {
       const p = {
@@ -94,43 +181,83 @@
           },
         },
       };
-      const out = PolicyUtils.applyPrincipalMapping(p, {
+      const out = U.applyPrincipalMapping(p, {
         'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa': '11111111-1111-4111-8111-111111111111',
         'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb': '22222222-2222-4222-8222-222222222222',
       });
       eq(out.conditions.users.includeUsers[0], '11111111-1111-4111-8111-111111111111');
       eq(out.conditions.users.excludeGroups[0], '22222222-2222-4222-8222-222222222222');
+      eq(p.conditions.users.includeUsers[0], 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', 'source untouched');
+    });
+    it('mapping covers locations but never roles', () => {
+      const p = { conditions: { users: { includeRoles: [GA] }, locations: { excludeLocations: ['eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee'] } } };
+      const out = U.applyPrincipalMapping(p, { [GA]: ME, 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee': ME });
+      eq(out.conditions.users.includeRoles, [GA]);
+      eq(out.conditions.locations.excludeLocations, [ME]);
+    });
+
+    group('lockout guard');
+    const block = (users) => ({ conditions: { users, applications: { includeApplications: ['All'] } }, grantControls: { builtInControls: ['block'] } });
+    const mfa = (users) => ({ conditions: { users, applications: { includeApplications: ['All'] } }, grantControls: { builtInControls: ['mfa'] } });
+    it('flags all users + block without excluding me', () => {
+      eq(U.lockoutRisk(block({ includeUsers: ['All'] }), { userId: ME }).kind, 'block');
+      eq(U.lockoutRisk(block({ includeUsers: ['All'], excludeUsers: ['22222222-2222-4222-8222-222222222222'] }), { userId: ME }).kind, 'block');
+    });
+    it('flags all users with no exclusions at all, whatever the grant', () => {
+      eq(U.lockoutRisk(mfa({ includeUsers: ['All'], excludeUsers: [] }), { userId: ME }).kind, 'noExclusions');
+    });
+    it('no risk when I am excluded directly, by group or by role', () => {
+      eq(U.lockoutRisk(block({ includeUsers: ['All'], excludeUsers: [ME.toUpperCase()] }), { userId: ME }), null);
+      eq(U.lockoutRisk(block({ includeUsers: ['All'], excludeGroups: ['g1'] }), { userId: ME, groupIds: ['G1'] }), null);
+      eq(U.lockoutRisk(block({ includeUsers: ['All'], excludeRoles: [GA] }), { userId: ME, roleIds: [GA] }), null);
+    });
+    it('no risk when not all users, or MFA with an exclusion', () => {
+      eq(U.lockoutRisk(block({ includeGroups: ['g1'] }), { userId: ME }), null);
+      eq(U.lockoutRisk(mfa({ includeUsers: ['All'], excludeGroups: ['breakglass'] }), { userId: ME }), null);
+    });
+    it('addUserExclusion fixes the risk and does not duplicate', () => {
+      const p = block({ includeUsers: ['All'], excludeUsers: [] });
+      const once = U.addUserExclusion(p, ME);
+      const twice = U.addUserExclusion(once, ME.toUpperCase());
+      eq(twice.conditions.users.excludeUsers, [ME]);
+      eq(U.lockoutRisk(once, { userId: ME }), null);
+      eq(p.conditions.users.excludeUsers, [], 'source untouched');
+      eq(U.addUserExclusion(p, 'not-a-guid').conditions.users.excludeUsers, []);
     });
 
     group('normalize and starter set');
     it('normalizes policy fields for create/update', () => {
-      const p = {
-        id: 'x',
-        displayName: 'Old',
-        state: 'disabled',
-        createdDateTime: '2024-01-01T00:00:00Z',
-        conditions: { users: { includeUsers: ['All'] } },
-      };
-      const out = PolicyUtils.normalizePolicyForCreateOrUpdate(p, 'New', 'enabled');
+      const p = { id: 'x', displayName: 'Old', state: 'disabled', createdDateTime: '2024-01-01T00:00:00Z', conditions: { users: { includeUsers: ['All'] } } };
+      const out = U.normalizePolicyForCreateOrUpdate(p, 'New', 'enabled');
       truthy(!out.id, 'id should be removed');
+      truthy(!out.createdDateTime, 'timestamps should be removed');
       eq(out.displayName, 'New');
       eq(out.state, 'enabled');
     });
+    it('normalize refuses an unknown state', () => {
+      eq(U.normalizePolicyForCreateOrUpdate(valid(), 'N', 'bogus').state, 'enabledForReportingButNotEnforced');
+    });
     it('starter set contains expected baseline policies', () => {
-      const s = PolicyUtils.buildStarterPolicies();
+      const s = U.buildStarterPolicies();
       truthy(s.length >= 6);
-
       const byName = new Map(s.map((p) => [p.displayName, p]));
       truthy(byName.has('Baseline - Block device code authentication'));
       truthy(byName.has('Baseline - Require MFA for Microsoft admin portals'));
       truthy(byName.has('Baseline - Protect security info registration with MFA'));
-
       const deviceCode = byName.get('Baseline - Block device code authentication');
       eq(deviceCode.grantControls.builtInControls, ['block']);
-      eq(deviceCode.conditions.authenticationFlows.transferMethods, ['deviceCodeFlow']);
+      // Graph types transferMethods as a flags string, not an array.
+      eq(deviceCode.conditions.authenticationFlows.transferMethods, 'deviceCodeFlow');
+    });
+    it('starter set passes its own import validation and is report-only', () => {
+      const s = U.buildStarterPolicies();
+      const { policies } = U.validateImport(JSON.stringify(s));
+      eq(policies.length, s.length);
+      truthy(s.every((p) => p.state === 'enabledForReportingButNotEnforced'));
+      truthy(policies.every((p) => p.dropped.length === 0), 'nothing dropped');
     });
 
-    group('comparePolicySets');
+    group('diffs');
     it('detects added, removed and changed policies', () => {
       const oldSet = [
         { displayName: 'A', state: 'disabled', conditions: { users: { includeUsers: ['All'] } } },
@@ -140,20 +267,39 @@
         { displayName: 'A', state: 'enabled', conditions: { users: { includeUsers: ['All'] } } },
         { displayName: 'C', state: 'enabled', conditions: { users: { includeUsers: ['All'] } } },
       ];
-      const d = PolicyUtils.comparePolicySets(oldSet, newSet);
+      const d = U.comparePolicySets(oldSet, newSet);
       eq(d.added, ['C']);
       eq(d.removed, ['B']);
       eq(d.changed.length, 1);
       eq(d.changed[0].name, 'A');
+      eq(d.changed[0].fields, [{ path: 'state', before: 'disabled', after: 'enabled' }]);
+    });
+    it('comparePolicySets ignores ids, timestamps and non-objects', () => {
+      const d = U.comparePolicySets([{ displayName: 'A', id: '1', modifiedDateTime: 'x' }, 5], [{ displayName: 'A', id: '2' }, null]);
+      eq(d.unchanged, ['A']);
+    });
+    it('fieldDiff reports leaf changes with before and after', () => {
+      const a = { conditions: { users: { includeUsers: ['All'], excludeUsers: ['x'] } }, grantControls: { builtInControls: ['mfa'] } };
+      const b = { conditions: { users: { includeUsers: ['All'], excludeUsers: [] } }, grantControls: { builtInControls: ['block'] } };
+      eq(U.fieldDiff(a, b), [
+        { path: 'conditions.users.excludeUsers', before: ['x'], after: [] },
+        { path: 'grantControls.builtInControls', before: ['mfa'], after: ['block'] },
+      ]);
+    });
+    it('fieldDiff treats null, empty and missing as equal and ignores list order', () => {
+      eq(U.fieldDiff({ a: null, b: [], c: {}, d: ['1', '2'] }, { d: ['2', '1'], e: { f: null } }), []);
+    });
+    it('fieldDiff compares lists of objects structurally', () => {
+      eq(U.fieldDiff({ x: [{ a: 1, b: 2 }] }, { x: [{ b: 2, a: 1 }] }), []);
+      eq(U.fieldDiff({ x: [{ a: 1 }] }, { x: [{ a: 2 }] }).length, 1);
+    });
+    it('isGuid accepts Microsoft first-party app ids', () => {
+      truthy(U.isGuid('00000002-0000-0ff1-ce00-000000000000'));
+      truthy(!U.isGuid('All'));
+      truthy(!U.isGuid('00000002-0000-0ff1-ce00-00000000000g'));
     });
 
-    setTimeout(() => {
-      const sum = document.createElement('div');
-      sum.className = fail === 0 ? 'test pass' : 'test fail';
-      sum.style.marginTop = '18px';
-      sum.textContent = `${pass} passed, ${fail} failed`;
-      root.appendChild(sum);
-    }, 30);
+    out.insertAdjacentHTML('beforeend', `<h2>${pass} passed, ${fail} failed</h2><p id="result">TEST-RESULT: ${fail ? 'FAIL' : 'PASS'} ${pass}/${pass + fail}</p>`);
   </script>
 </body>
 </html>

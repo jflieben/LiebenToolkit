@@ -91,7 +91,7 @@
       Api.setTraceCollector(trace);
 
       // Port of the module's TestTimeout: a hung control marks itself Error and the run
-      // continues. Best-effort — in-flight fetches are abandoned, not aborted.
+      // continues. Best-effort: in-flight fetches are abandoned, not aborted.
       const testTimeoutMs = Number(opts.testTimeoutMs) > 0 ? Number(opts.testTimeoutMs) : 180000;
 
       try {

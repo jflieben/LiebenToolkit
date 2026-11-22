@@ -231,7 +231,7 @@
   function buildResultMarkdown(row, resultTemplate) {
     const statusIcon = { Passed: '✅', Failed: '❌', Skipped: '🟦', Error: '❗', Investigate: '🔍' }[row.status] || '';
     const parts = [];
-    parts.push(`${statusIcon} **${row.status}** — ${row.message || 'No summary recorded.'}`.trim());
+    parts.push(`${statusIcon} **${row.status}**: ${row.message || 'No summary recorded.'}`.trim());
 
     if (row.implementationLevel === 'partial' && row.implementationNotes) {
       parts.push([
@@ -258,7 +258,7 @@
     const body = parts.join('\n');
     const template = `${resultTemplate || ''}`.trim();
     if (template && template.includes('%TestResult%')) {
-      return template.replace(/%TestResult%/g, body);
+      return template.replace(/%TestResult%/g, () => body);
     }
     return body;
   }

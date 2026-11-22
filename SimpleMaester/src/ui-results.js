@@ -1,67 +1,59 @@
-// Results UI: shows a single scan in detail with summary tiles and a sortable
-// table. Clicking a row opens the detail drawer.
+// Results UI: one scan with summary tiles and a sortable table. A row opens the detail drawer.
 (() => {
+  const { esc, statusBadge, severityBadge, tagBadge, badge, sparkHtml } = SMUi;
   let _scan = null;
   let _filtered = [];
   let _sortKey = 'severity';
   let _sortAsc = false;
 
-  // Severity sort weight (higher = worse).
   const sevW = { Critical: 5, High: 4, Medium: 3, Low: 2, Info: 1 };
   const statusW = { Failed: 4, Error: 3, Skipped: 2, Passed: 1 };
+  const $ = (id) => document.getElementById(id);
 
-  async function show(scan) {
+  function show(scan) {
     _scan = scan;
-    document.getElementById('noResultsCard').classList.add('hidden');
-    document.getElementById('resultsWorkspace').classList.remove('hidden');
-
-    const meta = document.getElementById('scanMeta');
-    meta.textContent = `${scan.tenantDomain || scan.tenantId} - ${new Date(scan.startedAt).toLocaleString()} - ${scan.results.length} tests in ${(scan.durationMs/1000).toFixed(1)}s`;
-
+    $('noResultsCard').hidden = true;
+    $('resultsWorkspace').hidden = false;
+    $('scanMeta').textContent = `${scan.tenantDomain || scan.tenantId} - ${new Date(scan.startedAt).toLocaleString()} - ${scan.results.length} tests in ${(scan.durationMs / 1000).toFixed(1)}s`;
     renderSummary(scan.summary);
     populateTags(scan.results);
     applyFilters();
   }
 
   function renderSummary(s) {
-    const grid = document.getElementById('summaryGrid');
-    grid.innerHTML = '';
+    const rate = s.total ? `${Math.round(100 * s.passed / Math.max(1, s.passed + s.failed))}%` : '-';
     const tiles = [
-      { lbl: 'Total', num: s.total },
-      { lbl: 'Passed', num: s.passed, cls: 'passed' },
-      { lbl: 'Failed', num: s.failed, cls: 'failed' },
-      { lbl: 'Skipped', num: s.skipped, cls: 'skipped' },
-      { lbl: 'Errors', num: s.error, cls: 'error' },
-      { lbl: 'Pass rate', num: s.total ? Math.round(100 * s.passed / Math.max(1, s.passed + s.failed)) + '%' : '-' },
+      { lbl: 'Total', num: s.total, cls: 'accent-primary' },
+      { lbl: 'Passed', num: s.passed, cls: 'accent-ok' },
+      { lbl: 'Failed', num: s.failed, cls: 'accent-danger' },
+      { lbl: 'Skipped', num: s.skipped, cls: '' },
+      { lbl: 'Errors', num: s.error, cls: 'accent-warn' },
+      { lbl: 'Pass rate', num: rate, cls: 'accent-ok', foot: 'of passed and failed' },
     ];
-    for (const t of tiles) {
-      const div = document.createElement('div');
-      div.className = 'summary-tile' + (t.cls ? ' ' + t.cls : '');
-      div.innerHTML = `<div class="num">${t.num}</div><div class="lbl">${t.lbl}</div>`;
-      grid.appendChild(div);
-    }
+    $('summaryGrid').replaceChildren(...tiles.map((t) => Toolkit.h('div.stat', { class: t.cls }, [
+      Toolkit.h('span.label', { text: t.lbl }),
+      Toolkit.h('span.value', { text: String(t.num) }),
+      t.foot ? Toolkit.h('span.foot', { text: t.foot }) : null,
+    ])));
   }
 
   function populateTags(results) {
-    const sel = document.getElementById('filterTag');
-    const tags = Array.from(new Set(results.map(r => r.tag || r.category || 'Other'))).sort();
-    sel.innerHTML = '<option value="">All categories</option>' + tags.map(t => `<option value="${t}">${t}</option>`).join('');
+    const sel = $('filterTag');
+    const tags = Array.from(new Set(results.map((r) => r.tag || r.category || 'Other'))).sort();
+    sel.replaceChildren(new Option('All categories', ''), ...tags.map((t) => new Option(t, t)));
   }
 
   function applyFilters() {
     if (!_scan) return;
-    const q = (document.getElementById('resultsSearch').value || '').toLowerCase();
-    const sev = document.getElementById('filterSeverity').value;
-    const st  = document.getElementById('filterStatus').value;
-    const tag = document.getElementById('filterTag').value;
-    _filtered = _scan.results.filter(r => {
+    const q = ($('resultsSearch').value || '').toLowerCase();
+    const sev = $('filterSeverity').value;
+    const st = $('filterStatus').value;
+    const tag = $('filterTag').value;
+    _filtered = _scan.results.filter((r) => {
       if (sev && r.severity !== sev) return false;
-      if (st  && r.status   !== st)  return false;
-      if (tag && (r.tag||r.category) !== tag) return false;
-      if (q) {
-        const blob = `${r.id} ${r.title||''} ${r.tag||''} ${r.reason||''}`.toLowerCase();
-        if (!blob.includes(q)) return false;
-      }
+      if (st && r.status !== st) return false;
+      if (tag && (r.tag || r.category) !== tag) return false;
+      if (q && !`${r.id} ${r.title || ''} ${r.tag || ''} ${r.reason || ''}`.toLowerCase().includes(q)) return false;
       return true;
     });
     sort();
@@ -72,152 +64,148 @@
     _filtered.sort((a, b) => {
       let va, vb;
       switch (_sortKey) {
-        case 'severity': va = sevW[a.severity]||0; vb = sevW[b.severity]||0; break;
-        case 'status':   va = statusW[a.status]||0; vb = statusW[b.status]||0; break;
-        case 'durationMs': va = a.durationMs||0; vb = b.durationMs||0; break;
-        default: va = (a[_sortKey]||'').toString().toLowerCase(); vb = (b[_sortKey]||'').toString().toLowerCase();
+        case 'severity': va = sevW[a.severity] || 0; vb = sevW[b.severity] || 0; break;
+        case 'status': va = statusW[a.status] || 0; vb = statusW[b.status] || 0; break;
+        case 'durationMs': va = a.durationMs || 0; vb = b.durationMs || 0; break;
+        default: va = String(a[_sortKey] || '').toLowerCase(); vb = String(b[_sortKey] || '').toLowerCase();
       }
       if (va < vb) return _sortAsc ? -1 : 1;
-      if (va > vb) return _sortAsc ?  1 : -1;
+      if (va > vb) return _sortAsc ? 1 : -1;
       return 0;
+    });
+    document.querySelectorAll('#resultsTable thead th[data-sort]').forEach((th) => {
+      th.classList.toggle('sort-asc', th.dataset.sort === _sortKey && _sortAsc);
+      th.classList.toggle('sort-desc', th.dataset.sort === _sortKey && !_sortAsc);
     });
   }
 
   function render() {
     const tbody = document.querySelector('#resultsTable tbody');
-    tbody.innerHTML = '';
+    tbody.replaceChildren();
+    $('resultsCount').textContent = `${_filtered.length} of ${_scan.results.length} shown`;
     for (const r of _filtered) {
       const tr = document.createElement('tr');
+      tr.className = 'clickable-row';
+      tr.tabIndex = 0;
       tr.innerHTML = `
-        <td><span class="badge ${r.status?.toLowerCase()}">${r.status||'-'}</span></td>
-        <td><span class="badge ${(r.severity||'info').toLowerCase()}">${r.severity||'-'}</span></td>
-        <td>${escape(r.id)}</td>
-        <td>${escape(r.title||'')}</td>
-        <td><span class="badge tag">${escape(r.tag||r.category||'-')}</span></td>
-        <td>${r.durationMs||0}ms</td>`;
+        <td>${statusBadge(r.status)}</td>
+        <td>${severityBadge(r.severity)}</td>
+        <td class="mono nowrap">${esc(r.id)}</td>
+        <td>${esc(r.title || '')}</td>
+        <td>${tagBadge(r.tag || r.category)}</td>
+        <td class="num nowrap">${Number(r.durationMs) || 0} ms</td>`;
       tr.addEventListener('click', () => openDetail(r));
+      tr.addEventListener('keydown', (e) => { if (e.key === 'Enter') openDetail(r); });
       tbody.appendChild(tr);
     }
   }
 
-  function openDetail(r) {
-    document.getElementById('detailTitle').textContent = `${r.id} - ${r.title || ''}`;
-    const body = document.getElementById('detailBody');
-    const md = window.marked && r.detailMd ? window.marked.parse(r.detailMd) : (r.description ? `<p>${escape(r.description)}</p>` : '');
-    let history = '';
-    History.getAllScans().then(all => {
-      const tenantScans = all.filter(s => s.tenantId === _scan.tenantId).sort((a,b) => a.startedAt.localeCompare(b.startedAt));
-      const points = tenantScans.map(s => {
-        const tr = s.results.find(x => x.id === r.id);
-        return { at: s.startedAt, status: tr?.status || '-' };
-      });
-      const histEl = document.getElementById('detail-history');
-      if (histEl) histEl.innerHTML = renderHistorySpark(points);
-    });
+  function closeDetail() { $('detailDrawer').hidden = true; }
+
+  // r can come from a stored scan or from the history table. Description and markdown
+  // always come from the bundled catalog, never from stored data.
+  async function openDetail(r) {
+    const entry = await Registry.getById(r.id).catch(() => null);
+    const detailMd = entry && entry.detailMd;
+    const description = (entry && entry.description) || r.description;
+    const docUrl = r.docUrl || (entry && entry.docUrl);
+    $('detailTitle').textContent = `${r.id} - ${r.title || (entry && entry.title) || ''}`;
+    const md = detailMd ? Markdown.render(detailMd) : (description ? `<p>${esc(description)}</p>` : '');
+    const body = $('detailBody');
     body.innerHTML = `
-      <div>
-        <span class="badge ${(r.severity||'info').toLowerCase()}">${r.severity||'-'}</span>
-        <span class="badge ${r.status?.toLowerCase()}">${r.status||'-'}</span>
-        <span class="badge tag">${escape(r.tag||r.category||'-')}</span>
-      </div>
+      <div class="row tight">${severityBadge(r.severity)} ${statusBadge(r.status)} ${tagBadge(r.tag || r.category)}</div>
       <h3>Result</h3>
-      <p>${escape(r.reason || '-')}</p>
-      ${r.actual !== undefined && r.actual !== null ? `<p><strong>Observed value:</strong> <code>${escape(JSON.stringify(r.actual))}</code></p>` : ''}
-      ${r.expectation ? `<p><strong>Expected:</strong> ${escape(r.expectation)}</p>` : ''}
-      ${r.relativeUri ? `<p><strong>Graph endpoint:</strong> <code>${escape(r.apiVersion || 'v1.0')}/${escape(r.relativeUri)}</code></p>` : ''}
-      ${renderGraphCalls(r.graphCalls)}
-      ${md ? `<h3>Description</h3>${md}` : ''}
-      <h3>Trend across all your scans</h3>
-      <div id="detail-history">Loading...</div>
-      ${r.docUrl ? `<p><a href="${r.docUrl}" target="_blank" rel="noopener">View on maester.dev &rarr;</a></p>` : ''}`;
-    document.getElementById('detailDrawer').classList.remove('hidden');
+      <p>${esc(r.reason || '-')}</p>
+      ${r.actual !== undefined && r.actual !== null ? `<p><strong>Observed value:</strong> <code>${esc(JSON.stringify(r.actual))}</code></p>` : ''}
+      ${r.expectation ? `<p><strong>Expected:</strong> ${esc(r.expectation)}</p>` : ''}
+      ${r.relativeUri ? `<p><strong>Graph endpoint:</strong> <code>${esc(r.apiVersion || 'v1.0')}/${esc(r.relativeUri)}</code></p>` : ''}
+      ${renderCalls(r.graphCalls)}
+      ${md ? `<h3>Description</h3><div class="md">${md}</div>` : ''}
+      <h3>Trend across your scans of this tenant</h3>
+      <div id="detailHistory" class="muted">Loading</div>
+      ${docUrl ? `<p><a href="${esc(Toolkit.safeUrl(docUrl))}" target="_blank" rel="noopener noreferrer">View on maester.dev ${Toolkit.iconHtml('i-external', 'sm')}</a></p>` : ''}`;
+    $('detailDrawer').hidden = false;
+    $('closeDetail').focus();
+
+    const tenantId = r.tenantId || (_scan && _scan.tenantId);
+    History.getAllScans().then((all) => {
+      const points = all.filter((s) => !tenantId || s.tenantId === tenantId)
+        .sort((a, b) => a.startedAt.localeCompare(b.startedAt))
+        .map((s) => { const x = s.results.find((y) => y.id === r.id); return x ? { at: s.startedAt, status: x.status } : null; })
+        .filter(Boolean);
+      const el = $('detailHistory');
+      if (!el) return;
+      el.innerHTML = points.length ? `${sparkHtml(points)}<p class="muted small">${points.length} run(s) of this test.</p>` : '<p class="muted">No history yet.</p>';
+    }).catch(() => {});
   }
 
-  function renderGraphCalls(calls) {
-    if (!Array.isArray(calls) || calls.length === 0) return '';
+  function renderCalls(calls) {
+    if (!Array.isArray(calls) || !calls.length) return '';
     const rows = calls.map((c, i) => {
-      if (c.method === 'INFO') {
-        return `<details class="gcall"><summary><span class="badge skipped">info</span> ${escape(c.url)}</summary></details>`;
-      }
-      const statusCls = c.status >= 200 && c.status < 300 ? 'passed' : c.status === 0 ? 'skipped' : 'failed';
-      const cacheTag = c.fromCache ? ' <span class="badge tag">cached</span>' : '';
-      const truncTag = c.truncated ? ' <span class="badge skipped">truncated</span>' : '';
-      const body = c.response
-        ? `<pre class="gcall-body">${escape(prettyJson(c.response))}</pre>`
-        : '<p class="muted">(no response body)</p>';
+      if (c.method === 'INFO') return `<p class="muted small">${esc(c.url)}</p>`;
+      const cls = c.status >= 200 && c.status < 300 ? 'ok' : c.status === 0 ? 'neutral' : 'danger';
+      const body = c.response ? `<pre class="gcall-body">${esc(prettyJson(c.response))}</pre>` : '<p class="muted small">No response body.</p>';
       return `<details class="gcall"${i === 0 ? ' open' : ''}>
-        <summary>
-          <span class="badge ${statusCls}">${c.status || '?'}</span>
-          <code>${escape(c.method)} ${escape(shortenUrl(c.url))}</code>
-          <span class="muted">${c.durationMs|0}ms</span>${cacheTag}${truncTag}
+        <summary>${badge(cls, c.status || '?')} <code>${esc(c.method)} ${esc(shortenUrl(c.url))}</code>
+          <span class="muted small">${Number(c.durationMs) | 0} ms</span>${c.fromCache ? ` ${badge('info', 'cached')}` : ''}${c.truncated ? ` ${badge('neutral', 'truncated')}` : ''}
         </summary>
         ${body}
       </details>`;
     }).join('');
-    return `<h3>Graph calls (${calls.filter(c => c.method !== 'INFO').length})</h3>${rows}`;
+    return `<h3>API calls (${calls.filter((c) => c.method !== 'INFO').length})</h3>${rows}`;
   }
 
   function prettyJson(s) {
-    if (!s) return '';
-    try { return JSON.stringify(JSON.parse(s), null, 2); }
-    catch { return s; }
+    try { return JSON.stringify(JSON.parse(s), null, 2); } catch { return s; }
   }
-  function shortenUrl(u) {
-    if (!u) return '';
-    return u.replace(/^https:\/\/graph\.microsoft\.com\//, '');
-  }
-
-  function renderHistorySpark(points) {
-    if (!points.length) return '<p class="muted">No history yet.</p>';
-    const bars = points.map(p => `<span class="${p.status.toLowerCase()}" style="height:${p.status === 'Passed' ? 14 : p.status === 'Failed' ? 14 : 8}px" title="${p.at}: ${p.status}"></span>`).join('');
-    return `<div class="spark">${bars}</div><p class="muted" style="margin-top:8px">${points.length} historical run(s).</p>`;
-  }
-
-  function escape(s) { return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+  function shortenUrl(u) { return String(u || '').replace(/^https:\/\/graph\.microsoft\.com\//, ''); }
 
   function exportJson() {
     if (!_scan) return;
-    download(`SimpleMaester-${_scan.id}.json`, JSON.stringify(_scan, null, 2), 'application/json');
+    Export.save(new Blob([JSON.stringify(_scan, null, 2)], { type: 'application/json' }), `SimpleMaester-${_scan.id}.json`);
   }
   function exportCsv() {
     if (!_scan) return;
-    const cols = ['id','title','category','severity','status','reason','actual','expectation','durationMs'];
-    const lines = [cols.join(',')];
-    for (const r of _scan.results) {
-      lines.push(cols.map(c => csv(r[c])).join(','));
-    }
-    download(`SimpleMaester-${_scan.id}.csv`, lines.join('\n'), 'text/csv');
-  }
-  function csv(v) {
-    if (v == null) return '';
-    const s = typeof v === 'object' ? JSON.stringify(v) : String(v);
-    return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
-  }
-  function download(name, data, type) {
-    const blob = new Blob([data], { type });
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(blob); a.download = name;
-    document.body.appendChild(a); a.click();
-    setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 200);
+    Export.csv(_scan.results, {
+      filename: `SimpleMaester-${_scan.id}.csv`,
+      columns: [
+        { key: 'id', label: 'Id' },
+        { key: 'title', label: 'Title' },
+        { key: 'category', label: 'Category', format: (v, r) => v || r.tag || '' },
+        { key: 'severity', label: 'Severity' },
+        { key: 'status', label: 'Status' },
+        { key: 'reason', label: 'Reason' },
+        { key: 'actual', label: 'Observed value' },
+        { key: 'expectation', label: 'Expected' },
+        { key: 'durationMs', label: 'Duration (ms)' },
+      ],
+    });
   }
 
   function init() {
-    document.getElementById('resultsSearch').addEventListener('input', applyFilters);
-    document.getElementById('filterSeverity').addEventListener('change', applyFilters);
-    document.getElementById('filterStatus').addEventListener('change', applyFilters);
-    document.getElementById('filterTag').addEventListener('change', applyFilters);
-    document.querySelectorAll('#resultsTable thead th[data-sort]').forEach(th => {
+    $('resultsSearch').addEventListener('input', applyFilters);
+    $('filterSeverity').addEventListener('change', applyFilters);
+    $('filterStatus').addEventListener('change', applyFilters);
+    $('filterTag').addEventListener('change', applyFilters);
+    document.querySelectorAll('#resultsTable thead th[data-sort]').forEach((th) => {
       th.addEventListener('click', () => {
         const k = th.dataset.sort;
         if (_sortKey === k) _sortAsc = !_sortAsc; else { _sortKey = k; _sortAsc = false; }
         sort(); render();
       });
     });
-    document.getElementById('exportJsonBtn').addEventListener('click', exportJson);
-    document.getElementById('exportCsvBtn').addEventListener('click', exportCsv);
-    document.getElementById('closeDetail').addEventListener('click', () => document.getElementById('detailDrawer').classList.add('hidden'));
-    document.querySelector('.drawer-backdrop').addEventListener('click', () => document.getElementById('detailDrawer').classList.add('hidden'));
+    $('exportJsonBtn').addEventListener('click', exportJson);
+    $('exportCsvBtn').addEventListener('click', exportCsv);
+    $('closeDetail').addEventListener('click', closeDetail);
+    $('detailBackdrop').addEventListener('click', closeDetail);
+    document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !$('detailDrawer').hidden) closeDetail(); });
   }
 
-  window.UIResults = { show, init, openDetail };
+  function hide() {
+    _scan = null;
+    $('noResultsCard').hidden = false;
+    $('resultsWorkspace').hidden = true;
+  }
+
+  window.UIResults = { show, hide, init, openDetail };
 })();

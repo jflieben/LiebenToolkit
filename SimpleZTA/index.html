@@ -3,72 +3,88 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>SimpleZTA - Browser Zero Trust Assessment</title>
-  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🔒</text></svg>">
+  <title>SimpleZTA - Zero Trust Assessment in your browser | LC Toolkit</title>
+  <meta name="description" content="Browser port of the Microsoft Zero Trust Assessment. Run the checks with delegated access, compare with earlier runs and drill into the evidence. Runs in your browser." />
+  <link rel="icon" type="image/png" href="../shared/img/favicon.png" />
+  <link rel="stylesheet" href="../shared/toolkit.css" />
   <link rel="stylesheet" href="style.css" />
-  <script src="../vendor/msal-browser.3.27.0.min.js" onerror="window.__msalLoadFailed=true"></script>
-    <!-- Google Analytics (GDPR Compliant) -->
-    <script async src="https://www.googletagmanager.com/gtag/js?id=G-20PYJ8S2G7"></script>
-    <script>
-      window.dataLayer = window.dataLayer || [];
-      function gtag(){dataLayer.push(arguments);}
-      gtag('js', new Date());
-      gtag('config', 'G-20PYJ8S2G7', {
-        'anonymize_ip': true,
-        'storage': 'none',
-        'client_storage': 'none'
-      });
-      gtag('consent', 'default', {
-        'ad_storage': 'denied',
-        'ad_user_data': 'denied',
-        'ad_personalization': 'denied',
-        'analytics_storage': 'denied'
-      });
-    </script>     
+  <script src="../shared/registry.js"></script>
+  <script src="../shared/toolkit.js"></script>
+  <script src="../shared/analytics.js" defer></script>
+  <script src="../shared/log.js" defer></script>
+  <script src="../shared/concurrency.js" defer></script>
+  <script src="../shared/http.js" defer></script>
+  <script src="../shared/auth.js" defer></script>
+  <script src="../shared/export.js" defer></script>
+  <script src="src/api.js" defer></script>
+  <script src="src/storage.js" defer></script>
+  <script src="src/md.js" defer></script>
+  <script src="src/charts.js" defer></script>
+  <script src="src/tenantinfo.js" defer></script>
+  <script src="src/report-official.js" defer></script>
+  <script src="src/report-native.js" defer></script>
+  <script src="src/tests-impl.js" defer></script>
+  <script src="src/tests-graph.js" defer></script>
+  <script src="src/tests-azure.js" defer></script>
+  <script src="src/tests-purview.js" defer></script>
+  <script src="src/registry.js" defer></script>
+  <script src="src/runner.js" defer></script>
+  <script src="src/ui-results.js" defer></script>
+  <script src="src/ui-history.js" defer></script>
+  <script src="src/ui-dashboard.js" defer></script>
+  <script src="src/app.js" defer></script>
 </head>
-<body>
-  <header class="topbar">
-    <div class="brand">
-      <div class="logo">SZ</div>
-      <div>
-        <h1>SimpleZTA</h1>
-        <p class="subtitle">Browser-based Zero Trust Assessment for Microsoft 365</p>
-      </div>
-    </div>
-    <div class="topbar-actions">
-      <button id="toolkitBtn" class="ghost-btn" type="button">Toolkit</button>
-      <button id="themeBtn" class="ghost-btn" title="Toggle theme">Theme</button>
-      <div id="userBox" class="hidden user-box">
-        <span id="userText"></span>
-        <button id="signOutBtn" class="ghost-btn">Sign out</button>
-      </div>
-    </div>
-  </header>
+<body data-tool="SimpleZTA">
+  <div data-tk="header"></div>
 
-  <nav class="tabs">
-    <button class="tab active" data-tab="run">Run</button>
-    <button class="tab" data-tab="dashboard">Dashboard</button>
-    <button class="tab" data-tab="results">Results</button>
-    <button class="tab" data-tab="history">History</button>
-    <button class="tab" data-tab="catalog">Catalog</button>
-    <button class="tab" data-tab="about">About</button>
-    <button class="tab" data-tab="debug">Debug</button>
-  </nav>
+  <main class="tk-page">
+    <nav class="tabs" id="tabs">
+      <button class="tab active" data-tab="run"><i data-icon="i-play"></i>Run</button>
+      <button class="tab" data-tab="dashboard"><i data-icon="i-chart"></i>Dashboard</button>
+      <button class="tab" data-tab="results"><i data-icon="i-table"></i>Results</button>
+      <button class="tab" data-tab="history"><i data-icon="i-history"></i>History</button>
+      <button class="tab" data-tab="catalog"><i data-icon="i-book"></i>Catalog</button>
+      <button class="tab" data-tab="debug"><i data-icon="i-bug"></i>Debug</button>
+      <button class="tab" data-tab="about"><i data-icon="i-info"></i>About</button>
+    </nav>
 
-  <main>
-    <section id="panel-run" class="panel active">
-      <div id="connectCard" class="card">
-        <h2>Connect</h2>
-        <p>SimpleZTA runs fully client-side in your browser and uses delegated authentication with Microsoft Graph.</p>
-        <p>Required scopes are requested up front. If additional scopes are needed for specific controls, consent is requested once.</p>
-        <button id="signInBtn" class="primary-btn">Sign in with Microsoft</button>
+    <section class="tab-panel active" id="tab-run">
+      <div class="card connect-card" id="connectCard">
+        <div class="connect-art"><i data-icon="t-SimpleZTA"></i></div>
+        <div>
+          <h2>Connect to your tenant</h2>
+          <p>Sign in with an admin account that can read the tenant configuration. SimpleZTA runs the Microsoft Zero Trust Assessment controls from this page, as you, read-only.</p>
+          <p class="muted small">Port of the <a href="https://github.com/microsoft/zerotrustassessment" target="_blank" rel="noopener">Microsoft ZeroTrustAssessment</a> PowerShell module, copyright Microsoft Corporation.</p>
+          <details class="scope-list">
+            <summary>Delegated Microsoft Graph permissions asked at sign-in (20)</summary>
+            <ul class="small">
+              <li><code>Directory.Read.All</code>, <code>Policy.Read.All</code>, <code>Application.Read.All</code>, <code>RoleManagement.Read.Directory</code></li>
+              <li><code>UserAuthenticationMethod.Read.All</code>, <code>AuditLog.Read.All</code>, <code>Reports.Read.All</code></li>
+              <li><code>AccessReview.Read.All</code>, <code>EntitlementManagement.Read.All</code>, <code>DirectoryRecommendations.Read.All</code></li>
+              <li><code>IdentityRiskEvent.Read.All</code>, <code>IdentityRiskyUser.Read.All</code></li>
+              <li><code>DeviceManagementConfiguration.Read.All</code>, <code>DeviceManagementServiceConfig.Read.All</code>, <code>DeviceManagementManagedDevices.Read.All</code>, <code>DeviceManagementApps.Read.All</code>, <code>DeviceManagementRBAC.Read.All</code></li>
+              <li><code>NetworkAccess.Read.All</code>, <code>InformationProtectionPolicy.Read</code>, <code>User.Read</code></li>
+            </ul>
+          </details>
+          <p class="muted small">Asked only when a run includes Azure controls: Azure Resource Manager <code>user_impersonation</code>. Decline it and those controls are skipped. The token carries your Azure RBAC rights; SimpleZTA only reads.</p>
+          <button id="signInBtn" class="btn btn-primary"><i data-icon="i-login"></i>Sign in with Microsoft</button>
+        </div>
       </div>
 
-      <div id="runCard" class="card hidden">
-        <div class="row between">
-          <h2>Run assessment</h2>
-          <div class="row">
-            <label for="pillarSelect">Pillar</label>
+      <div id="runCard" class="card" hidden>
+        <div class="card-head">
+          <div>
+            <h2>Run assessment</h2>
+            <p class="muted small" id="runStats"></p>
+          </div>
+          <div class="row tight">
+            <button id="runBtn" class="btn btn-primary"><i data-icon="i-play"></i>Run selected</button>
+          </div>
+        </div>
+
+        <div class="row filters">
+          <input id="searchBox" type="search" placeholder="Filter on id, title or category" aria-label="Filter controls" />
+          <label class="filter-field">Pillar
             <select id="pillarSelect">
               <option value="All">All</option>
               <option value="Identity">Identity</option>
@@ -79,104 +95,112 @@
               <option value="SecOps">SecOps</option>
               <option value="AI">AI</option>
             </select>
-            <label for="tenantTypeSelect">Tenant type</label>
+          </label>
+          <label class="filter-field">Tenant type
             <select id="tenantTypeSelect">
               <option value="">All</option>
               <option value="Workforce">Workforce</option>
               <option value="External">External</option>
             </select>
-            <label for="riskSelect">Risk</label>
+          </label>
+          <label class="filter-field">Risk
             <select id="riskSelect">
               <option value="">All</option>
               <option value="High">High</option>
               <option value="Medium">Medium</option>
               <option value="Low">Low</option>
             </select>
-            <label for="implementationSelect">Implementation</label>
+          </label>
+          <label class="filter-field">Implementation
             <select id="implementationSelect">
               <option value="">Any</option>
               <option value="full">Full</option>
               <option value="partial">Partial</option>
               <option value="none">Planned</option>
             </select>
+          </label>
+        </div>
+
+        <div class="row">
+          <button id="selectVisibleBtn" class="btn btn-small"><i data-icon="i-check"></i>Select visible</button>
+          <button id="clearSelectionBtn" class="btn btn-small"><i data-icon="i-close"></i>Clear selection</button>
+          <select id="profileSelect" aria-label="Scan profiles"><option value="">Profiles...</option></select>
+          <button id="saveProfileBtn" class="btn btn-small" title="Save the current selection as a named profile"><i data-icon="i-plus"></i>Save profile</button>
+          <button id="deleteProfileBtn" class="btn btn-small btn-ghost" title="Delete a saved profile"><i data-icon="i-trash"></i>Delete profile</button>
+        </div>
+
+        <div class="row">
+          <label class="checkbox"><input type="checkbox" id="tenantInfoToggle" checked /> Collect tenant insight graphics (sankeys, device and auth method overviews)</label>
+          <label class="filter-field">Sign-in window
+            <select id="signInDaysSelect">
+              <option value="1">1 day</option>
+              <option value="3">3 days</option>
+              <option value="7" selected>7 days</option>
+              <option value="14">14 days</option>
+              <option value="30">30 days</option>
+            </select>
+          </label>
+        </div>
+
+        <div id="progressBox" class="progress-box" hidden>
+          <div class="progress-header">
+            <span id="progressText">Starting</span>
+            <span id="progressMeta"></span>
           </div>
+          <div class="progress-bar"><div id="progressFill"></div></div>
+          <div class="progress-footer">
+            <span id="subTestProgress" class="muted"></span>
+            <button id="cancelBtn" class="btn btn-small" type="button"><i data-icon="i-stop"></i>Cancel</button>
+          </div>
+          <pre id="progressLog" class="log-panel run-log"></pre>
         </div>
 
-        <div class="row">
-          <input id="searchBox" type="search" placeholder="Filter by id, title, category" />
-          <button id="selectVisibleBtn" class="ghost-btn">Select visible</button>
-          <button id="clearSelectionBtn" class="ghost-btn">Clear selection</button>
-          <select id="profileSelect" title="Saved scan profiles"><option value="">Profiles...</option></select>
-          <button id="saveProfileBtn" class="ghost-btn" title="Save the current selection as a named profile">Save profile</button>
-          <button id="runBtn" class="primary-btn">Run selected</button>
-          <button id="cancelBtn" class="ghost-btn hidden">Cancel</button>
-        </div>
-
-        <div class="row">
-          <label class="checkbox-label"><input type="checkbox" id="tenantInfoToggle" checked /> Collect tenant insight graphics (sankeys, device &amp; auth method overviews)</label>
-          <label for="signInDaysSelect">Sign-in window</label>
-          <select id="signInDaysSelect">
-            <option value="1">1 day</option>
-            <option value="3">3 days</option>
-            <option value="7" selected>7 days</option>
-            <option value="14">14 days</option>
-            <option value="30">30 days</option>
-          </select>
-        </div>
-
-        <div id="runStats" class="muted"></div>
         <div id="testList" class="test-list"></div>
-      </div>
-
-      <div id="progressCard" class="card hidden">
-        <h2>Running</h2>
-        <div class="progress-bar"><span id="progressFill"></span></div>
-        <div id="progressText" class="muted"></div>
-        <div id="progressMeta" class="muted"></div>
-        <div id="subTestProgress" class="muted"></div>
-        <pre id="progressLog" class="log"></pre>
       </div>
     </section>
 
-    <section id="panel-dashboard" class="panel">
+    <section class="tab-panel" id="tab-dashboard">
       <div id="dashboardRoot"></div>
     </section>
 
-    <section id="panel-results" class="panel">
+    <section class="tab-panel" id="tab-results">
       <div class="card">
-        <div class="row between">
-          <h2>Scan results</h2>
-          <div class="row">
-            <select id="scanPicker"></select>
-            <button id="exportOfficialBtn" class="primary-btn">Official report</button>
-            <button id="exportHtmlBtn" class="ghost-btn">HTML report</button>
-            <button id="exportJsonBtn" class="ghost-btn">Export JSON</button>
-            <button id="exportCsvBtn" class="ghost-btn">Export CSV</button>
-            <button id="exportWorkshopBtn" class="ghost-btn" title="Export findings as a Zero Trust Workshop import file">Workshop JSON</button>
+        <div class="card-head">
+          <div>
+            <h2>Scan results</h2>
+            <p id="scanMeta" class="muted small"></p>
           </div>
+          <select id="scanPicker" aria-label="Scan"></select>
         </div>
-        <div id="scanMeta" class="muted"></div>
+        <div class="row">
+          <button id="exportOfficialBtn" class="btn btn-primary btn-small" title="Microsoft Zero Trust Assessment report, built from the template in the module"><i data-icon="i-file"></i>Official report</button>
+          <button id="exportHtmlBtn" class="btn btn-small"><i data-icon="i-file"></i>HTML report</button>
+          <button id="exportXlsxBtn" class="btn btn-small"><i data-icon="i-table"></i>Excel</button>
+          <button id="exportCsvBtn" class="btn btn-small"><i data-icon="i-download"></i>CSV</button>
+          <button id="exportJsonBtn" class="btn btn-small"><i data-icon="i-code"></i>JSON</button>
+          <button id="exportWorkshopBtn" class="btn btn-small" title="Findings as a Zero Trust Workshop import file"><i data-icon="i-upload"></i>Workshop JSON</button>
+        </div>
         <div id="summaryGrid" class="summary-grid"></div>
         <div id="resultsCharts" class="results-charts"></div>
       </div>
 
       <div class="card">
-        <div class="row">
-          <input id="resultSearch" type="search" placeholder="Filter results" />
-          <select id="statusFilter">
+        <div class="row filters">
+          <input id="resultSearch" type="search" placeholder="Filter results" aria-label="Filter results" />
+          <select id="statusFilter" aria-label="Status">
             <option value="">All status</option>
             <option value="Passed">Passed</option>
             <option value="Failed">Failed</option>
             <option value="Skipped">Skipped</option>
             <option value="Error">Error</option>
           </select>
-          <select id="riskFilter">
+          <select id="riskFilter" aria-label="Risk">
             <option value="">All risks</option>
             <option value="High">High</option>
             <option value="Medium">Medium</option>
             <option value="Low">Low</option>
           </select>
-          <select id="pillarFilter">
+          <select id="pillarFilter" aria-label="Pillar">
             <option value="">All pillars</option>
             <option value="Identity">Identity</option>
             <option value="Devices">Devices</option>
@@ -187,121 +211,115 @@
             <option value="AI">AI</option>
           </select>
         </div>
-        <table class="results-table" id="resultsTable">
-          <thead>
-            <tr>
-              <th data-sort="status" class="sortable">Status</th>
-              <th data-sort="id" class="sortable">ID</th>
-              <th data-sort="title" class="sortable">Title</th>
-              <th data-sort="pillar" class="sortable">Pillar</th>
-              <th data-sort="risk" class="sortable">Risk</th>
-              <th data-sort="durationMs" class="sortable">Duration</th>
-              <th>Docs</th>
-            </tr>
-          </thead>
-          <tbody></tbody>
-        </table>
+        <div class="table-wrap">
+          <table class="data-table sortable" id="resultsTable">
+            <thead>
+              <tr>
+                <th data-sort="status">Status</th>
+                <th data-sort="id">ID</th>
+                <th data-sort="title">Title</th>
+                <th data-sort="pillar">Pillar</th>
+                <th data-sort="risk">Risk</th>
+                <th data-sort="durationMs" class="num">Duration</th>
+                <th>Docs</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+        <p class="table-hint">Click a row for the evidence, the API calls and the remediation guidance.</p>
       </div>
-
     </section>
 
-    <section id="panel-history" class="panel">
+    <section class="tab-panel" id="tab-history">
       <div class="card">
-        <div class="row between">
-          <h2>History and trend</h2>
-          <button id="clearHistoryBtn" class="ghost-btn danger">Clear local history</button>
+        <div class="card-head">
+          <div>
+            <h2>History and trend</h2>
+            <p class="muted small" id="historyStorage"></p>
+          </div>
+          <button id="clearHistoryBtn" class="btn btn-danger btn-small"><i data-icon="i-trash"></i>Clear history</button>
         </div>
         <div id="historySummary"></div>
       </div>
       <div class="card">
-        <div class="row between">
+        <div class="card-head">
           <h2>Compare scans</h2>
-          <div class="row">
-            <label for="diffFromSelect">From</label>
-            <select id="diffFromSelect"></select>
-            <label for="diffToSelect">To</label>
-            <select id="diffToSelect"></select>
+          <div class="row tight">
+            <label class="filter-field">From <select id="diffFromSelect"></select></label>
+            <label class="filter-field">To <select id="diffToSelect"></select></label>
           </div>
         </div>
         <div id="diffRoot"></div>
       </div>
       <div class="card">
-        <h2>Per-test movement</h2>
-        <input id="historySearch" type="search" placeholder="Search per-test trend" />
-        <table class="results-table" id="historyTable">
-          <thead>
-            <tr>
-              <th>Test</th>
-              <th>Last</th>
-              <th>Pass rate</th>
-              <th>Runs</th>
-              <th>Recent</th>
-            </tr>
-          </thead>
-          <tbody></tbody>
-        </table>
+        <div class="card-head">
+          <h2>Per-control movement</h2>
+          <input id="historySearch" type="search" placeholder="Search controls" aria-label="Search controls" />
+        </div>
+        <div class="table-wrap">
+          <table class="data-table" id="historyTable">
+            <thead>
+              <tr>
+                <th>Control</th>
+                <th>Last</th>
+                <th>Pass rate</th>
+                <th class="num">Runs</th>
+                <th>Recent</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
       </div>
     </section>
 
-    <section id="panel-catalog" class="panel">
+    <section class="tab-panel" id="tab-catalog">
       <div class="card">
-        <h2>Test catalog</h2>
-        <p class="muted">Catalog is loaded from Microsoft ZeroTrustAssessment metadata in the bundled PowerShell module.</p>
+        <h2>Control catalog</h2>
+        <p class="muted">Loaded from the metadata of the Microsoft ZeroTrustAssessment PowerShell module that ships with this tool.</p>
         <div id="catalogStats"></div>
       </div>
     </section>
 
-    <section id="panel-about" class="panel">
-      <div class="card">
-        <h2>About</h2>
-        <p>SimpleZTA is a browser-native implementation by Lieben Consulting, inspired by and mapped to the Microsoft ZeroTrustAssessment PowerShell module.</p>
-        <p>Copyright and credit: Microsoft ZeroTrustAssessment module is copyright Microsoft Corporation. This tool provides a client-side companion UX for delegated Graph-based assessment workflows.</p>
-        <p>SimpleZTA stores scan history only in your local browser storage, export it before you clear your browser if you have later need of it.</p>
-      </div>
+    <section class="tab-panel" id="tab-debug">
+      <div data-tk="debug"></div>
     </section>
 
-    <section id="panel-debug" class="panel">
-      <div class="card">
-        <div class="row between">
-          <h2>Debug</h2>
-          <button id="clearLogBtn" class="ghost-btn">Clear log</button>
+    <section class="tab-panel" id="tab-about">
+      <div class="card about">
+        <h2>About SimpleZTA</h2>
+        <div class="notice notice-info credit">
+          <i data-icon="i-shield"></i>
+          <div>
+            <p><strong>Built on the Microsoft Zero Trust Assessment.</strong> The controls, their metadata, the remediation guidance and the official report template come from the <a href="https://github.com/microsoft/zerotrustassessment" target="_blank" rel="noopener">ZeroTrustAssessment PowerShell module</a>, copyright Microsoft Corporation, MIT licence. The module is bundled in the <code>powershell</code> folder of this tool.</p>
+            <p>SimpleZTA is an independent browser port. It is not made or supported by Microsoft; where results differ, the PowerShell module is the reference.</p>
+          </div>
         </div>
-        <pre id="debugLog" class="log"></pre>
+        <div data-tk="about"></div>
+
+        <h3>What it does</h3>
+        <ul>
+          <li>Runs every control of the module as a browser check with delegated Graph (and, when you include Azure controls, Azure Resource Manager) calls.</li>
+          <li>Controls that need an admin PowerShell session (Purview, Exchange Online, SharePoint Online) come back as Skipped with the reason.</li>
+          <li>Dashboard with pillar scores, sankeys for CA/MFA coverage, auth methods and device compliance, a pillar by risk heatmap and the top fixes.</li>
+          <li>Exports the official Microsoft report, a standalone SimpleZTA report, a Zero Trust Workshop import file, Excel, CSV and JSON.</li>
+          <li>Keeps earlier scans so you can see trends and what regressed or got fixed between two runs.</li>
+        </ul>
+
+        <h3>What is stored in this browser</h3>
+        <p>Scan history lives in <code>localStorage</code> of this browser, for this site, with no expiry. Anyone using this browser profile can see it. Nothing goes to a server.</p>
+        <ul>
+          <li><strong>Scans</strong>: per control the status, summary, evidence (user names, role members, policy names and the like) and the API calls made, with each response cut to its first 1000 characters. Plus the tenant insight aggregates behind the dashboard graphics.</li>
+          <li><strong>Scan profiles</strong> you saved and the last control selection.</li>
+          <li>Tokens are not stored with the scans; sign-in lives in this tab only.</li>
+        </ul>
+        <p>Remove it with <strong>History, Clear history</strong>. Export a scan first if you need it later.</p>
       </div>
     </section>
   </main>
 
-  <div id="toast" class="toast hidden"></div>
-
-  <div id="resultModal" class="modal hidden" aria-hidden="true">
-    <div id="resultModalBackdrop" class="modal-backdrop"></div>
-    <div class="modal-dialog" role="dialog" aria-modal="true" aria-labelledby="resultModalTitle">
-      <div class="modal-header">
-        <h2 id="resultModalTitle">Result detail</h2>
-        <button id="closeResultModalBtn" class="ghost-btn" type="button">Close</button>
-      </div>
-      <div id="detailView" class="detail"></div>
-    </div>
-  </div>
-
-  <script src="src/log.js"></script>
-  <script src="src/auth.js"></script>
-  <script src="src/api.js"></script>
-  <script src="src/storage.js"></script>
-  <script src="src/md.js"></script>
-  <script src="src/charts.js"></script>
-  <script src="src/tenantinfo.js"></script>
-  <script src="src/report-official.js"></script>
-  <script src="src/report-native.js"></script>
-  <script src="src/tests-impl.js"></script>
-  <script src="src/tests-graph.js"></script>
-  <script src="src/tests-azure.js"></script>
-  <script src="src/tests-purview.js"></script>
-  <script src="src/registry.js"></script>
-  <script src="src/runner.js"></script>
-  <script src="src/ui-results.js"></script>
-  <script src="src/ui-history.js"></script>
-  <script src="src/ui-dashboard.js"></script>
-  <script src="src/app.js"></script>
+  <div data-tk="related"></div>
+  <div data-tk="footer"></div>
 </body>
 </html>

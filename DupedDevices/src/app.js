@@ -1,510 +1,463 @@
-// DupedDevices main wiring.
+// DupedDevices UI.
 (() => {
+  const { esc, toast, confirm, busy, setUser, h } = Toolkit;
+  const DAY = 86400000;
+
+  // Graph documents no narrower delegated permission than Directory.AccessAsUser.All
+  // for PATCH or DELETE on /devices, so that is the write set.
+  window.Auth = ToolkitAuth.create({
+    scopes: {
+      read: ['User.Read', 'Device.Read.All', 'DeviceManagementManagedDevices.Read.All'],
+      write: ['Directory.AccessAsUser.All'],
+    },
+  });
+
   const state = {
     devices: [],
     groups: [],
+    visible: [],
+    selected: new Set(),
     expired: [],
-    selected: new Set(),     // selected stale device ObjectIds
+    expiredCtx: null,
     cancelToken: null,
-    haveWriteConsent: false,
   };
+  const $ = (id) => document.getElementById(id);
 
-  // ---------- Tabs ----------
-  document.querySelectorAll('.tab').forEach(t => {
-    t.addEventListener('click', () => {
-      document.querySelectorAll('.tab').forEach(x => x.classList.remove('active'));
-      document.querySelectorAll('.tab-panel').forEach(x => x.classList.remove('active'));
-      t.classList.add('active');
-      document.getElementById(`tab-${t.dataset.tab}`).classList.add('active');
-    });
-  });
-
-  // ---------- Dark mode ----------
-  if (localStorage.getItem('duped-theme') === 'dark') document.documentElement.setAttribute('data-theme', 'dark');
-  document.getElementById('darkToggle').addEventListener('click', () => {
-    const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
-    if (isDark) { document.documentElement.removeAttribute('data-theme'); localStorage.setItem('duped-theme', ''); }
-    else { document.documentElement.setAttribute('data-theme', 'dark'); localStorage.setItem('duped-theme', 'dark'); }
-  });
-
-  // ---------- Persisted prefs ----------
+  // ---------- preferences (nothing destructive is remembered) ----------
+  const PREFS_KEY = 'duped-prefs';
+  const PREF_FIELDS = ['extAttrSelect', 'gracePeriod', 'concurrency'];
   function loadPrefs() {
-    try {
-      const p = JSON.parse(localStorage.getItem('duped-prefs') || '{}');
-      if (p.extAttr) document.getElementById('extAttrSelect').value = p.extAttr;
-      if (p.gracePeriod != null) document.getElementById('gracePeriod').value = p.gracePeriod;
-      if (p.concurrency) document.getElementById('concurrency').value = p.concurrency;
-      if (p.cleanupMode) {
-        const r = document.querySelector(`input[name=cleanupMode][value="${p.cleanupMode}"]`);
-        if (r) r.checked = true;
-      }
-      if (p.includeDisabled) document.getElementById('includeDisabled').checked = true;
-      if (p.hideMixedAutopilot === false) document.getElementById('hideMixedAutopilot').checked = false;
-    } catch {}
+    let p = {};
+    try { p = JSON.parse(localStorage.getItem(PREFS_KEY) || '{}') || {}; } catch { p = {}; }
+    if (/^extensionAttribute([1-9]|1[0-5])$/.test(p.extAttr || '')) $('extAttrSelect').value = p.extAttr;
+    if (Devices.parseGraceDays(p.gracePeriod) != null) $('gracePeriod').value = p.gracePeriod;
+    if (p.concurrency >= 1 && p.concurrency <= 20) $('concurrency').value = p.concurrency;
+    $('includeDisabled').checked = p.includeDisabled === true;
+    $('hideMixedAutopilot').checked = p.hideMixedAutopilot !== false;
   }
   function savePrefs() {
     const p = {
-      extAttr: document.getElementById('extAttrSelect').value,
-      gracePeriod: +document.getElementById('gracePeriod').value || 30,
-      concurrency: +document.getElementById('concurrency').value || 6,
-      cleanupMode: document.querySelector('input[name=cleanupMode]:checked').value,
-      includeDisabled: document.getElementById('includeDisabled').checked,
-      hideMixedAutopilot: document.getElementById('hideMixedAutopilot').checked,
+      extAttr: $('extAttrSelect').value,
+      gracePeriod: Devices.parseGraceDays($('gracePeriod').value) || 30,
+      concurrency: concurrency(),
+      includeDisabled: $('includeDisabled').checked,
+      hideMixedAutopilot: $('hideMixedAutopilot').checked,
     };
-    localStorage.setItem('duped-prefs', JSON.stringify(p));
+    try { localStorage.setItem(PREFS_KEY, JSON.stringify(p)); } catch { /* storage blocked */ }
   }
-  ['extAttrSelect','gracePeriod','concurrency','includeDisabled','hideMixedAutopilot'].forEach(id =>
-    document.getElementById(id).addEventListener('change', savePrefs));
-  document.querySelectorAll('input[name=cleanupMode]').forEach(r => r.addEventListener('change', () => { savePrefs(); refreshActionLabel(); }));
+  function concurrency() { return Math.max(1, Math.min(20, parseInt($('concurrency').value, 10) || 6)); }
 
-  // ---------- Verbose log ----------
-  document.getElementById('verboseLog').addEventListener('change', (e) => Log.setVerbose(e.target.checked));
-  document.getElementById('clearLogBtn').addEventListener('click', () => Log.clear());
-
-  // ---------- Auth ----------
-  function setSignedInUI(account) {
-    if (account) {
-      document.getElementById('connectCard').classList.add('hidden');
-      document.getElementById('discoveryCard').classList.remove('hidden');
-      document.getElementById('userBox').classList.remove('hidden');
-      document.getElementById('userName').textContent = account.username || account.name || 'Signed in';
-      document.getElementById('findExpiredBtn').disabled = false;
-    } else {
-      document.getElementById('connectCard').classList.remove('hidden');
-      document.getElementById('discoveryCard').classList.add('hidden');
-      document.getElementById('userBox').classList.add('hidden');
-      document.getElementById('findExpiredBtn').disabled = true;
-    }
+  // ---------- auth ----------
+  function refreshAuthUI() {
+    const signedIn = !!Auth.getAccount();
+    setUser(Auth.userInfo(onSignOut));
+    $('connectCard').hidden = signedIn;
+    $('scanCard').hidden = !signedIn;
+    $('findExpiredBtn').disabled = !signedIn;
   }
-  document.getElementById('signInBtn').addEventListener('click', async () => {
-    try {
-      const acct = await Auth.signIn(false);
-      if (acct) {
-        Log.info(`Signed in as ${acct.username}`);
-        setSignedInUI(acct);
-        loadPrefs();
-      }
-    } catch (e) { Log.err('Sign-in failed:', e.message); alert('Sign-in failed: ' + e.message); }
-  });
-  document.getElementById('signOutBtn').addEventListener('click', async () => {
+  async function onSignIn() {
+    try { await Auth.signIn('read'); }
+    catch (e) { Log.err('Sign-in failed:', e); toast(`Sign-in failed: ${e.message}`, 'err'); }
+  }
+  async function onSignOut() {
+    state.devices = []; state.groups = []; state.visible = []; state.selected.clear(); state.expired = [];
     await Auth.signOut();
-    state.devices = []; state.groups = []; state.selected.clear();
-    setSignedInUI(null);
-    renderGroups();
-  });
+  }
 
-  // ---------- Scan ----------
-  document.getElementById('scanBtn').addEventListener('click', async () => {
+  // ---------- scan ----------
+  async function scan() {
     savePrefs();
-    const btn = document.getElementById('scanBtn');
-    const box = document.getElementById('progressBox');
-    btn.disabled = true; box.classList.remove('hidden');
-    setProgress(0, 0, 'Loading devices from Graph...');
+    const box = $('progressBox');
+    box.hidden = false;
+    $('progressLabel').textContent = 'Loading devices';
+    $('progressCount').textContent = '0 loaded';
     state.cancelToken = new Concurrency.CancelToken();
-    try {
-      const t0 = Date.now();
-      const devices = await Graph.listAllDevices((count, page) => {
-        setProgress(count, count, `Loaded ${count} devices (page ${page})...`);
-        if (state.cancelToken.cancelled) throw new Error('Cancelled');
-      });
+    const signal = state.cancelToken.signal;
+    const t0 = Date.now();
+    await busy($('scanBtn'), async () => {
+      try {
+        const devices = await Graph.listAllDevices((n, page) => { $('progressCount').textContent = `${n} devices, page ${page}`; }, signal);
+        $('progressLabel').textContent = 'Loading Intune data';
+        const managedRes = await Graph.tryListManagedDevices((n, page) => { $('progressCount').textContent = `${devices.length} devices, ${n} Intune devices, page ${page}`; }, signal);
+        $('managedNotice').hidden = !managedRes.unavailable;
+        $('managedNoticeText').textContent = managedRes.message;
 
-      const managedRes = await Graph.tryListManagedDevices((count, page) => {
-        setProgress(count, count, `Loaded ${count} Intune managed devices (page ${page})...`);
-        if (state.cancelToken.cancelled) throw new Error('Cancelled');
-      });
-
-      const notice = document.getElementById('managedNotice');
-      if (managedRes.unavailable) {
-        notice.textContent = managedRes.message;
-        notice.classList.remove('hidden');
-      } else {
-        notice.classList.add('hidden');
+        const managedMap = Devices.buildManagedMap(managedRes.list);
+        for (const d of devices) {
+          const managed = managedMap.get(Devices.keyForDevice(d)) || null;
+          d.isAutopilot = Devices.isAutopilot(d, managed);
+          d.primaryUser = (managed && managed.userPrincipalName) || '';
+        }
+        state.devices = devices;
+        regroup();
+        const dt = ((Date.now() - t0) / 1000).toFixed(1);
+        Log.info(`Scan finished: ${devices.length} devices, ${state.groups.length} duplicate groups, ${dt}s`);
+        $('resultsStatus').textContent = `${devices.length} devices scanned in ${dt}s. Nothing changes until you pick an action and confirm it.`;
+        activateTab('results');
+      } catch (e) {
+        if (e.message === 'Cancelled') { toast('Scan cancelled', 'warn'); return; }
+        Log.err('Scan failed:', e);
+        toast(`Scan failed: ${e.message}`, 'err');
+      } finally {
+        box.hidden = true;
+        state.cancelToken = null;
       }
-
-      const managedMap = Devices.buildManagedMap(managedRes.list);
-      for (const d of devices) {
-        const managed = managedMap.get(Devices.keyForDevice(d)) || null;
-        d.managedDevice = managed;
-        d.isAutopilot = Devices.isAutopilot(d, managed);
-        d.primaryUser = (managed && managed.userPrincipalName) || '';
-      }
-
-      state.devices = devices;
-      const includeDisabled = document.getElementById('includeDisabled').checked;
-      const groups = Devices.findDuplicates(devices, { includeDisabledInComparison: includeDisabled });
-      state.groups = groups;
-      state.selected.clear();
-      const elapsed = ((Date.now() - t0) / 1000).toFixed(1);
-      Log.info(`Scan finished: ${devices.length} devices total, ${groups.length} duplicate group(s), in ${elapsed}s`);
-      renderGroups();
-      // jump to results tab
-      document.querySelector('.tab[data-tab="results"]').click();
-    } catch (e) {
-      Log.err('Scan failed:', e.message);
-      alert('Scan failed: ' + e.message);
-    } finally {
-      btn.disabled = false; box.classList.add('hidden');
-      state.cancelToken = null;
-    }
-  });
-  document.getElementById('cancelBtn').addEventListener('click', () => {
-    if (state.cancelToken) { state.cancelToken.cancel(); Log.warn('Cancellation requested.'); }
-  });
-  function setProgress(done, total, label) {
-    document.getElementById('progressLabel').textContent = label || '';
-    document.getElementById('progressCount').textContent = total ? `${done}/${total}` : `${done}`;
-    document.getElementById('progressFill').style.width = total ? `${Math.min(100, Math.round(100 * done / total))}%` : '50%';
-  }
-
-  // ---------- Render groups ----------
-  function refreshActionLabel() {
-    const mode = document.querySelector('input[name=cleanupMode]:checked').value;
-    document.getElementById('actionLabel').textContent = mode;
-  }
-
-  function isMixedAutopilotGroup(group) {
-    let hasAp = false;
-    let hasNonAp = false;
-    for (const d of group.devices || []) {
-      if (d.isAutopilot) hasAp = true;
-      else hasNonAp = true;
-      if (hasAp && hasNonAp) return true;
-    }
-    return false;
-  }
-
-  function getVisibleGroups() {
-    const filter = (document.getElementById('resultFilter').value || '').toLowerCase().trim();
-    const hideMixedAutopilot = document.getElementById('hideMixedAutopilot').checked;
-    return state.groups.filter((g) => {
-      if (hideMixedAutopilot && isMixedAutopilotGroup(g)) return false;
-      if (filter) {
-        const hay = (g.hwid + ' ' + g.devices.map(d => `${d.displayName||''} ${d.operatingSystem||''}`).join(' ')).toLowerCase();
-        if (!hay.includes(filter)) return false;
-      }
-      return true;
     });
+  }
+
+  function regroup() {
+    state.groups = Devices.findDuplicates(state.devices, { includeDisabledInComparison: $('includeDisabled').checked });
+    state.selected.clear();
+    renderGroups();
+  }
+
+  // Recompute what is visible and drop selections the filter hides.
+  function applyView() {
+    state.visible = Devices.filterGroups(state.groups, {
+      search: $('resultFilter').value,
+      hideMixedAutopilot: $('hideMixedAutopilot').checked,
+    });
+    Devices.trimSelection(state.selected, Devices.staleIds(state.visible));
+  }
+
+  // ---------- render ----------
+  function roleBadge(d, g) {
+    if (d === g.current) return '<span class="badge ok">Keep</span>';
+    return d.accountEnabled === false ? '<span class="badge neutral">Disabled</span>' : '<span class="badge warn">Stale</span>';
+  }
+  function dateCell(v) {
+    const s = Devices.fmtDate(v);
+    return s ? esc(s) : '<span class="muted">Never</span>';
+  }
+
+  function groupHtml(g) {
+    const title = g.current.displayName || g.devices[0].displayName || '(no name)';
+    const rows = g.devices.map((d) => {
+      const isCurrent = d === g.current;
+      const check = isCurrent
+        ? ''
+        : `<input type="checkbox" data-act="sel" aria-label="Select ${esc(d.displayName || d.id)}" ${state.selected.has(d.id) ? 'checked' : ''}/>`;
+      return `<tr data-id="${esc(d.id)}" class="${isCurrent ? 'is-current' : ''} ${d.accountEnabled === false ? 'is-disabled' : ''}">
+        <td class="col-check"${isCurrent ? ' title="The most recent device in a group is never selected"' : ''}>${check}</td>
+        <td>${roleBadge(d, g)}</td>
+        <td><strong>${esc(d.displayName || '(no name)')}</strong>${d.primaryUser ? `<br><span class="muted small">${esc(d.primaryUser)}</span>` : ''}</td>
+        <td>${esc(Devices.osLabel(d))}</td>
+        <td>${esc(d.trustType || '')}</td>
+        <td>${d.isAutopilot ? 'Yes' : '<span class="muted">No</span>'}</td>
+        <td>${d.accountEnabled === false ? '<span class="muted">No</span>' : 'Yes'}</td>
+        <td class="nowrap">${dateCell(d.approximateLastSignInDateTime)}</td>
+        <td class="nowrap">${dateCell(d.createdDateTime)}</td>
+        <td class="url-cell mono" title="${esc(d.id)}">${esc(d.id || '')}</td>
+      </tr>`;
+    }).join('');
+    return `<div class="group-card">
+      <div class="group-header">
+        <div>
+          <div class="group-title">${esc(title)}</div>
+          <div class="hwid">HWID ${esc(g.hwid)}</div>
+        </div>
+        <span class="badge neutral">${g.deviceCount} devices, ${g.stale.length} stale</span>
+      </div>
+      <div class="table-wrap">
+        <table class="data-table">
+          <thead><tr><th class="col-check"></th><th>Role</th><th>Display name</th><th>OS</th><th>Trust</th><th>Autopilot</th><th>Enabled</th><th>Last sign-in</th><th>Created</th><th>Object id</th></tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>
+    </div>`;
   }
 
   function renderGroups() {
-    const root = document.getElementById('groupsContainer');
-    root.innerHTML = '';
-    const visibleGroups = getVisibleGroups();
-    const summary = document.getElementById('summaryBar');
-    const noRes = document.getElementById('noResults');
-    let totalStale = 0;
-    let visibleStale = 0;
-    for (const g of state.groups) totalStale += g.stale.length;
-    for (const g of visibleGroups) visibleStale += g.stale.length;
-    summary.classList.toggle('hidden', state.groups.length === 0);
-    summary.innerHTML = `
-      <span><strong>${state.devices.length}</strong> devices scanned</span>
-      <span><strong>${state.groups.length}</strong> duplicate group(s)</span>
-      <span><strong>${visibleGroups.length}</strong> visible group(s)</span>
-      <span><strong>${totalStale}</strong> stale candidate(s)</span>
-      <span><strong>${visibleStale}</strong> visible stale candidate(s)</span>
-      <span><strong>${state.selected.size}</strong> selected</span>`;
-    document.getElementById('exportXlsxBtn').disabled = state.groups.length === 0;
-    document.getElementById('exportCsvBtn').disabled = state.groups.length === 0;
-    document.getElementById('selectAllStaleBtn').disabled = state.groups.length === 0;
-    document.getElementById('selectNoneBtn').disabled = state.selected.size === 0;
-    document.getElementById('actionBar').classList.toggle('hidden', state.selected.size === 0);
-    document.getElementById('selCount').textContent = state.selected.size;
-    document.getElementById('executeBtn').disabled = state.selected.size === 0;
-    refreshActionLabel();
+    applyView();
+    const scanned = state.devices.length > 0;
+    const hasGroups = state.groups.length > 0;
+    const visibleStale = state.visible.reduce((n, g) => n + g.stale.length, 0);
+    const totalStale = state.groups.reduce((n, g) => n + g.stale.length, 0);
 
-    for (const g of visibleGroups) {
-      const card = document.createElement('div');
-      card.className = 'group-card';
-      const titleName = escapeHtml(g.current.displayName || g.devices[0].displayName || '(no name)');
-      card.innerHTML = `
-        <div class="group-header">
-          <div>
-            <div class="group-title">${titleName}</div>
-            <div class="hwid">HWID: ${escapeHtml(g.hwid)}</div>
-          </div>
-          <div class="group-meta">${g.deviceCount} devices &middot; ${g.stale.length} stale</div>
-        </div>
-        <div class="table-wrap">
-          <table class="data-table">
-            <thead>
-              <tr>
-                <th style="width:32px"></th>
-                <th>Role</th>
-                <th>Display name</th>
-                <th>OS</th>
-                <th>Trust</th>
-                <th>Autopilot</th>
-                <th>Enabled</th>
-                <th>Last sign-in</th>
-                <th>Created</th>
-                <th>Object id</th>
-              </tr>
-            </thead>
-            <tbody></tbody>
-          </table>
-        </div>`;
-      const tbody = card.querySelector('tbody');
-      for (const d of g.devices) {
-        const isCurrent = d === g.current;
-        const isDisabled = d.accountEnabled === false;
-        const tr = document.createElement('tr');
-        tr.className = `device-row ${isCurrent ? 'is-current' : 'is-stale'} ${isDisabled ? 'is-disabled' : ''}`;
-        const role = isCurrent
-          ? `<span class="role-pill current">Keep</span>`
-          : (isDisabled ? `<span class="role-pill disabled">Disabled</span>` : `<span class="role-pill stale">Stale</span>`);
-        const checkbox = isCurrent
-          ? '<span class="muted" title="The most recently active duplicate is never selected">-</span>'
-          : `<input type="checkbox" data-id="${escapeAttr(d.id)}" ${state.selected.has(d.id) ? 'checked' : ''}>`;
-        tr.innerHTML = `
-          <td>${checkbox}</td>
-          <td>${role}</td>
-          <td>${escapeHtml(d.displayName || '')}</td>
-          <td>${escapeHtml([d.operatingSystem, d.operatingSystemVersion].filter(Boolean).join(' '))}</td>
-          <td>${escapeHtml(d.trustType || '')}</td>
-          <td>${d.isAutopilot ? 'Yes' : '<span class="muted">No</span>'}</td>
-          <td>${isDisabled ? 'No' : 'Yes'}</td>
-          <td>${formatDate(d.approximateLastSignInDateTime)}</td>
-          <td>${formatDate(d.createdDateTime)}</td>
-          <td class="url-cell" title="${escapeAttr(d.id)}">${escapeHtml(d.id || '')}</td>`;
-        tbody.appendChild(tr);
+    $('statTiles').hidden = !scanned;
+    $('filterRow').hidden = !hasGroups;
+    $('statDevices').textContent = String(state.devices.length);
+    $('statGroups').textContent = String(state.groups.length);
+    $('statGroupsFoot').textContent = `${state.visible.length} shown`;
+    $('statStale').textContent = String(totalStale);
+    $('statStaleFoot').textContent = `${visibleStale} shown`;
+    $('exportXlsxBtn').disabled = !state.visible.length;
+    $('exportCsvBtn').disabled = !state.visible.length;
+    $('selectAllStaleBtn').disabled = !visibleStale;
+
+    const root = $('groupsContainer');
+    root.innerHTML = state.visible.map(groupHtml).join('');
+    if (hasGroups && !state.visible.length) root.innerHTML = '<p class="table-hint">No groups match the filter.</p>';
+
+    const empty = $('noResults');
+    empty.hidden = !scanned || hasGroups;
+    if (scanned && !hasGroups) {
+      $('noResultsTitle').textContent = 'No duplicates';
+      $('noResultsText').textContent = `None of the ${state.devices.length} devices share a hardware id. If you expected duplicates, tick "Include already disabled devices" on the Scan tab.`;
+    }
+    updateSelection();
+  }
+
+  function updateSelection() {
+    const n = state.selected.size;
+    $('selCount').textContent = String(n);
+    $('statSelected').textContent = String(n);
+    $('actionBar').hidden = !state.groups.length;
+    $('disableBtn').disabled = n === 0;
+    $('deleteBtn').disabled = n === 0;
+    $('selectNoneBtn').disabled = n === 0;
+  }
+
+  function onGroupsChange(e) {
+    const cb = e.target.closest('input[data-act="sel"]');
+    if (!cb) return;
+    const id = cb.closest('tr').dataset.id;
+    if (cb.checked) state.selected.add(id); else state.selected.delete(id);
+    updateSelection();
+  }
+
+  // ---------- bulk actions ----------
+  function startProgress(label, total) {
+    $('actionProgress').hidden = false;
+    $('actionLabel').textContent = label;
+    $('actionCount').textContent = `0/${total}`;
+    $('actionEta').textContent = '';
+    $('actionFill').style.width = '0%';
+    const t0 = Date.now();
+    return (done) => {
+      $('actionCount').textContent = `${done}/${total}`;
+      $('actionEta').textContent = Concurrency.eta(t0, done, total);
+      $('actionFill').style.width = `${Math.round((100 * done) / total)}%`;
+    };
+  }
+
+  function resultLine(list, d) {
+    const li = h('li', null, [h('span.warn-mark', { text: '...' }), ` ${d.displayName || d.id}`]);
+    list.appendChild(li);
+    return {
+      ok: (text) => li.replaceChildren(h('span.ok-mark', { text: 'OK' }), ` ${text}`),
+      skip: (text) => li.replaceChildren(h('span.warn-mark', { text: 'SKIP' }), ` ${text}`),
+      fail: (text) => li.replaceChildren(h('span.err-mark', { text: 'ERR' }), ` ${text}`),
+    };
+  }
+
+  async function bulkAction(kind) {
+    applyView();
+    const allowed = Devices.staleIds(state.visible);
+    const rows = state.devices.filter((d) => state.selected.has(d.id) && allowed.has(d.id));
+    if (!rows.length) { updateSelection(); return; }
+    const del = kind === 'delete';
+    const extAttr = del ? '' : $('extAttrSelect').value;
+    const n = rows.length;
+    const ok = await confirm({
+      title: `${del ? 'Delete' : 'Disable'} ${n} device${n === 1 ? '' : 's'}?`,
+      body: del
+        ? 'These devices are deleted from Entra ID. This cannot be undone; a device that is still in use has to register again.'
+        : `These devices can no longer be used to sign in to Entra ID until they are enabled again.${extAttr ? ` The disable timestamp goes into ${extAttr}.` : ''}`,
+      items: rows.map(Devices.describe),
+      okLabel: `${del ? 'Delete' : 'Disable'} ${n}`,
+      danger: del,
+      wide: true,
+    });
+    if (!ok) return;
+    // Consent for the write scope before the first device, by popup, so this page stays put.
+    try { await Auth.getWriteToken(); }
+    catch (e) { toast(`No write permission: ${e.message}`, 'err'); return; }
+
+    const list = $('actionResults');
+    list.hidden = false;
+    list.replaceChildren();
+    const tick = startProgress(del ? 'Deleting' : 'Disabling', n);
+    const ext = extAttr ? { [extAttr]: Devices.buildDisableStampValue() } : null;
+    let done = 0, okCount = 0;
+    const deleted = new Set();
+    await busy($(del ? 'deleteBtn' : 'disableBtn'), () => Concurrency.pmap(rows, async (d) => {
+      const line = resultLine(list, d);
+      try {
+        if (del) {
+          await Graph.deleteDevice(d.id);
+          deleted.add(d.id);
+          line.ok(`Deleted ${d.displayName || d.id}`);
+        } else {
+          await Graph.disableDevice(d.id, ext);
+          d.accountEnabled = false;
+          if (ext) d.extensionAttributes = { ...(d.extensionAttributes || {}), ...ext };
+          line.ok(`Disabled ${d.displayName || d.id}${ext ? `, stamped ${extAttr}` : ''}`);
+        }
+        okCount++;
+      } catch (e) {
+        line.fail(`${d.displayName || d.id}: ${e.message}`);
+        Log.err(`${kind} failed for ${d.id}:`, e);
+        throw e;
+      } finally {
+        tick(++done);
       }
-      root.appendChild(card);
-    }
-    noRes.classList.toggle('hidden', state.groups.length > 0);
-    if (state.groups.length === 0) {
-      const n = state.devices.length;
-      if (n === 0) {
-        noRes.innerHTML = `No devices were returned by Microsoft Graph for your account. Either the tenant is empty, the scan failed, or your account lacks <code>Device.Read.All</code>. Check the Debug tab.`;
-      } else {
-        noRes.innerHTML = `No duplicate groups detected among the <strong>${n}</strong> device(s) returned by Microsoft Graph. Either you genuinely have no duplicates (nice) or no devices in this tenant share a hardware id. If you expected duplicates, try ticking "Include already-disabled devices" on the previous tab.`;
+    }, { concurrency: concurrency() }));
+    $('actionProgress').hidden = true;
+    const failed = n - okCount;
+    toast(`${del ? 'Deleted' : 'Disabled'} ${okCount} of ${n}${failed ? `, ${failed} failed (see the list and the debug log)` : ''}`, failed ? 'warn' : 'ok');
+    Log.info(`${kind}: ${okCount}/${n} succeeded`);
+    if (deleted.size) state.devices = state.devices.filter((d) => !deleted.has(d.id));
+    regroup();
+  }
+
+  // ---------- past grace period ----------
+  function clearExpired(message) {
+    state.expired = [];
+    state.expiredCtx = null;
+    $('expiredStatus').textContent = message || '';
+    renderExpired(false);
+  }
+
+  async function findExpired() {
+    const attr = $('extAttrSelect').value;
+    if (!attr) { toast('Pick an extension attribute on the Scan tab first. Without it there is no timestamp to look at.', 'warn'); return; }
+    const grace = Devices.parseGraceDays($('gracePeriod').value);
+    if (grace == null) { toast('Grace period must be a whole number of days, 1 to 3650.', 'err'); return; }
+    savePrefs();
+    $('expiredResults').hidden = true;
+    await busy($('findExpiredBtn'), async () => {
+      try {
+        $('expiredStatus').textContent = 'Loading disabled devices';
+        const list = await Graph.listDisabledDevices((n) => { $('expiredStatus').textContent = `${n} disabled devices loaded`; });
+        state.expired = Devices.findExpiredDisabled(list, attr, grace, new Date());
+        state.expiredCtx = { attr, grace };
+        $('expiredStatus').textContent = `${list.length} disabled devices checked, ${state.expired.length} with a ${attr} timestamp older than ${grace} days.`;
+        Log.info(`Grace period search: ${state.expired.length} of ${list.length} disabled devices expired (${attr}, ${grace} days)`);
+        renderExpired(true);
+      } catch (e) {
+        Log.err('Grace period search failed:', e);
+        $('expiredStatus').textContent = '';
+        toast(`Search failed: ${e.message}`, 'err');
       }
-    }
-    if (state.groups.length > 0 && visibleGroups.length === 0) {
-      const p = document.createElement('p');
-      p.className = 'table-hint';
-      p.textContent = 'No groups match your filter.';
-      root.appendChild(p);
-    }
-    // wire checkboxes
-    root.querySelectorAll('input[type=checkbox][data-id]').forEach(cb => {
-      cb.addEventListener('change', () => {
-        const id = cb.dataset.id;
-        if (cb.checked) state.selected.add(id);
-        else state.selected.delete(id);
-        // update summary numbers without full re-render
-        document.getElementById('selCount').textContent = state.selected.size;
-        document.getElementById('actionBar').classList.toggle('hidden', state.selected.size === 0);
-        document.getElementById('executeBtn').disabled = state.selected.size === 0;
-        document.getElementById('selectNoneBtn').disabled = state.selected.size === 0;
-      });
     });
   }
-  document.getElementById('resultFilter').addEventListener('input', renderGroups);
-  document.getElementById('hideMixedAutopilot').addEventListener('change', () => { savePrefs(); renderGroups(); });
-  document.getElementById('selectAllStaleBtn').addEventListener('click', () => {
-    state.selected.clear();
-    for (const g of getVisibleGroups()) for (const d of g.stale) state.selected.add(d.id);
-    renderGroups();
-  });
-  document.getElementById('selectNoneBtn').addEventListener('click', () => { state.selected.clear(); renderGroups(); });
 
-  // ---------- Execute action ----------
-  document.getElementById('executeBtn').addEventListener('click', async () => {
-    const mode = document.querySelector('input[name=cleanupMode]:checked').value;
-    const ids = Array.from(state.selected);
-    if (!ids.length) return;
-    const extAttr = document.getElementById('extAttrSelect').value;
-    const concurrency = Math.max(1, Math.min(20, +document.getElementById('concurrency').value || 6));
-    const verb = mode === 'delete' ? 'PERMANENTLY DELETE' : 'disable';
-    if (!confirm(`About to ${verb} ${ids.length} device(s). This will be done as the signed-in user. Continue?`)) return;
-
-    if (!state.haveWriteConsent) {
-      try {
-        Log.info('Requesting write consent (Directory.AccessAsUser.All)...');
-        await Auth.signIn(true);
-        state.haveWriteConsent = true;
-      } catch (e) {
-        Log.err('Failed to acquire write consent:', e.message);
-        alert('Failed to acquire write permissions: ' + e.message);
-        return;
-      }
-    }
-
-    // Build deviceId -> device map
-    const idMap = new Map();
-    for (const g of state.groups) for (const d of g.devices) idMap.set(d.id, d);
-
-    const results = [];
-    const ul = document.createElement('ul');
-    ul.className = 'action-result-list';
-    document.getElementById('actionResults').innerHTML = '';
-    document.getElementById('actionResults').appendChild(ul);
-
-    const ext = extAttr ? { [extAttr]: Devices.buildDisableStampValue() } : null;
-    document.getElementById('executeBtn').disabled = true;
-
-    await Concurrency.pmap(ids, async (id) => {
-      const d = idMap.get(id);
-      const li = document.createElement('li');
-      li.innerHTML = `<span class="muted">...</span> ${escapeHtml(d.displayName || id)}`;
-      ul.appendChild(li);
-      try {
-        if (mode === 'delete') {
-          await Graph.deleteDevice(id);
-          li.innerHTML = `<span class="ok-mark">DEL</span> Deleted: ${escapeHtml(d.displayName || id)}`;
-          d._dupedAction = 'Deleted';
-        } else {
-          await Graph.disableDevice(id, ext);
-          li.innerHTML = `<span class="ok-mark">OK</span> Disabled: ${escapeHtml(d.displayName || id)}${ext ? ` <span class="muted">(stamped ${escapeHtml(extAttr)})</span>` : ''}`;
-          d.accountEnabled = false;
-          if (ext) { d.extensionAttributes = { ...(d.extensionAttributes || {}), ...ext }; }
-          d._dupedAction = 'Disabled';
-        }
-        results.push({ id, ok: true });
-      } catch (e) {
-        li.innerHTML = `<span class="err-mark">ERR</span> ${escapeHtml(d.displayName || id)}: ${escapeHtml(e.message)}`;
-        results.push({ id, ok: false, err: e.message });
-        Log.err(`Action failed for ${id}:`, e.message);
-      }
-    }, { concurrency });
-
-    const ok = results.filter(r => r.ok).length;
-    Log.info(`Action complete: ${ok}/${results.length} succeeded.`);
-    state.selected.clear();
-    // Re-derive groups now that some devices are disabled
-    const includeDisabled = document.getElementById('includeDisabled').checked;
-    state.groups = Devices.findDuplicates(state.devices, { includeDisabledInComparison: includeDisabled });
-    renderGroups();
-  });
-
-  // ---------- Export ----------
-  document.getElementById('exportXlsxBtn').addEventListener('click', () => {
-    Exporter.exportXlsx(getVisibleGroups(), document.getElementById('extAttrSelect').value);
-  });
-  document.getElementById('exportCsvBtn').addEventListener('click', () => {
-    Exporter.exportCsv(getVisibleGroups(), document.getElementById('extAttrSelect').value);
-  });
-
-  // ---------- Past grace period ----------
-  document.getElementById('findExpiredBtn').addEventListener('click', async () => {
-    const attr = document.getElementById('extAttrSelect').value;
-    if (!attr) { alert('Pick an extension attribute on the first tab; without it the grace-period workflow has nothing to look at.'); return; }
-    const grace = +document.getElementById('gracePeriod').value || 30;
-    const btn = document.getElementById('findExpiredBtn');
-    btn.disabled = true;
-    try {
-      Log.info(`Looking for disabled devices with ${attr} stamp older than ${grace} days...`);
-      let devices = state.devices;
-      if (!devices.length) devices = await Graph.listAllDevices(() => {});
-      // Only consider devices we (DupedDevices) disabled
-      const stamped = devices.filter(d => {
-        const v = (d.extensionAttributes || {})[attr];
-        return Devices.parseDupedDevicesStamp(v) != null;
-      });
-      // Use parseDupedDevicesStamp via a custom expired calc
-      const cutoff = Date.now() - grace * 86400000;
-      const expired = [];
-      for (const d of stamped) {
-        if (d.accountEnabled !== false) continue;
-        const ts = Devices.parseDupedDevicesStamp(d.extensionAttributes[attr]);
-        if (ts && ts.getTime() <= cutoff) {
-          expired.push({ device: d, disabledAt: ts, daysDisabled: Math.floor((Date.now() - ts.getTime()) / 86400000) });
-        }
-      }
-      expired.sort((a, b) => a.disabledAt - b.disabledAt);
-      state.expired = expired;
-      renderExpired();
-    } catch (e) {
-      Log.err('Find expired failed:', e.message);
-      alert('Find expired failed: ' + e.message);
-    } finally {
-      btn.disabled = false;
-    }
-  });
-
-  function renderExpired() {
-    const root = document.getElementById('expiredContainer');
-    root.innerHTML = '';
-    const del = document.getElementById('deleteExpiredBtn');
-    if (!state.expired.length) {
-      root.innerHTML = '<p class="table-hint">No disabled devices past the grace period found.</p>';
-      del.disabled = true;
-      return;
-    }
-    del.disabled = false;
-    const table = document.createElement('div');
-    table.className = 'table-wrap';
-    table.innerHTML = `<table class="data-table">
-      <thead><tr><th>Display name</th><th>OS</th><th>Disabled at</th><th>Days disabled</th><th>Object id</th></tr></thead>
-      <tbody></tbody></table>`;
-    const tbody = table.querySelector('tbody');
-    for (const e of state.expired) {
-      const tr = document.createElement('tr');
-      tr.innerHTML = `<td>${escapeHtml(e.device.displayName || '')}</td>
-        <td>${escapeHtml([e.device.operatingSystem, e.device.operatingSystemVersion].filter(Boolean).join(' '))}</td>
-        <td>${formatDate(e.disabledAt)}</td>
-        <td>${e.daysDisabled}</td>
-        <td class="url-cell" title="${escapeAttr(e.device.id)}">${escapeHtml(e.device.id || '')}</td>`;
-      tbody.appendChild(tr);
-    }
-    root.appendChild(table);
+  function renderExpired(searched) {
+    const has = state.expired.length > 0;
+    $('expiredWrap').hidden = !has;
+    $('expiredEmpty').hidden = has || !searched;
+    $('deleteExpiredBtn').disabled = !has;
+    document.querySelector('#expiredTable tbody').innerHTML = state.expired.map((e) => `<tr>
+      <td>${esc(e.device.displayName || '(no name)')}</td>
+      <td>${esc(Devices.osLabel(e.device))}</td>
+      <td class="nowrap">${esc(Devices.fmtDate(e.disabledAt))}</td>
+      <td class="num">${e.daysDisabled}</td>
+      <td class="url-cell mono" title="${esc(e.device.id)}">${esc(e.device.id || '')}</td>
+    </tr>`).join('');
   }
 
-  document.getElementById('deleteExpiredBtn').addEventListener('click', async () => {
-    if (!state.expired.length) return;
-    if (!confirm(`PERMANENTLY DELETE ${state.expired.length} expired disabled device(s)?`)) return;
-    if (!state.haveWriteConsent) {
-      try { await Auth.signIn(true); state.haveWriteConsent = true; }
-      catch (e) { alert('Failed to acquire write permissions: ' + e.message); return; }
-    }
-    const concurrency = Math.max(1, Math.min(20, +document.getElementById('concurrency').value || 6));
-    const ul = document.createElement('ul');
-    ul.className = 'action-result-list';
-    document.getElementById('expiredContainer').appendChild(ul);
-    const survivors = [];
-    await Concurrency.pmap(state.expired, async (e) => {
-      const li = document.createElement('li');
-      li.innerHTML = `<span class="muted">...</span> ${escapeHtml(e.device.displayName || e.device.id)}`;
-      ul.appendChild(li);
+  async function deleteExpired() {
+    const ctx = state.expiredCtx;
+    if (!state.expired.length || !ctx) return;
+    const rows = state.expired.slice();
+    const n = rows.length;
+    const ok = await confirm({
+      title: `Delete ${n} expired device${n === 1 ? '' : 's'}?`,
+      body: `These disabled devices are deleted from Entra ID. Each one is read again first; a device that was enabled again or whose ${ctx.attr} changed is skipped. Deleting cannot be undone.`,
+      items: rows.map((e) => `${Devices.describe(e.device)}  |  disabled ${Devices.fmtDate(e.disabledAt)}`),
+      okLabel: `Delete ${n}`,
+      danger: true,
+      wide: true,
+    });
+    if (!ok) return;
+    try { await Auth.getWriteToken(); }
+    catch (e) { toast(`No write permission: ${e.message}`, 'err'); return; }
+
+    const list = $('expiredResults');
+    list.hidden = false;
+    list.replaceChildren();
+    const deleted = new Set();
+    let skipped = 0, failed = 0;
+    await busy($('deleteExpiredBtn'), () => Concurrency.pmap(rows, async (e) => {
+      const d = e.device;
+      const line = resultLine(list, d);
       try {
-        await Graph.deleteDevice(e.device.id);
-        li.innerHTML = `<span class="ok-mark">DEL</span> Deleted: ${escapeHtml(e.device.displayName || e.device.id)}`;
+        const fresh = await Graph.getDevice(d.id);
+        const check = Devices.recheckExpired(fresh, ctx.attr, e.stampValue, Date.now() - ctx.grace * DAY);
+        if (!check.ok) {
+          skipped++;
+          line.skip(`${d.displayName || d.id}: ${check.reason}`);
+          Log.warn(`Grace delete skipped ${d.id}: ${check.reason}`);
+          return;
+        }
+        await Graph.deleteDevice(d.id);
+        deleted.add(d.id);
+        line.ok(`Deleted ${d.displayName || d.id}`);
       } catch (err) {
-        li.innerHTML = `<span class="err-mark">ERR</span> ${escapeHtml(e.device.displayName || e.device.id)}: ${escapeHtml(err.message)}`;
-        survivors.push(e);
+        failed++;
+        line.fail(`${d.displayName || d.id}: ${err.message}`);
+        Log.err(`Grace delete failed for ${d.id}:`, err);
       }
-    }, { concurrency });
-    state.expired = survivors;
-    renderExpired();
-  });
-
-  // ---------- Helpers ----------
-  function escapeHtml(s) {
-    return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[c]);
-  }
-  function escapeAttr(s) { return escapeHtml(s); }
-  function formatDate(d) {
-    if (!d) return '<span class="muted">-</span>';
-    const dt = d instanceof Date ? d : new Date(d);
-    if (isNaN(dt.getTime())) return '';
-    return dt.toISOString().substring(0, 10);
+    }, { concurrency: concurrency() }));
+    toast(`Deleted ${deleted.size} of ${n}${skipped ? `, ${skipped} skipped` : ''}${failed ? `, ${failed} failed` : ''}`, skipped || failed ? 'warn' : 'ok');
+    state.expired = state.expired.filter((e) => !deleted.has(e.device.id));
+    state.devices = state.devices.filter((d) => !deleted.has(d.id));
+    renderExpired(true);
+    if (deleted.size && state.groups.length) regroup();
   }
 
-  // ---------- Boot ----------
-  (async () => {
+  // ---------- export ----------
+  const EXPORT_COLUMNS = [
+    { key: 'hwid', label: 'Hardware id' },
+    { key: 'count', label: 'Devices in group' },
+    { key: 'role', label: 'Role' },
+    { key: 'displayName', label: 'Display name' },
+    { key: 'deviceId', label: 'Device id' },
+    { key: 'id', label: 'Object id' },
+    { key: 'os', label: 'OS' },
+    { key: 'trustType', label: 'Trust type' },
+    { key: 'autopilot', label: 'Autopilot' },
+    { key: 'primaryUser', label: 'Primary user' },
+    { key: 'enabled', label: 'Enabled' },
+    { key: 'lastSignIn', label: 'Last sign-in' },
+    { key: 'created', label: 'Created' },
+    { key: 'managed', label: 'Managed' },
+    { key: 'compliant', label: 'Compliant' },
+    { key: 'stamp', label: 'Disable timestamp' },
+  ];
+  function exportRows() { applyView(); return Devices.rowsFromGroups(state.visible, $('extAttrSelect').value); }
+
+  // ---------- boot ----------
+  let activateTab = () => {};
+
+  async function boot() {
+    if (ToolkitAuth.isAuthPopup()) return;
+    activateTab = Toolkit.tabs('#tabs');
+    loadPrefs();
+    $('signInBtn').addEventListener('click', onSignIn);
+    $('scanBtn').addEventListener('click', scan);
+    $('cancelBtn').addEventListener('click', () => { if (state.cancelToken) state.cancelToken.cancel(); });
+    PREF_FIELDS.forEach((id) => $(id).addEventListener('change', () => {
+      savePrefs();
+      if (id !== 'concurrency' && state.expiredCtx) clearExpired('Settings changed, search again.');
+    }));
+    $('includeDisabled').addEventListener('change', () => { savePrefs(); if (state.devices.length) regroup(); });
+    $('hideMixedAutopilot').addEventListener('change', () => { savePrefs(); renderGroups(); });
+    $('resultFilter').addEventListener('input', renderGroups);
+    $('groupsContainer').addEventListener('change', onGroupsChange);
+    $('selectAllStaleBtn').addEventListener('click', () => {
+      applyView();
+      state.selected = Devices.staleIds(state.visible);
+      renderGroups();
+    });
+    $('selectNoneBtn').addEventListener('click', () => { state.selected.clear(); renderGroups(); });
+    $('disableBtn').addEventListener('click', () => bulkAction('disable'));
+    $('deleteBtn').addEventListener('click', () => bulkAction('delete'));
+    $('findExpiredBtn').addEventListener('click', findExpired);
+    $('deleteExpiredBtn').addEventListener('click', deleteExpired);
+    $('exportXlsxBtn').addEventListener('click', () => busy($('exportXlsxBtn'), () => Export.xlsx([{ name: 'Duplicates', rows: exportRows(), columns: EXPORT_COLUMNS }], `duped-devices-${Export.stamp()}.xlsx`).catch((e) => toast(e.message, 'err'))));
+    $('exportCsvBtn').addEventListener('click', () => Export.csv(exportRows(), { columns: EXPORT_COLUMNS, filename: `duped-devices-${Export.stamp()}.csv` }));
+
     try {
-      const acct = await Auth.init();
-      if (acct) {
-        Log.info(`Already signed in as ${acct.username}`);
-        setSignedInUI(acct);
-        loadPrefs();
-      } else {
-        loadPrefs();
-      }
+      await Auth.init();
+      refreshAuthUI();
+      Log.info('DupedDevices ready.');
     } catch (e) {
-      Log.err('Auth init failed:', e.message);
-      alert('Auth init failed: ' + e.message);
+      Log.err('Start-up failed:', e);
+      toast(`Start-up failed: ${e.message}`, 'err');
     }
-  })();
+  }
+
+  document.addEventListener('DOMContentLoaded', boot);
 })();

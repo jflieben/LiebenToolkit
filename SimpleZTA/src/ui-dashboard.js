@@ -47,20 +47,20 @@
         if (before === 'Failed' && r.status === 'Passed') fixes += 1;
       }
       deltaChips = `
-        <span class="viz-chip ${regressions ? 'viz-chip-bad' : ''}" title="Controls that passed in the previous scan but fail now">▼ ${regressions} regressed</span>
-        <span class="viz-chip ${fixes ? 'viz-chip-good' : ''}" title="Controls that failed in the previous scan but pass now">▲ ${fixes} fixed</span>
+        <span class="viz-chip ${regressions ? 'viz-chip-bad' : ''}" title="Controls that passed in the previous scan but fail now">${regressions} regressed</span>
+        <span class="viz-chip ${fixes ? 'viz-chip-good' : ''}" title="Controls that failed in the previous scan but pass now">${fixes} fixed</span>
         <span class="viz-chip">vs ${new Date(prev.startedAt).toLocaleDateString()}</span>`;
     }
     return `
       <div class="card">
         <div class="row between">
           <div>
-            <h2 style="margin:0">${esc(scan.tenantName || scan.tenantDomain || 'Tenant')}</h2>
+            <h2 class="dash-title">${esc(scan.tenantName || scan.tenantDomain || 'Tenant')}</h2>
             <div class="muted">${esc(scan.tenantDomain || '')}${scan.tenantId ? ` · ${esc(scan.tenantId)}` : ''}</div>
           </div>
           <div class="row">${deltaChips}</div>
         </div>
-        <div class="muted" style="margin-top:6px">
+        <div class="muted small dash-meta">
           Scanned ${new Date(scan.startedAt).toLocaleString()} · ${(scan.results || []).length} controls
           ${scan.tenantInfoMeta?.days || scan.tenantInfo ? '' : ' · tenant insights not collected'}
         </div>
@@ -95,7 +95,7 @@
     const failed = (scan.results || []).filter(r => r.status === 'Failed');
     const pillars = PILLARS.filter(p => (scan.results || []).some(r => r.pillar === p));
     const risks = RISK_ORDER.filter(risk => failed.some(r => (r.risk || 'Unranked') === risk));
-    if (!failed.length) return `<div class="chart-card"><h3>Failed controls by pillar × risk</h3><div class="viz-empty">No failed controls. 🎉</div></div>`;
+    if (!failed.length) return `<div class="chart-card"><h3>Failed controls by pillar × risk</h3><div class="viz-empty">No failed controls.</div></div>`;
     const html = Charts.heatmap({
       rows: pillars,
       cols: risks.length ? risks : ['Unranked'],
@@ -120,7 +120,7 @@
       .slice(0, 10);
 
     const body = rows.map(({ r, meta }) => `
-      <tr class="viz-fix-row" data-test-id="${esc(r.id)}">
+      <tr class="viz-fix-row clickable-row" data-test-id="${esc(r.id)}">
         <td><span class="viz-risk viz-risk-${esc((r.risk || 'Unranked').toLowerCase())}">${esc(r.risk || 'Unranked')}</span></td>
         <td><strong>${esc(r.id)}</strong> ${esc(r.title)}</td>
         <td>${esc(meta.implementationCost || '-')}</td>
@@ -129,12 +129,12 @@
 
     return `
       <div class="card">
-        <h2>Top fixes — highest risk, lowest effort first</h2>
+        <h2>Top fixes: highest risk, lowest effort first</h2>
         <p class="muted">Failed controls ranked by risk, then implementation cost and user impact. Click a row for evidence and remediation guidance.</p>
-        <table class="results-table" id="topFixesTable">
+        <div class="table-wrap"><table class="data-table" id="topFixesTable">
           <thead><tr><th>Risk</th><th>Control</th><th>Effort</th><th>User impact</th></tr></thead>
           <tbody>${body}</tbody>
-        </table>
+        </table></div>
       </div>`;
   }
 
@@ -180,7 +180,7 @@
       <details class="card viz-config">
         <summary><strong>${esc(title)}</strong> <span class="muted">(${rows.length})</span></summary>
         <div class="md-table-wrap">
-          <table class="results-table">
+          <table class="data-table">
             <thead><tr>${cols.map(c => `<th>${esc(c.replace(/([a-z])([A-Z])/g, '$1 $2'))}</th>`).join('')}</tr></thead>
             <tbody>${body}</tbody>
           </table>
@@ -191,7 +191,7 @@
   function render(scan) {
     const root = document.getElementById('dashboardRoot');
     if (!scan) {
-      root.innerHTML = '<div class="card"><h2>Dashboard</h2><p class="muted">No scans yet. Run an assessment first.</p></div>';
+      root.innerHTML = `<div class="card"><div class="empty-state">${Toolkit.iconHtml('i-chart')}<h3>No scans yet</h3><p>Run an assessment on the Run tab. The dashboard shows the selected scan.</p></div></div>`;
       return;
     }
 
@@ -214,16 +214,16 @@
       ${topFixes(scan)}
       ${tenantKpis(info)}
       <div class="card">
-        <h2>Identity — sign-in protection &amp; authentication methods</h2>
+        <h2>Identity: sign-in protection and authentication methods</h2>
         <div class="results-charts">
-          ${sankeyCard('Conditional access → MFA coverage', info?.OverviewCaMfaAllUsers, note('OverviewCaMfaAllUsers'))}
+          ${sankeyCard('Conditional access and MFA coverage', info?.OverviewCaMfaAllUsers, note('OverviewCaMfaAllUsers'))}
           ${sankeyCard('Sign-ins by device management state', info?.OverviewCaDevicesAllUsers, note('OverviewCaDevicesAllUsers'))}
-          ${sankeyCard('Auth methods — all users', info?.OverviewAuthMethodsAllUsers, note('OverviewAuthMethodsAllUsers'))}
-          ${sankeyCard('Auth methods — privileged users', info?.OverviewAuthMethodsPrivilegedUsers, note('OverviewAuthMethodsPrivilegedUsers'))}
+          ${sankeyCard('Auth methods: all users', info?.OverviewAuthMethodsAllUsers, note('OverviewAuthMethodsAllUsers'))}
+          ${sankeyCard('Auth methods: privileged users', info?.OverviewAuthMethodsPrivilegedUsers, note('OverviewAuthMethodsPrivilegedUsers'))}
         </div>
       </div>
       <div class="card">
-        <h2>Devices — join type, compliance &amp; ownership</h2>
+        <h2>Devices: join type, compliance and ownership</h2>
         <div class="results-charts">
           ${sankeyCard('Desktop devices', info?.DeviceOverview?.DesktopDevicesSummary, note('DeviceOverview'))}
           ${sankeyCard('Mobile devices', info?.DeviceOverview?.MobileSummary, note('DeviceOverview'))}
@@ -240,10 +240,8 @@
 
     document.querySelectorAll('#topFixesTable .viz-fix-row').forEach(tr => {
       tr.addEventListener('click', () => {
-        const id = tr.dataset.testId;
-        document.querySelectorAll('.tab').forEach(x => x.classList.toggle('active', x.dataset.tab === 'results'));
-        document.querySelectorAll('.panel').forEach(p => p.classList.toggle('active', p.id === 'panel-results'));
-        window.UIResults?.openDetail?.(scan.id, id);
+        window.ZtaApp?.showTab?.('results');
+        window.UIResults?.openDetail?.(scan.id, tr.dataset.testId);
       });
     });
   }

@@ -1,23 +1,23 @@
 <!DOCTYPE html>
-<html lang="en" data-theme="light">
-<!-- Append ?theme=dark to preview the dark palette. -->
+<html lang="en">
+<!-- Append ?theme=dark to preview the dark palette (toolkit.js reads it). -->
 <head>
   <meta charset="UTF-8"/>
   <title>SimpleZTA dashboard preview</title>
   <base href="../"/>
+  <link rel="stylesheet" href="../shared/toolkit.css"/>
   <link rel="stylesheet" href="style.css"/>
+  <script src="../shared/registry.js"></script>
+  <script src="../shared/toolkit.js"></script>
 </head>
 <body>
-  <main>
+  <main class="tk-page">
     <div id="dashboardRoot"></div>
   </main>
   <script>
-    window.Auth = { coreScopes: [], getAccount: () => null };
-    if (new URLSearchParams(location.search).get('theme') === 'dark') {
-      document.documentElement.dataset.theme = 'dark';
-    }
+    window.Auth = { getAccount: () => null };
   </script>
-  <script src="src/log.js"></script>
+  <script src="../shared/log.js"></script>
   <script src="src/storage.js"></script>
   <script src="src/md.js"></script>
   <script src="src/charts.js"></script>
@@ -32,7 +32,7 @@
       summary: { total: 306, passed: 180, failed: 74, skipped: 40, error: 12 },
       results: [
         ...Array.from({ length: 180 }, (_, i) => ({ id: `${40000 + i}`, title: `Passing control ${i}`, status: 'Passed', pillar: ['Identity', 'Devices', 'Network', 'Data'][i % 4], risk: ['High', 'Medium', 'Low'][i % 3], implementationLevel: 'full', durationMs: 40 })),
-        ...Array.from({ length: 74 }, (_, i) => ({ id: `${41000 + i}`, title: `Failing control ${i} — a longer descriptive control title to check wrapping`, status: 'Failed', message: 'Sample finding text for the failure.', pillar: ['Identity', 'Devices', 'Network', 'Data'][i % 4], risk: ['High', 'Medium', 'Low', 'High'][i % 4], implementationLevel: 'full', durationMs: 90 })),
+        ...Array.from({ length: 74 }, (_, i) => ({ id: `${41000 + i}`, title: `Failing control ${i}, a longer descriptive control title to check wrapping`, status: 'Failed', message: 'Sample finding text for the failure.', pillar: ['Identity', 'Devices', 'Network', 'Data'][i % 4], risk: ['High', 'Medium', 'Low', 'High'][i % 4], implementationLevel: 'full', durationMs: 90 })),
         ...Array.from({ length: 40 }, (_, i) => ({ id: `${42000 + i}`, title: `Skipped control ${i}`, status: 'Skipped', pillar: 'Data', risk: 'Medium', implementationLevel: i % 2 ? 'none' : 'full', durationMs: 4 })),
         ...Array.from({ length: 12 }, (_, i) => ({ id: `${43000 + i}`, title: `Errored control ${i}`, status: 'Error', pillar: 'Identity', risk: 'High', implementationLevel: 'full', durationMs: 300 })),
       ],

@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>SimpleMaester - tests</title>
+  <style>
+    body { font: 14px/1.4 -apple-system,Segoe UI,sans-serif; padding: 20px; max-width: 900px; margin: 0 auto; }
+    .pass { color: #1f7a3a; } .fail { color: #b32026; font-weight: bold; }
+    pre { background: #f4f4f6; padding: 10px; border-radius: 6px; overflow: auto; }
+    h1 { font-size: 18px; }
+  </style>
+</head>
+<body>
+  <h1>SimpleMaester - unit tests</h1>
+  <div id="out"></div>
+  <script src="../../shared/registry.js"></script>
+  <script src="../../shared/toolkit.js"></script>
+  <script src="../../shared/log.js"></script>
+  <script src="../../shared/concurrency.js"></script>
+  <script src="../../shared/http.js"></script>
+  <script src="../../shared/auth.js"></script>
+  <script src="../../shared/export.js"></script>
+  <script src="../../vendor/marked.12.0.2.min.js"></script>
+  <script src="../src/config.js"></script>
+  <script src="../src/api.js"></script>
+  <script src="../src/storage.js"></script>
+  <script src="../src/markdown.js"></script>
+  <script src="../src/ui-util.js"></script>
+  <script src="../src/tests-native.js"></script>
+  <script src="../src/tests-cis.js"></script>
+  <script src="../src/tests-cisa.js"></script>
+  <script src="../src/tests-intune.js"></script>
+  <script src="../src/tests-governance.js"></script>
+  <script src="../src/tests-stubs.js"></script>
+  <script>
+    const out = document.getElementById('out');
+    const queue = [];
+    function test(name, fn) { queue.push([name, fn]); }
+    function eq(a, b, m = '') {
+      const A = JSON.stringify(a), B = JSON.stringify(b);
+      if (A !== B) throw new Error(`${m} expected ${B}, got ${A}`);
+    }
+    function ok(v, m = '') { if (!v) throw new Error(`${m} expected truthy`); }
+    function line(cls, html) { const d = document.createElement('div'); d.className = cls; d.innerHTML = html; out.appendChild(d); }
+    const escText = (s) => String(s).replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
+    // Parse rendered HTML in an inert document so nothing in it runs.
+    const inert = (html) => new DOMParser().parseFromString(`<body>${html}</body>`, 'text/html').body;
+
+    // ---------- Markdown
+    test('markdown: block HTML is shown as text, not parsed', () => {
+      const b = inert(Markdown.render('<img src=x onerror="alert(1)">\n\ntext'));
+      eq(b.querySelectorAll('img').length, 0);
+      ok(b.textContent.includes('<img src=x onerror="alert(1)">'));
+    });
+    test('markdown: inline HTML and script tags are escaped', () => {
+      const b = inert(Markdown.render('a <script>alert(1)<\/script> b <b onclick="x()">bold</b>'));
+      eq(b.querySelectorAll('script, b').length, 0);
+      ok(b.textContent.includes('<script>'));
+    });
+    test('markdown: javascript, data and vbscript links lose their href', () => {
+      for (const u of ['javascript:alert(1)', 'JaVaScRiPt:alert(1)', 'data:text/html,hi', 'vbscript:x']) {
+        const b = inert(Markdown.render(`[click](${u})`));
+        eq(b.querySelectorAll('a').length, 0, u);
+        ok(b.textContent.includes('click'), u);
+      }
+    });
+    test('markdown: autolinks with a bad scheme are not links', () => {
+      eq(inert(Markdown.render('<javascript:alert(1)>')).querySelectorAll('a[href^="javascript"]').length, 0);
+    });
+    test('markdown: https link kept, opens in a new tab', () => {
+      const a = inert(Markdown.render('[Maester](https://maester.dev/docs "Docs")')).querySelector('a');
+      eq(a.getAttribute('href'), 'https://maester.dev/docs');
+      eq(a.getAttribute('target'), '_blank');
+      eq(a.getAttribute('rel'), 'noopener noreferrer');
+      eq(a.getAttribute('title'), 'Docs');
+    });
+    test('markdown: mailto and relative links kept', () => {
+      eq(inert(Markdown.render('[m](mailto:a@b.nl)')).querySelector('a').getAttribute('href'), 'mailto:a@b.nl');
+      const rel = inert(Markdown.render('[r](docs/x.html)')).querySelector('a');
+      eq(rel.getAttribute('href'), 'docs/x.html');
+      eq(rel.getAttribute('target'), null);
+    });
+    test('markdown: attribute breakout in href or title is escaped', () => {
+      const a = inert(Markdown.render('[x](https://a.nl/?q="onmouseover=alert(1) "t\\" onclick=y")')).querySelector('a');
+      ok(a, 'link rendered');
+      eq(a.getAttribute('onmouseover'), null);
+      eq(a.getAttribute('onclick'), null);
+    });
+    test('markdown: images become links, no img element', () => {
+      const b = inert(Markdown.render('![logo](https://example.com/x.png)'));
+      eq(b.querySelectorAll('img').length, 0);
+      eq(b.querySelector('a').getAttribute('href'), 'https://example.com/x.png');
+      eq(inert(Markdown.render('![x](javascript:alert(1))')).querySelectorAll('a').length, 0);
+    });
+    test('markdown: normal formatting still renders', () => {
+      const b = inert(Markdown.render('# Title\n\nSome **bold** and `code`.\n\n- one\n- two\n\n| a | b |\n|---|---|\n| 1 | 2 |'));
+      eq(b.querySelector('h1').textContent, 'Title');
+      eq(b.querySelector('strong').textContent, 'bold');
+      eq(b.querySelector('code').textContent, 'code');
+      eq(b.querySelectorAll('li').length, 2);
+      eq(b.querySelectorAll('td').length, 2);
+    });
+    test('markdown: code blocks keep HTML as text', () => {
+      const b = inert(Markdown.render('```\n<script>x<\/script>\n```'));
+      eq(b.querySelectorAll('script').length, 0);
+      ok(b.querySelector('pre code').textContent.includes('<script>'));
+    });
+    test('markdown: cleanHref', () => {
+      eq(Markdown.cleanHref('https://x.nl'), 'https://x.nl');
+      eq(Markdown.cleanHref(' javascript:alert(1)'), null);
+      eq(Markdown.cleanHref('java\tscript:alert(1)'), null);
+      eq(Markdown.cleanHref(''), null);
+    });
+
+    // ---------- scopes
+    test('scopes: read set is Graph only, no ARM or Exchange', () => {
+      ok(SMAuth.SETS.read.every((s) => s.startsWith('https://graph.microsoft.com/')));
+      eq(Object.values(SMAuth.SETS).flat().some((s) => /outlook\.office365\.com/i.test(s)), false);
+    });
+    test('scopes: expand handles set names, arrays, short names and dedupes', () => {
+      eq(SMAuth.expand('arm'), ['https://management.azure.com/.default']);
+      eq(SMAuth.expand(['User.Read', 'https://graph.microsoft.com/User.Read']), ['https://graph.microsoft.com/User.Read']);
+      const all = SMAuth.expand([['forms'], 'read']);
+      eq(all.length, SMAuth.SETS.read.length + 1);
+      eq(SMAuth.expand(null), []);
+    });
+    test('scopes: consentGroups splits per resource and isolates .default', () => {
+      const g = SMAuth.consentGroups([...SMAuth.SETS.read, 'https://management.azure.com/.default', 'https://graph.microsoft.com/AccessReview.Read.All']);
+      eq(g.length, 2);
+      eq(g[0].length, SMAuth.SETS.read.length + 1);
+      eq(g[1], ['https://management.azure.com/.default']);
+      eq(SMAuth.consentGroups([]), []);
+    });
+    test('scopes: Auth instance exposes the shared methods and test aliases', () => {
+      ok(typeof Auth.getToken === 'function' && typeof Auth.ensureScopes === 'function');
+      eq(Auth.SCOPES.graphFull, SMAuth.SETS.read);
+    });
+    test('catalog: only Azure tests ask for ARM, none ask for Exchange', () => {
+      const all = [TestsNative, TestsCIS, TestsCISA, TestsIntune, TestsGovernance, TestsStubs].flatMap((m) => m.buildCatalog());
+      ok(all.length > 100, 'catalog size');
+      for (const t of all) {
+        const scopes = SMAuth.expand(t.requiredScopes || 'read');
+        ok(scopes.length, t.id);
+        eq(scopes.some((s) => /outlook\.office365/i.test(s)), false, t.id);
+        if (scopes.some((s) => /management\.azure\.com/i.test(s))) ok(t.category === 'Azure' || t.id === 'CISA.MS.AAD.4.1', `${t.id} asks for ARM`);
+      }
+    });
+    test('catalog: every test has an id, title and run function', () => {
+      const all = [TestsNative, TestsCIS, TestsCISA, TestsIntune, TestsGovernance, TestsStubs].flatMap((m) => m.buildCatalog());
+      for (const t of all) { ok(t.id && t.title && typeof t.run === 'function', t.id); }
+    });
+
+    // ---------- storage
+    test('storage: compactForStorage caps calls and response previews', () => {
+      const calls = Array.from({ length: 8 }, (_, i) => ({ method: 'GET', url: `u${i}`, status: 200, response: 'x'.repeat(1500), truncated: i === 0 }));
+      calls.push({ method: 'INFO', url: '... and 3 more call(s) not shown' });
+      const scan = { id: 's', results: [{ id: 'T1', detailMd: '# md', graphCalls: calls }, { id: 'T2' }] };
+      const c = History.compactForStorage(scan);
+      const r = c.results[0];
+      eq(r.detailMd, undefined);
+      eq(r.graphCalls.length, 6);
+      ok(r.graphCalls.slice(0, 5).every((x) => x.response.length === 500 && x.truncated));
+      eq(r.graphCalls[5].method, 'INFO');
+      ok(r.graphCalls[5].url.includes('4 more'));
+      eq(scan.results[0].graphCalls.length, 9, 'input untouched');
+      eq(c.results[1].id, 'T2');
+    });
+    test('storage: short responses kept as is', () => {
+      const c = History.compactForStorage({ results: [{ id: 'a', graphCalls: [{ method: 'GET', response: 'abc', truncated: false }] }] });
+      eq(c.results[0].graphCalls, [{ method: 'GET', response: 'abc', truncated: false }]);
+    });
+
+    // ---------- api
+    test('api: shorten truncates long bodies', () => {
+      eq(Graph.shorten('abc'), { response: 'abc', truncated: false });
+      eq(Graph.shorten('x'.repeat(2000)).response.length, 1500);
+      eq(Graph.shorten({ a: 1 }).response, '{"a":1}');
+      eq(Graph.shorten(null), { response: '', truncated: false });
+    });
+    test('api: no token is sent to a host other than Graph or ARM', async () => {
+      let err = null;
+      try { await Graph.graph('https://evil.example.com/v1.0/users'); } catch (e) { err = e; }
+      ok(err && /Refusing to send a token/.test(err.message), 'refused');
+      err = null;
+      try { await Graph.graph('https://graph.microsoft.com.evil.example/v1.0/users'); } catch (e) { err = e; }
+      ok(err && /Refusing/.test(err.message), 'suffix trick refused');
+    });
+    test('api: DNS record type is validated', async () => {
+      let err = null;
+      try { await Graph.dns('x.nl', 'TXT&name=y'); } catch (e) { err = e; }
+      ok(err && /Unsupported DNS record type/.test(err.message));
+    });
+    test('api: pickPath', () => {
+      eq(Graph.pickPath({ a: { b: 3 } }, 'a.b'), 3);
+      eq(Graph.pickPath({ a: null }, 'a.b'), undefined);
+    });
+
+    // ---------- ui
+    test('ui: badge classes map to shared badge styles', () => {
+      eq(SMUi.statusClass('Passed'), 'ok');
+      eq(SMUi.statusClass('Failed'), 'danger');
+      eq(SMUi.statusClass('Weird'), 'neutral');
+      eq(SMUi.severityClass('Medium'), 'warn');
+      eq(SMUi.statusKey('<x>'), 'skipped');
+      eq(SMUi.statusKey('Failed'), 'failed');
+    });
+    test('ui: badge and sparkline escape their text', () => {
+      eq(inert(SMUi.badge('ok', '<img src=x onerror=1>')).querySelectorAll('img').length, 0);
+      const b = inert(SMUi.sparkHtml([{ at: '"><img src=x>', status: '"><b>' }]));
+      eq(b.querySelectorAll('img, b').length, 0);
+      eq(b.querySelector('.spark span').className, 'skipped');
+    });
+
+    (async () => {
+      let pass = 0, fail = 0;
+      for (const [name, fn] of queue) {
+        try { await fn(); line('pass', `PASS ${escText(name)}`); pass++; }
+        catch (e) { line('fail', `FAIL ${escText(name)}<br><pre>${escText(e.stack || e.message)}</pre>`); fail++; }
+      }
+      out.insertAdjacentHTML('beforeend', `<h2>${pass} passed, ${fail} failed</h2><p id="result">TEST-RESULT: ${fail ? 'FAIL' : 'PASS'} ${pass}/${pass + fail}</p>`);
+    })();
+  </script>
+</body>
+</html>

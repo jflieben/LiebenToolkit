@@ -1,5 +1,5 @@
 /*
- * Phase 3 — Bucket B: Azure controls via Azure Resource Manager / Resource Graph.
+ * Phase 3: Bucket B: Azure controls via Azure Resource Manager / Resource Graph.
  *
  * Ports the KQL Resource Graph queries and pass/fail logic of the ZeroTrustAssessment
  * Azure tests to the browser using a delegated ARM token (Api.armResourceGraph).
@@ -79,7 +79,7 @@
   }
 
   const impl = {
-    // 26879 — Request Body Inspection enabled in Application Gateway WAF.
+    // 26879: Request Body Inspection enabled in Application Gateway WAF.
     '26879': async (test) => runArg(test,
       `resources
 | where type =~ 'microsoft.network/ApplicationGatewayWebApplicationFirewallPolicies'
@@ -99,7 +99,7 @@
       },
       'No Application Gateway WAF policies attached to Application Gateways were found.'),
 
-    // 26880 — Request Body Inspection enabled in Azure Front Door WAF.
+    // 26880: Request Body Inspection enabled in Azure Front Door WAF.
     '26880': async (test) => runArg(test,
       `resources
 | where type =~ 'microsoft.network/frontdoorwebapplicationfirewallpolicies'
@@ -112,7 +112,7 @@
       },
       'No Azure Front Door WAF policies attached to Front Door were found.'),
 
-    // 26881 — Default Ruleset enabled in Application Gateway WAF.
+    // 26881: Default Ruleset enabled in Application Gateway WAF.
     '26881': async (test) => runArg(test,
       `resources
 | where type =~ 'microsoft.network/applicationgatewaywebapplicationfirewallpolicies'
@@ -125,7 +125,7 @@
       },
       'No Application Gateway WAF policies attached to Application Gateways were found.'),
 
-    // 26882 — Bot protection ruleset enabled in Application Gateway WAF.
+    // 26882: Bot protection ruleset enabled in Application Gateway WAF.
     '26882': async (test) => runArg(test,
       `resources | where type =~ 'microsoft.network/applicationgatewaywebapplicationfirewallpolicies' | where coalesce(array_length(properties.applicationGateways), 0) >= 1 | project PolicyName=name, EnabledState=tostring(properties.policySettings.state), Mode=tostring(properties.policySettings.mode), ManagedRuleSets=properties.managedRules.managedRuleSets`,
       (rows) => {
@@ -135,7 +135,7 @@
       },
       'No Application Gateway WAF policies attached to Application Gateways were found.'),
 
-    // 26883 — Default rule set assigned in Azure Front Door WAF (partial: override depth not checked).
+    // 26883: Default rule set assigned in Azure Front Door WAF (partial: override depth not checked).
     '26883': async (test) => runArg(test,
       `resources | where type =~ 'microsoft.network/frontdoorwebapplicationfirewallpolicies' | where array_length(properties.frontendEndpointLinks) > 0 or array_length(properties.securityPolicyLinks) > 0 | project PolicyName=name, EnabledState=tostring(properties.policySettings.enabledState), WafMode=tostring(properties.policySettings.mode), ManagedRuleSets=properties.managedRules.managedRuleSets`,
       (rows) => {
@@ -145,7 +145,7 @@
       },
       'No Azure Front Door WAF policies attached to Front Door were found.'),
 
-    // 26884 — Bot protection rule set enabled in Azure Front Door WAF (partial).
+    // 26884: Bot protection rule set enabled in Azure Front Door WAF (partial).
     '26884': async (test) => runArg(test,
       `resources | where type =~ 'microsoft.network/frontdoorwebapplicationfirewallpolicies' | where sku.name =~ 'Premium_AzureFrontDoor' | project PolicyName=name, ManagedRuleSets=properties.managedRules.managedRuleSets`,
       (rows) => {
@@ -155,7 +155,7 @@
       },
       'No Premium Azure Front Door WAF policies were found (Bot protection requires the Premium SKU).'),
 
-    // 26885 — Metrics enabled for DDoS-protected public IPs.
+    // 26885: Metrics enabled for DDoS-protected public IPs.
     '26885': async (test) => runArg(test,
       `resources | where type =~ 'microsoft.network/publicipaddresses' | where properties.provisioningState =~ 'Succeeded' | project PublicIpName=name, PublicIpId=id, ProtectionMode=tostring(properties.ddosSettings.protectionMode)`,
       async (rows) => {
@@ -165,7 +165,7 @@
       },
       'No public IP addresses were found.'),
 
-    // 26886 — Diagnostic logging enabled for DDoS-protected public IPs.
+    // 26886: Diagnostic logging enabled for DDoS-protected public IPs.
     '26886': async (test) => runArg(test,
       `resources | where type =~ 'microsoft.network/publicipaddresses' | where properties.provisioningState =~ 'Succeeded' | project PublicIpName=name, PublicIpId=id, ProtectionMode=tostring(properties.ddosSettings.protectionMode)`,
       async (rows) => {
@@ -175,25 +175,25 @@
       },
       'No public IP addresses were found.'),
 
-    // 26887 — Diagnostic logging enabled in Azure Firewall.
+    // 26887: Diagnostic logging enabled in Azure Firewall.
     '26887': async (test) => runArg(test,
       `resources | where type =~ 'microsoft.network/azurefirewalls' | where properties.provisioningState =~ 'Succeeded' | project FirewallName=name, FirewallId=id`,
       async (rows) => diagCheck(test, rows, 'FirewallId', 'FirewallName', 'logs', 'Azure Firewalls'),
       'No Azure Firewalls were found.'),
 
-    // 26888 — Diagnostic logging enabled in Application Gateway WAF.
+    // 26888: Diagnostic logging enabled in Application Gateway WAF.
     '26888': async (test) => runArg(test,
       `resources | where type =~ 'microsoft.network/applicationgateways' | where properties.provisioningState =~ 'Succeeded' | where properties.sku.tier in~ ('WAF', 'WAF_v2') | project GatewayName=name, GatewayId=id`,
       async (rows) => diagCheck(test, rows, 'GatewayId', 'GatewayName', 'logs', 'WAF-enabled Application Gateways'),
       'No WAF-enabled Application Gateways were found.'),
 
-    // 26889 — Diagnostic logging enabled in Azure Front Door WAF.
+    // 26889: Diagnostic logging enabled in Azure Front Door WAF.
     '26889': async (test) => runArg(test,
       `resources | where type =~ 'microsoft.cdn/profiles' | where sku.name in~ ('Standard_AzureFrontDoor', 'Premium_AzureFrontDoor') | project FrontDoorId=tolower(id), FrontDoorName=name`,
       async (rows) => diagCheck(test, rows, 'FrontDoorId', 'FrontDoorName', 'logs', 'Azure Front Door profiles'),
       'No Azure Front Door profiles were found.'),
 
-    // 27015 — HTTP DDoS Protection Ruleset enabled in Application Gateway WAF.
+    // 27015: HTTP DDoS Protection Ruleset enabled in Application Gateway WAF.
     '27015': async (test) => runArg(test,
       `resources | where type =~ 'microsoft.network/applicationgatewaywebapplicationfirewallpolicies' | where coalesce(array_length(properties.applicationGateways), 0) >= 1 | project PolicyName=name, EnabledState=tostring(properties.policySettings.state), Mode=tostring(properties.policySettings.mode), ManagedRuleSets=properties.managedRules.managedRuleSets`,
       (rows) => {
@@ -209,7 +209,7 @@
       },
       'No Application Gateway WAF policies attached to Application Gateways were found.'),
 
-    // 27016 — Rate Limiting enabled in Application Gateway WAF.
+    // 27016: Rate Limiting enabled in Application Gateway WAF.
     '27016': async (test) => runArg(test,
       `resources | where type =~ 'microsoft.network/applicationgatewaywebapplicationfirewallpolicies' | where coalesce(array_length(properties.applicationGateways), 0) >= 1 | project PolicyName=name, EnabledState=tostring(properties.policySettings.state), Mode=tostring(properties.policySettings.mode), CustomRules=properties.customRules`,
       (rows) => {
@@ -218,7 +218,7 @@
         return fail(test, `${failing.length} Application Gateway WAF policy(ies) do not have an enabled rate limit rule.`, { policies: rows.length, nonCompliant: failing.map(r => r.PolicyName) });
       },
       'No Application Gateway WAF policies attached to Application Gateways were found.'),
-    // 27017 — JavaScript Challenge enabled in Application Gateway WAF.
+    // 27017: JavaScript Challenge enabled in Application Gateway WAF.
     '27017': async (test) => runArg(test,
       `resources | where type =~ 'microsoft.network/applicationgatewaywebapplicationfirewallpolicies' | where coalesce(array_length(properties.applicationGateways), 0) >= 1 | project PolicyName=name, EnabledState=tostring(properties.policySettings.state), Mode=tostring(properties.policySettings.mode), CustomRules=properties.customRules`,
       (rows) => {
@@ -228,7 +228,7 @@
       },
       'No Application Gateway WAF policies attached to Application Gateways were found.'),
 
-    // 27018 — Rate Limiting enabled in Azure Front Door WAF.
+    // 27018: Rate Limiting enabled in Azure Front Door WAF.
     '27018': async (test) => runArg(test,
       `resources | where type =~ 'microsoft.network/frontdoorwebapplicationfirewallpolicies' | where array_length(properties.frontendEndpointLinks) > 0 or array_length(properties.securityPolicyLinks) > 0 | project PolicyName=name, EnabledState=tostring(properties.policySettings.enabledState), WafMode=tostring(properties.policySettings.mode), CustomRules=properties.customRules.rules`,
       (rows) => {
@@ -238,7 +238,7 @@
       },
       'No Azure Front Door WAF policies attached to Front Door were found.'),
 
-    // 27019 — JavaScript Challenge enabled in Azure Front Door WAF.
+    // 27019: JavaScript Challenge enabled in Azure Front Door WAF.
     '27019': async (test) => runArg(test,
       `resources | where type =~ 'microsoft.network/frontdoorwebapplicationfirewallpolicies' | where array_length(properties.frontendEndpointLinks) > 0 or array_length(properties.securityPolicyLinks) > 0 | project PolicyName=name, EnabledState=tostring(properties.policySettings.enabledState), WafMode=tostring(properties.policySettings.mode), CustomRules=properties.customRules.rules`,
       (rows) => {
@@ -248,7 +248,7 @@
       },
       'No Azure Front Door WAF policies attached to Front Door were found.'),
 
-    // 27020 — CAPTCHA challenge enabled in Azure Front Door WAF.
+    // 27020: CAPTCHA challenge enabled in Azure Front Door WAF.
     '27020': async (test) => runArg(test,
       `resources | where type =~ 'microsoft.network/frontdoorwebapplicationfirewallpolicies' | where array_length(properties.frontendEndpointLinks) > 0 or array_length(properties.securityPolicyLinks) > 0 | project PolicyName=name, EnabledState=tostring(properties.policySettings.enabledState), WafMode=tostring(properties.policySettings.mode), CustomRules=properties.customRules.rules`,
       (rows) => {
@@ -257,7 +257,7 @@
         return fail(test, `${failing.length} Azure Front Door WAF policy(ies) do not have an enabled CAPTCHA challenge rule.`, { policies: rows.length, nonCompliant: failing.map(r => r.PolicyName) });
       },
       'No Azure Front Door WAF policies attached to Front Door were found.'),
-    // 25419 — Network access activity visible to SecOps (GSA traffic logs) (partial).
+    // 25419: Network access activity visible to SecOps (GSA traffic logs) (partial).
     '25419': async (test) => {
       let settings;
       try { const r = await Api.arm('providers/microsoft.aadiam/diagnosticSettings?api-version=2017-04-01-preview'); settings = toArray(r?.value); }
@@ -268,7 +268,7 @@
       return fail(test, 'Global Secure Access network access logs are not being exported to a monitoring destination.', evidence);
     },
 
-    // 25420 — Network access logs retained in Log Analytics (partial).
+    // 25420: Network access logs retained in Log Analytics (partial).
     '25420': async (test) => {
       let settings;
       try { const r = await Api.arm('providers/microsoft.aadiam/diagnosticSettings?api-version=2017-04-01-preview'); settings = toArray(r?.value); }
@@ -279,7 +279,7 @@
       return fail(test, 'Network access logs are not retained in a Log Analytics workspace.', evidence);
     },
 
-    // 25533 — DDoS Protection enabled for public IPs attached in VNETs (partial: VNet plan inheritance assumed protected).
+    // 25533: DDoS Protection enabled for public IPs attached in VNETs (partial: VNet plan inheritance assumed protected).
     '25533': async (test) => runArg(test,
       `resources | where type =~ 'microsoft.network/publicipaddresses' | where isnotempty(properties.ipConfiguration.id) | project PublicIpName=name, ProtectionMode=tostring(properties.ddosSettings.protectionMode)`,
       (rows) => {
@@ -289,7 +289,7 @@
       },
       'No attached public IP addresses were found.'),
 
-    // 25535 — Outbound traffic routed through Azure Firewall (partial: default-route heuristic).
+    // 25535: Outbound traffic routed through Azure Firewall (partial: default-route heuristic).
     '25535': async (test) => runArg(test,
       `resources | where type =~ 'microsoft.network/routetables' | mv-expand route = properties.routes | where tostring(route.properties.addressPrefix) == '0.0.0.0/0' | project RouteTable=name, NextHopType=tostring(route.properties.nextHopType), NextHop=tostring(route.properties.nextHopIpAddress)`,
       (rows) => {
@@ -299,7 +299,7 @@
       },
       'No route tables with a default (0.0.0.0/0) route were found.'),
 
-    // 25537 — Threat intelligence in Deny mode on Azure Firewall.
+    // 25537: Threat intelligence in Deny mode on Azure Firewall.
     '25537': async (test) => runArg(test,
       `resources | where type =~ 'microsoft.network/firewallpolicies' | where tostring(properties.sku.tier) in ('Standard', 'Premium') | project PolicyName=name, ThreatIntelMode=tostring(properties.threatIntelMode)`,
       (rows) => {
@@ -309,7 +309,7 @@
       },
       'No Standard/Premium Azure Firewall policies were found.'),
 
-    // 25539 — IDPS in Deny mode on Azure Firewall (partial: reads intrusionDetection.mode via ARG).
+    // 25539: IDPS in Deny mode on Azure Firewall (partial: reads intrusionDetection.mode via ARG).
     '25539': async (test) => runArg(test,
       `resources | where type =~ 'microsoft.network/firewallpolicies' | where tostring(properties.sku.tier) =~ 'Premium' | project PolicyName=name, IdpsMode=tostring(properties.intrusionDetection.mode)`,
       (rows) => {
@@ -319,7 +319,7 @@
       },
       'No Premium Azure Firewall policies were found.'),
 
-    // 25541 — Application Gateway WAF enabled in Prevention mode.
+    // 25541: Application Gateway WAF enabled in Prevention mode.
     '25541': async (test) => runArg(test,
       `resources | where type =~ 'microsoft.network/ApplicationGatewayWebApplicationFirewallPolicies' | project PolicyName=name, EnabledState=tostring(properties.policySettings.state), Mode=tostring(properties.policySettings.mode)`,
       (rows) => {
@@ -329,7 +329,7 @@
       },
       'No Application Gateway WAF policies were found.'),
 
-    // 25543 — Azure Front Door WAF enabled in Prevention mode.
+    // 25543: Azure Front Door WAF enabled in Prevention mode.
     '25543': async (test) => runArg(test,
       `resources | where type =~ 'microsoft.network/frontdoorwebapplicationfirewallpolicies' | project PolicyName=name, EnabledState=tostring(properties.policySettings.enabledState), Mode=tostring(properties.policySettings.mode)`,
       (rows) => {
@@ -339,7 +339,7 @@
       },
       'No Azure Front Door WAF policies were found.'),
 
-    // 25550 — Outbound TLS inspection enabled on Azure Firewall (partial: cert + terminateTLS rule).
+    // 25550: Outbound TLS inspection enabled on Azure Firewall (partial: cert + terminateTLS rule).
     '25550': async (test) => {
       const [policies, tlsGroups] = await Promise.all([
         Api.armResourceGraph(`resources | where type =~ 'microsoft.network/firewallpolicies' | project PolicyId=tolower(id), PolicyName=name, SkuTier=tostring(properties.sku.tier), CertName=tostring(properties.transportSecurity.certificateAuthority.name)`).catch(e => { throw e; }),
@@ -354,7 +354,7 @@
       if (compliant.length > 0) return pass(test, 'Outbound TLS inspection is enabled on Azure Firewall (certificate configured and TLS-terminating application rules present).', { firewallPolicies: toArray(pol).length, withTlsInspection: compliant.length });
       return fail(test, 'No Azure Firewall policy has outbound TLS inspection fully configured (CA certificate + TLS-terminating application rule).', { firewallPolicies: toArray(pol).length });
     },
-    // 27003 — TLS inspection failure rate below 1% (requires Log Analytics KQL, not browser-reachable).
+    // 27003: TLS inspection failure rate below 1% (requires Log Analytics KQL, not browser-reachable).
     '27003': async (test) => {
       let tls = null;
       try { tls = await Api.graphAll('networkAccess/tlsInspectionPolicies', { beta: true }); }
@@ -363,7 +363,7 @@
       return skip(test, `${skippedReason('NotSupported')} Computing the TLS inspection failure rate requires querying the NetworkAccessTraffic table in Log Analytics, which is not reachable from a browser-only tool.`);
     },
 
-    // 41207 — Active analytics rules configured in Microsoft Sentinel.
+    // 41207: Active analytics rules configured in Microsoft Sentinel.
     '41207': async (test) => {
       const sw = await sentinelWorkspaces();
       if (sw === 'noaccess') return skip(test, skippedReason('NotConnectedAzure'));
@@ -382,7 +382,7 @@
       return fail(test, 'No enabled scheduled or NRT analytics rules are configured in Microsoft Sentinel.', evidence);
     },
 
-    // 50001 — Microsoft Defender for Cloud recommendations (partial: high-severity unhealthy assessments).
+    // 50001: Microsoft Defender for Cloud recommendations (partial: high-severity unhealthy assessments).
     '50001': async (test) => runArg(test,
       `securityresources | where type == 'microsoft.security/assessments' | project name, status=tostring(properties.status.code), severity=tostring(properties.metadata.severity)`,
       (rows) => {
@@ -391,9 +391,9 @@
         if (!unhealthyHigh.length) return pass(test, 'No high-severity unhealthy Microsoft Defender for Cloud recommendations are present.', evidence);
         return fail(test, `${unhealthyHigh.length} high-severity Microsoft Defender for Cloud recommendation(s) are unhealthy.`, evidence);
       },
-      'No Microsoft Defender for Cloud assessments found — ensure Defender for Cloud is enabled.'),
+      'No Microsoft Defender for Cloud assessments found: ensure Defender for Cloud is enabled.'),
 
-    // 61002 — Microsoft Sentinel onboarded on at least one Log Analytics workspace.
+    // 61002: Microsoft Sentinel onboarded on at least one Log Analytics workspace.
     '61002': async (test) => {
       const sw = await sentinelWorkspaces();
       if (sw === 'noaccess') return skip(test, skippedReason('NotConnectedAzure'));
@@ -404,7 +404,7 @@
       return fail(test, 'Microsoft Sentinel is not onboarded on any Log Analytics workspace.', evidence);
     },
 
-    // 61004 — Defender for Cloud CSPM plan enabled on all subscriptions.
+    // 61004: Defender for Cloud CSPM plan enabled on all subscriptions.
     '61004': async (test) => {
       let subs;
       try { subs = await Api.armResourceGraph(`resourcecontainers | where type =~ 'microsoft.resources/subscriptions' | where properties.state =~ 'Enabled' | project subscriptionId, displayName=name`); }
@@ -422,16 +422,16 @@
       return fail(test, `${missing.length} Azure subscription(s) do not have the Defender CSPM plan enabled.`, evidence);
     },
 
-    // 61016 — Entra ID Protection risk events flowing to Sentinel (partial).
+    // 61016: Entra ID Protection risk events flowing to Sentinel (partial).
     '61016': async (test) => connectorTest(test, 'azureactivedirectory', 'Microsoft Entra ID Protection'),
 
-    // 61018 — Purview Information Protection data connector on Sentinel (partial).
+    // 61018: Purview Information Protection data connector on Sentinel (partial).
     '61018': async (test) => connectorTest(test, 'informationprotection', 'Microsoft Purview Information Protection'),
 
-    // 61021 — Microsoft 365 Copilot data connector on Sentinel (partial).
+    // 61021: Microsoft 365 Copilot data connector on Sentinel (partial).
     '61021': async (test) => connectorTest(test, 'copilot', 'Microsoft 365 Copilot'),
 
-    // 61022 — Defender for AI Services enabled on subscriptions hosting AI accounts (partial).
+    // 61022: Defender for AI Services enabled on subscriptions hosting AI accounts (partial).
     '61022': async (test) => {
       let aiSubs;
       try { aiSubs = await Api.armResourceGraph(`resources | where type =~ 'microsoft.cognitiveservices/accounts' | distinct subscriptionId`); }
@@ -449,10 +449,10 @@
       return fail(test, `${missing.length} subscription(s) hosting AI accounts do not have Microsoft Defender for AI Services enabled.`, evidence);
     },
 
-    // 61023 — Agent 365 data connector on Sentinel (partial).
+    // 61023: Agent 365 data connector on Sentinel (partial).
     '61023': async (test) => connectorTest(test, 'agent', 'Agent 365'),
 
-    // 61024 — Defender XDR (unified) data connector on Sentinel (partial).
+    // 61024: Defender XDR (unified) data connector on Sentinel (partial).
     '61024': async (test) => connectorTest(test, 'threatprotection', 'Microsoft Defender XDR (unified)'),
   };
 

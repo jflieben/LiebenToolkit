@@ -2,208 +2,225 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>DupedDevices tests</title>
+  <title>DupedDevices - tests</title>
   <style>
-    body { font-family: system-ui, sans-serif; max-width: 900px; margin: 24px auto; padding: 0 16px; }
+    body { font: 14px/1.4 -apple-system,Segoe UI,sans-serif; padding: 20px; max-width: 900px; margin: 0 auto; }
+    .pass { color: #1f7a3a; } .fail { color: #b32026; font-weight: bold; }
+    .group { margin-top: 14px; font-weight: 600; }
+    pre { background: #f4f4f6; padding: 10px; border-radius: 6px; overflow: auto; }
     h1 { font-size: 18px; }
-    .test { padding: 6px 10px; margin: 3px 0; border-radius: 6px; }
-    .pass { background: #d6f3e3; color: #1f6e3a; }
-    .fail { background: #fde2e1; color: #b3261e; }
-    .group { margin-top: 18px; font-weight: 600; }
-    pre { background: #f4f6fa; padding: 8px; border-radius: 4px; font-size: 12px; }
   </style>
 </head>
 <body>
-  <h1>DupedDevices unit tests</h1>
-  <div id="results"></div>
-
-  <!-- Stub Log used by some modules -->
-  <script>
-    window.Log = { dbg(){}, info(){}, warn(){}, err(){}, clear(){}, setVerbose(){} };
-  </script>
-  <script src="../src/concurrency.js"></script>
+  <h1>DupedDevices - unit tests</h1>
+  <div id="out"></div>
+  <script src="../../shared/log.js"></script>
+  <script src="../../shared/concurrency.js"></script>
+  <script src="../../shared/http.js"></script>
+  <script src="../../shared/export.js"></script>
   <script src="../src/devices.js"></script>
   <script>
-    const root = document.getElementById('results');
-    let pass = 0, fail = 0;
-    function group(name) { const d = document.createElement('div'); d.className = 'group'; d.textContent = name; root.appendChild(d); }
-    function it(name, fn) {
-      const d = document.createElement('div');
-      try {
-        fn();
-        d.className = 'test pass'; d.textContent = 'PASS - ' + name; pass++;
-      } catch (e) {
-        d.className = 'test fail';
-        d.innerHTML = 'FAIL - ' + name + '<br><pre>' + (e.stack || e.message) + '</pre>';
-        fail++;
-      }
-      root.appendChild(d);
+    const out = document.getElementById('out');
+    const queue = [];
+    function group(name) { queue.push({ group: name }); }
+    function test(name, fn) { queue.push({ name, fn }); }
+    function eq(a, b, m = '') {
+      const A = JSON.stringify(a), B = JSON.stringify(b);
+      if (A !== B) throw new Error(`${m} expected ${B}, got ${A}`);
     }
-    function eq(a, b, msg) {
-      const sa = JSON.stringify(a), sb = JSON.stringify(b);
-      if (sa !== sb) throw new Error((msg ? msg + ' - ' : '') + 'expected ' + sb + ', got ' + sa);
-    }
-    function truthy(v, msg) { if (!v) throw new Error(msg || 'expected truthy, got ' + v); }
-    function falsy(v, msg) { if (v) throw new Error(msg || 'expected falsy, got ' + v); }
+    function truthy(v, m) { if (!v) throw new Error(m || `expected truthy, got ${v}`); }
 
-    // ---------------- extractHwid ----------------
+    const NOW = new Date('2026-01-01T00:00:00Z');
+    const DAY = 86400000;
+    const ago = (days) => new Date(NOW.getTime() - days * DAY);
+    const stamp = (days) => Devices.buildDisableStampValue(ago(days));
+    function dev(id, hwid, opts = {}) {
+      return {
+        id, deviceId: 'dev-' + id, displayName: opts.name || ('dev-' + id),
+        physicalIds: hwid ? ['[HWID]:' + hwid].concat(opts.ztd ? ['[ZTDId]:x'] : []) : [],
+        accountEnabled: !opts.disabled,
+        approximateLastSignInDateTime: opts.lastSignIn || null,
+        createdDateTime: opts.created || null,
+        operatingSystem: opts.os || 'Windows',
+        operatingSystemVersion: opts.ver || '',
+        isAutopilot: !!opts.ztd,
+      };
+    }
+
     group('extractHwid');
-    it('returns null when no physicalIds', () => {
+    test('null without physicalIds', () => {
       eq(Devices.extractHwid({}), null);
       eq(Devices.extractHwid({ physicalIds: [] }), null);
     });
-    it('returns null when only USER-GID / GID entries', () => {
+    test('null with only GID entries', () => {
       eq(Devices.extractHwid({ physicalIds: ['[GID]:abc', '[USER-GID]:user1:foo'] }), null);
     });
-    it('extracts plain [HWID] value', () => {
-      eq(Devices.extractHwid({ physicalIds: ['[HWID]:hardware-aaa'] }), 'hardware-aaa');
-    });
-    it('extracts last token from [USER-HWID]', () => {
-      eq(Devices.extractHwid({ physicalIds: ['[USER-HWID]:userA:hwid-bbb'] }), 'hwid-bbb');
-    });
-    it('prefers [HWID] over USER-HWID when both present', () => {
+    test('plain [HWID]', () => eq(Devices.extractHwid({ physicalIds: ['[HWID]:hardware-aaa'] }), 'hardware-aaa'));
+    test('last token of [USER-HWID]', () => eq(Devices.extractHwid({ physicalIds: ['[USER-HWID]:userA:hwid-bbb'] }), 'hwid-bbb'));
+    test('[HWID] wins over [USER-HWID]', () => {
       eq(Devices.extractHwid({ physicalIds: ['[USER-HWID]:userA:hwid-bbb', '[HWID]:hardware-aaa'] }), 'hardware-aaa');
     });
-    it('ignores non-string entries', () => {
-      eq(Devices.extractHwid({ physicalIds: [null, 5, '[HWID]:hwx'] }), 'hwx');
-    });
+    test('ignores non-string entries', () => eq(Devices.extractHwid({ physicalIds: [null, 5, '[HWID]:hwx'] }), 'hwx'));
 
-    // ---------------- Autopilot helpers ----------------
-    group('Autopilot helpers');
-    it('buildManagedMap indexes by azureADDeviceId', () => {
-      const map = Devices.buildManagedMap([
-        { azureADDeviceId: 'ABC-123', userPrincipalName: 'u1@contoso.com' },
-        { azureADDeviceId: 'DEF-456', userPrincipalName: 'u2@contoso.com' },
-      ]);
-      eq(!!map.get('abc-123'), true);
-      eq(!!map.get('def-456'), true);
-      eq(!!map.get('zzz'), false);
+    group('Autopilot');
+    test('buildManagedMap indexes by azureADDeviceId, case-insensitive', () => {
+      const map = Devices.buildManagedMap([{ azureADDeviceId: 'ABC-123' }, { azureADDeviceId: '' }]);
+      eq(map.has('abc-123'), true);
+      eq(map.size, 1);
     });
-    it('isAutopilot uses managed.autopilotEnrolled when available', () => {
+    test('isAutopilot: Intune flag first, [ZTDId] fallback', () => {
       eq(Devices.isAutopilot({}, { autopilotEnrolled: true }), true);
       eq(Devices.isAutopilot({}, { autopilotEnrolled: false }), false);
-    });
-    it('isAutopilot falls back to [ZTDId] marker', () => {
       eq(Devices.isAutopilot({ physicalIds: ['[ZTDId]:123'] }, null), true);
       eq(Devices.isAutopilot({ physicalIds: ['[HWID]:abc'] }, null), false);
     });
 
-    // ---------------- findDuplicates ----------------
     group('findDuplicates');
-    function dev(id, hwid, opts = {}) {
-      return {
-        id, deviceId: 'dev-' + id, displayName: opts.name || ('dev-' + id),
-        physicalIds: hwid ? ['[HWID]:' + hwid] : [],
-        accountEnabled: opts.disabled ? false : true,
-        approximateLastSignInDateTime: opts.lastSignIn || null,
-        createdDateTime: opts.created || null,
-        operatingSystem: opts.os || 'Windows',
-      };
-    }
-    it('skips groups with only 1 device', () => {
-      const groups = Devices.findDuplicates([dev('a','hw1'), dev('b','hw2')]);
-      eq(groups.length, 0);
-    });
-    it('groups devices sharing a HWID', () => {
-      const groups = Devices.findDuplicates([
-        dev('a','hw1', { lastSignIn: '2024-01-01T00:00:00Z' }),
-        dev('b','hw1', { lastSignIn: '2024-06-01T00:00:00Z' }),
+    test('single devices are not groups', () => eq(Devices.findDuplicates([dev('a', 'hw1'), dev('b', 'hw2')]).length, 0));
+    test('groups on HWID, most recent is current', () => {
+      const g = Devices.findDuplicates([
+        dev('a', 'hw1', { lastSignIn: '2024-01-01T00:00:00Z' }),
+        dev('b', 'hw1', { lastSignIn: '2024-06-01T00:00:00Z' }),
       ]);
-      eq(groups.length, 1);
-      eq(groups[0].deviceCount, 2);
-      eq(groups[0].current.id, 'b');
-      eq(groups[0].stale.length, 1);
-      eq(groups[0].stale[0].id, 'a');
+      eq(g.length, 1);
+      eq(g[0].current.id, 'b');
+      eq(g[0].stale.map((d) => d.id), ['a']);
     });
-    it('ignores disabled devices in default mode', () => {
-      const groups = Devices.findDuplicates([
-        dev('a','hw1', { lastSignIn: '2024-01-01T00:00:00Z', disabled: true }),
-        dev('b','hw1', { lastSignIn: '2024-06-01T00:00:00Z' }),
-      ]);
-      eq(groups.length, 0, 'one enabled + one disabled should not count');
+    test('disabled devices ignored by default', () => {
+      eq(Devices.findDuplicates([dev('a', 'hw1', { disabled: true }), dev('b', 'hw1')]).length, 0);
     });
-    it('includes disabled devices when includeDisabledInComparison=true', () => {
-      const groups = Devices.findDuplicates([
-        dev('a','hw1', { lastSignIn: '2024-01-01T00:00:00Z', disabled: true }),
-        dev('b','hw1', { lastSignIn: '2024-06-01T00:00:00Z' }),
+    test('disabled devices included on request', () => {
+      const g = Devices.findDuplicates([
+        dev('a', 'hw1', { lastSignIn: '2024-01-01T00:00:00Z', disabled: true }),
+        dev('b', 'hw1', { lastSignIn: '2024-06-01T00:00:00Z' }),
       ], { includeDisabledInComparison: true });
-      eq(groups.length, 1);
-      eq(groups[0].current.id, 'b');
-      eq(groups[0].stale[0].id, 'a');
+      eq(g[0].stale[0].id, 'a');
     });
-    it('falls back to createdDateTime when no sign-in', () => {
-      const groups = Devices.findDuplicates([
-        dev('a','hw1', { created: '2024-01-01T00:00:00Z' }),
-        dev('b','hw1', { created: '2024-06-01T00:00:00Z' }),
-      ]);
-      eq(groups[0].current.id, 'b');
-    });
-    it('treats null timestamps as oldest', () => {
-      const groups = Devices.findDuplicates([
-        dev('a','hw1'),
-        dev('b','hw1', { lastSignIn: '2024-06-01T00:00:00Z' }),
-      ]);
-      eq(groups[0].current.id, 'b');
-      eq(groups[0].stale[0].id, 'a');
+    test('falls back to createdDateTime, null is oldest', () => {
+      eq(Devices.findDuplicates([dev('a', 'hw1', { created: '2024-01-01T00:00:00Z' }), dev('b', 'hw1', { created: '2024-06-01T00:00:00Z' })])[0].current.id, 'b');
+      eq(Devices.findDuplicates([dev('a', 'hw1'), dev('b', 'hw1', { lastSignIn: '2024-06-01T00:00:00Z' })])[0].current.id, 'b');
     });
 
-    // ---------------- DupedDevices stamp helpers ----------------
-    group('Disable-stamp helpers');
-    it('buildDisableStampValue + parseDupedDevicesStamp roundtrip', () => {
-      const v = Devices.buildDisableStampValue();
-      truthy(v.startsWith('DupedDevices:disabled:'));
-      const d = Devices.parseDupedDevicesStamp(v);
-      truthy(d instanceof Date);
-      truthy(!isNaN(d.getTime()));
+    group('filtering and selection');
+    const groups = Devices.findDuplicates([
+      dev('a1', 'hw1', { name: 'LAPTOP-1', lastSignIn: '2024-01-01T00:00:00Z' }),
+      dev('a2', 'hw1', { name: 'LAPTOP-1', lastSignIn: '2024-06-01T00:00:00Z' }),
+      dev('b1', 'hw2', { name: 'KIOSK', ztd: true, lastSignIn: '2024-01-01T00:00:00Z' }),
+      dev('b2', 'hw2', { name: 'KIOSK', lastSignIn: '2024-06-01T00:00:00Z' }),
+    ]);
+    test('mixed Autopilot group detection', () => {
+      eq(groups.map(Devices.isMixedAutopilotGroup).sort(), [false, true]);
     });
-    it('parseDupedDevicesStamp returns null for unrelated values', () => {
+    test('filterGroups: hide mixed and search', () => {
+      eq(Devices.filterGroups(groups, { hideMixedAutopilot: true }).map((g) => g.hwid), ['hw1']);
+      eq(Devices.filterGroups(groups, { search: 'kiosk' }).map((g) => g.hwid), ['hw2']);
+      eq(Devices.filterGroups(groups, { search: 'HW1' }).map((g) => g.hwid), ['hw1']);
+      eq(Devices.filterGroups(groups, {}).length, 2);
+    });
+    test('staleIds never contains the current device', () => {
+      eq([...Devices.staleIds(groups)].sort(), ['a1', 'b1']);
+    });
+    test('trimSelection drops selections hidden by the filter', () => {
+      const sel = new Set(['a1', 'b1', 'a2']);
+      const visible = Devices.filterGroups(groups, { hideMixedAutopilot: true });
+      eq(Devices.trimSelection(sel, Devices.staleIds(visible)), 2);
+      eq([...sel], ['a1']);
+    });
+
+    group('grace period');
+    test('stamp roundtrip', () => {
+      const v = Devices.buildDisableStampValue(NOW);
+      eq(v, 'DupedDevices:disabled:2026-01-01T00:00:00.000Z');
+      eq(Devices.parseDupedDevicesStamp(v).toISOString(), NOW.toISOString());
+    });
+    test('foreign or broken stamps are ignored', () => {
       eq(Devices.parseDupedDevicesStamp(null), null);
-      eq(Devices.parseDupedDevicesStamp('something else'), null);
+      eq(Devices.parseDupedDevicesStamp('2025-01-01T00:00:00Z'), null);
+      eq(Devices.parseDupedDevicesStamp('InactiveDevices:disabled:2025-01-01T00:00:00Z'), null);
       eq(Devices.parseDupedDevicesStamp('DupedDevices:disabled:not-a-date'), null);
     });
-    it('findExpiredDisabled returns past-grace devices only', () => {
-      const old = new Date(Date.now() - 60 * 86400000).toISOString();
-      const recent = new Date(Date.now() - 5 * 86400000).toISOString();
+    test('parseGraceDays refuses 0, negatives, fractions and junk', () => {
+      eq(Devices.parseGraceDays('0'), null);
+      eq(Devices.parseGraceDays(0), null);
+      eq(Devices.parseGraceDays('-5'), null);
+      eq(Devices.parseGraceDays('1.5'), null);
+      eq(Devices.parseGraceDays(''), null);
+      eq(Devices.parseGraceDays('abc'), null);
+      eq(Devices.parseGraceDays('3651'), null);
+      eq(Devices.parseGraceDays('1'), 1);
+      eq(Devices.parseGraceDays(' 30 '), 30);
+      eq(Devices.parseGraceDays(3650), 3650);
+    });
+    test('findExpiredDisabled: disabled, own stamp, past grace only', () => {
       const devices = [
-        { id: '1', accountEnabled: false, extensionAttributes: { extensionAttribute1: 'DupedDevices:disabled:' + old } },
-        { id: '2', accountEnabled: false, extensionAttributes: { extensionAttribute1: 'DupedDevices:disabled:' + recent } },
-        { id: '3', accountEnabled: true,  extensionAttributes: { extensionAttribute1: 'DupedDevices:disabled:' + old } },
+        { id: '1', accountEnabled: false, extensionAttributes: { extensionAttribute1: stamp(60) } },
+        { id: '2', accountEnabled: false, extensionAttributes: { extensionAttribute1: stamp(5) } },
+        { id: '3', accountEnabled: true, extensionAttributes: { extensionAttribute1: stamp(60) } },
         { id: '4', accountEnabled: false, extensionAttributes: {} },
+        { id: '5', accountEnabled: false, extensionAttributes: { extensionAttribute1: '2020-01-01T00:00:00Z' } },
+        { id: '6', accountEnabled: false, extensionAttributes: { extensionAttribute1: stamp(30) } },
       ];
-      // Note: findExpiredDisabled uses raw Date parse, not parseDupedDevicesStamp,
-      // which still works for a full ISO string but not for our prefixed form.
-      // We test the prefix-aware logic via the parse helper instead, since the app uses that.
-      const expired = devices.filter(d => {
-        if (d.accountEnabled !== false) return false;
-        const v = (d.extensionAttributes || {}).extensionAttribute1;
-        const ts = Devices.parseDupedDevicesStamp(v);
-        if (!ts) return false;
-        return (Date.now() - ts.getTime()) >= 30 * 86400000;
-      });
-      eq(expired.map(d => d.id), ['1']);
+      const r = Devices.findExpiredDisabled(devices, 'extensionAttribute1', 30, NOW);
+      eq(r.map((e) => e.device.id), ['1', '6']);
+      eq(r[0].daysDisabled, 60);
+      eq(r[0].stampValue, stamp(60));
+    });
+    test('findExpiredDisabled: grace 0 or no attribute finds nothing', () => {
+      const devices = [{ id: '1', accountEnabled: false, extensionAttributes: { extensionAttribute1: stamp(0) } }];
+      eq(Devices.findExpiredDisabled(devices, 'extensionAttribute1', 0, NOW).length, 0);
+      eq(Devices.findExpiredDisabled(devices, '', 30, NOW).length, 0);
+    });
+    test('recheckExpired: only a still-disabled device with the same expired stamp passes', () => {
+      const attr = 'extensionAttribute3';
+      const v = stamp(40);
+      const cutoff = NOW.getTime() - 30 * DAY;
+      eq(Devices.recheckExpired({ accountEnabled: false, extensionAttributes: { [attr]: v } }, attr, v, cutoff), { ok: true });
+      eq(Devices.recheckExpired(null, attr, v, cutoff).ok, false);
+      eq(Devices.recheckExpired({ accountEnabled: true, extensionAttributes: { [attr]: v } }, attr, v, cutoff).ok, false);
+      eq(Devices.recheckExpired({ accountEnabled: false, extensionAttributes: { [attr]: stamp(1) } }, attr, v, cutoff).ok, false);
+      eq(Devices.recheckExpired({ accountEnabled: false, extensionAttributes: { [attr]: null } }, attr, v, cutoff).ok, false);
+      eq(Devices.recheckExpired({ accountEnabled: false, extensionAttributes: { [attr]: stamp(10) } }, attr, stamp(10), cutoff).ok, false);
     });
 
-    // ---------------- Concurrency ----------------
-    group('Concurrency.pmap');
-    it('runs at most N tasks in parallel', async () => {
+    group('display and export');
+    test('describe lists name, OS and last activity', () => {
+      eq(Devices.describe(dev('x', 'h', { name: 'PC-1', os: 'Windows', ver: '10.0', lastSignIn: '2025-03-04T10:00:00Z' })), 'PC-1  |  Windows 10.0  |  last active 2025-03-04');
+      eq(Devices.describe({}), '(no name)  |  unknown OS  |  never active');
+    });
+    test('rowsFromGroups marks keep and stale', () => {
+      const rows = Devices.rowsFromGroups(Devices.filterGroups(groups, { hideMixedAutopilot: true }), '');
+      eq(rows.map((r) => `${r.id}:${r.role}`), ['a2:Keep', 'a1:Stale']);
+    });
+    test('export neutralises formulas in device names', () => {
+      const rows = Devices.rowsFromGroups([{ hwid: 'h', deviceCount: 2, current: null, devices: [dev('x', 'h', { name: '=HYPERLINK("http://evil")' })] }], '');
+      const t = Export.table(rows, [{ key: 'displayName', label: 'Name' }]);
+      eq(t.body[0][0], `'=HYPERLINK("http://evil")`);
+    });
+    test('object ids are checked before they go into a URL', () => {
+      eq(Http.isGuid('7c06cd31-7c30-4f3b-a5c3-444cd8dd63ac'), true);
+      eq(Http.isGuid('../users/x'), false);
+    });
+
+    group('Concurrency');
+    test('pmap keeps at most N in flight', async () => {
       let inflight = 0, peak = 0;
-      const tasks = Array.from({length: 20}, (_, i) => i);
-      await Concurrency.pmap(tasks, 4, async () => {
+      await Concurrency.pmap(Array.from({ length: 20 }, (_, i) => i), async () => {
         inflight++; peak = Math.max(peak, inflight);
-        await new Promise(r => setTimeout(r, 5));
+        await new Promise((r) => setTimeout(r, 5));
         inflight--;
-      });
-      truthy(peak <= 4, 'peak should be <= 4, got ' + peak);
+      }, { concurrency: 4 });
+      truthy(peak <= 4 && peak > 1, `peak was ${peak}`);
     });
 
-    // ---- Summary ----
-    setTimeout(() => {
-      const sum = document.createElement('div');
-      sum.className = fail === 0 ? 'test pass' : 'test fail';
-      sum.style.marginTop = '18px';
-      sum.textContent = `${pass} passed, ${fail} failed`;
-      root.appendChild(sum);
-    }, 100);
+    (async () => {
+      let pass = 0, fail = 0;
+      for (const t of queue) {
+        if (t.group) { out.insertAdjacentHTML('beforeend', `<div class="group">${t.group}</div>`); continue; }
+        try { await t.fn(); out.insertAdjacentHTML('beforeend', `<div class="pass">PASS ${t.name}</div>`); pass++; }
+        catch (e) { out.insertAdjacentHTML('beforeend', `<div class="fail">FAIL ${t.name}<br><pre>${e.stack || e.message}</pre></div>`); fail++; }
+      }
+      out.insertAdjacentHTML('beforeend', `<h2>${pass} passed, ${fail} failed</h2><p id="result">TEST-RESULT: ${fail ? 'FAIL' : 'PASS'} ${pass}/${pass + fail}</p>`);
+    })();
   </script>
 </body>
 </html>

@@ -1,11 +1,11 @@
 /*
- * Phase 4 — Buckets C/D/E: Microsoft Purview / Exchange Online / SharePoint Online controls.
+ * Phase 4: Buckets C/D/E: Microsoft Purview / Exchange Online / SharePoint Online controls.
  *
  * These module tests read configuration through the Security & Compliance, Exchange Online,
  * and SharePoint Online PowerShell sessions (Get-Label, Get-DlpCompliancePolicy,
  * Get-IRMConfiguration, Get-SPOTenant, ...). Those admin surfaces have NO browser-accessible
- * delegated REST/Graph equivalent, so — exactly as the module does when a service is not
- * connected — the browser engine returns a Skipped result carrying the specific reason.
+ * delegated REST/Graph equivalent, so, exactly as the module does when a service is not
+ * connected, the browser engine returns a Skipped result carrying the specific reason.
  *
  * The one exception reachable from delegated Graph is sensitivity-label existence (35003).
  */
@@ -26,10 +26,10 @@
   }
 
   const impl = {
-    // 35003 — Sensitivity labels are configured (delegated Graph).
+    // 35003: Sensitivity labels are configured (delegated Graph).
     '35003': async (test) => {
       const labels = await getSensitivityLabels();
-      if (labels === null) return skip(test, `${skippedReason('NotConnectedSecurityCompliance')} (Sensitivity labels could not be read via Microsoft Graph — InformationProtectionPolicy.Read may not be consented.)`);
+      if (labels === null) return skip(test, `${skippedReason('NotConnectedSecurityCompliance')} (Sensitivity labels could not be read via Microsoft Graph: InformationProtectionPolicy.Read may not be consented.)`);
       if (!labels.length) return fail(test, 'No sensitivity labels are configured in the tenant.', { labels: 0 });
       return pass(test, `${labels.length} sensitivity label(s) are configured in the tenant.`, { labels: labels.length });
     },
